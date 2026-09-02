@@ -1,6 +1,5 @@
 ---
 description: 소원을 빕니다
-argument-hint: [작업 설명]
 ---
 $ARGUMENTS
 
