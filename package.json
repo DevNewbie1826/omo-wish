@@ -9,6 +9,7 @@
   "license": "MIT",
   "keywords": ["omo", "omo-plugin", "prompt-template"],
   "pi": {
-    "prompts": ["prompts"]
+    "prompts": ["prompts"],
+    "extensions": ["extensions/wish-ultrawork-arm.js"]
   }
 }
