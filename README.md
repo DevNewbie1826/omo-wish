@@ -32,7 +32,7 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 
 ## 요구 사항
 
-이 프롬프트는 **omo v5.0.0-beta.36 이상 (senpi 2026.9.3+)** 에 맞춰져 있습니다. 실행 방식(js eval 기본 실행 환경, 병렬 디스패치, 비동기 모니터링)을 프롬프트가 직접 서술하지 않고 시스템 제공 정책에 위임하므로, eval 툴 설명에 실행 가이드가 내장된 엔진이 필요합니다. JS eval 커널은 Bun 1.4 이상 런타임에서 동작합니다.
+이 프롬프트는 **omo v5.0.0-beta.40 이상 (senpi 2026.9.4+)** 에 맞춰져 있습니다. 실행 방식(js eval 기본 실행 환경, 병렬 디스패치, 비동기 모니터링)을 프롬프트가 직접 서술하지 않고 시스템 제공 정책에 위임하므로, eval 툴 설명에 실행 가이드가 내장된 엔진이 필요합니다. JS eval 커널은 Bun 1.4 이상 런타임에서 동작합니다.
 
 ## 사용법
 
@@ -48,25 +48,28 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 /wish 로그인 리다이렉트 버그 수정
 ```
 
-`$ARGUMENTS` 자리에 인자가 치환되어 프롬프트 전문이 전송됩니다. 인자 없이 `/wish`만 입력하면 `작업 대상:` 뒤가 비어 들어가므로 인자를 붙이는 걸 권장합니다. 위치 인자(`$1`), 기본값(`${1:-기본값}`) 등 bash 스타일 치환도 템플릿에서 쓸 수 있습니다.
+`$ARGUMENTS` 자리에 인자가 치환되어 프롬프트 전문이 전송됩니다. 인자는 본문 맨 앞에 사용자의 답으로 붙습니다. 인자 없이 `/wish`만 입력해도 됩니다 — 본문의 explore가 대화 맥락을 읽습니다. 위치 인자(`$1`), 기본값(`${1:-기본값}`) 등 bash 스타일 치환도 템플릿에서 쓸 수 있습니다.
 
 ## 프롬프트가 하는 일
 
-1. **ultrawork explore** — 작업 맥락·히스토리 분석, 이상적인 상태 정의
-2. **Phase 분할** — 전체 작업을 여러 Phase로 나누고 ulw loop로 순차 진행
-3. **Phase 실행** — Git worktree 생성 → mass ulw로 구현/검증/테스트 → PR
-4. **검토 루프** — ultrabrain 검토, deep agent 수정 반영, 승인까지 반복 → merge → 다음 Phase
+1. **ultrawork explore** — 작업 맥락·히스토리 분석, 이상적인 상태를 하나의 최상위 목표로 정의
+2. **태스크 묶기** — 관련 작업은 한 태스크에 두고, 서로의 정합성에 영향을 주지 않을 때만 독립으로 분리
+3. **동시 실행** — 독립 태스크는 각자 git worktree와 PR을 가진 mass ulw DAG로 병렬 실행. 마지막 노드는 ultrabrain 검토(verdict: APPROVED/REVISE)
+4. **REVISE·merge** — REVISE면 deep agent가 병렬로 고친 뒤 재검토. merge는 최신 main과 동기화하고 검증을 다시 돌린 다음 한 번에 하나씩
+5. **최종 검토** — 모든 태스크 merge 후 ultrabrain이 전체 main을 최상위 목표 기준으로 검토. ulw loop는 전부 APPROVED로 merge되고 main이 초록이며 이 최종 검토가 APPROVED일 때만 끝남
 
 ## 구조
 
 ```
 omo-wish/
-├── package.json    # pi manifest: prompts 리소스 선언
+├── package.json                    # pi manifest: pi.prompts + pi.extensions 선언
+├── extensions/
+│   └── wish-ultrawork-arm.js       # 확장 본문의 트리거로 ultrawork arm
 └── prompts/
-    └── wish.md     # 슬래시 명령 템플릿 (description = 메뉴 설명)
+    └── wish.md                     # 슬래시 명령 템플릿 (description = 메뉴 설명)
 ```
 
-`pi.prompts`에 디렉터리를 선언하면 OmO가 템플릿을 슬래시 메뉴에 등록합니다. 확장 JS는 필요 없습니다.
+`pi.prompts`에 디렉터리를 선언하면 OmO가 템플릿을 슬래시 메뉴에 등록합니다. `pi.extensions`에 `extensions/wish-ultrawork-arm.js`를 선언하면 `/wish` 확장 본문의 트리거 단어로 ultrawork 모드를 arm합니다.
 
 ## 커스터마이징
 
@@ -74,4 +77,4 @@ omo-wish/
 
 ## 노트: 트리거 단어와 훅
 
-이 템플릿 본문은 `ultrawork`, `mass ulw`, `ulw loop`를 명시적으로 지목합니다. OmO의 입력 훅(정규식 기반 확정 발동)은 슬래시 명령의 **원시 라인**(`/wish ...`)만 보고 확장된 본문은 보지 못하므로, 훅 주입 대신 에이전트가 본문 지시에 따라 해당 스킬을 직접 읽어 따르는 시맨틱 라우팅으로 동작합니다. ultrawork 모드를 확정적으로 arm하고 싶으면 파일명을 `wish-ulw.md`처럼 `ulw`를 포함하게 바꾸세요.
+이 템플릿 본문은 `ultrawork`, `mass ulw`, `ulw loop`를 명시적으로 지목합니다. OmO는 ultrawork 모드를 `input` 훅에서 arm하는데, senpi는 슬래시 프롬프트 템플릿 확장 **이전**에 이 훅을 쏘므로 `/wish ...`의 원시 라인만 보이고 wish.md 본문의 트리거 단어는 보지 못합니다. `extensions/wish-ultrawork-arm.js`가 `before_agent_start`를 듣습니다 — 이 이벤트의 `event.prompt`는 확장 **이후** 텍스트입니다. `ultrawork`/`ulw`가 있으면 OmO가 `globalThis[Symbol.for("omo.ultrawork.arming")]`에 공개한 상태로 세션을 arm하고, OmO 자신의 ultrawork 지시문을 hidden 메시지로 주입합니다. 이미 arm된 세션, 트리거 단어가 없는 프롬프트, OmO가 로드되지 않은 경우에는 아무것도 하지 않습니다. 그때는 예전처럼 모델이 본문을 읽고 스킬을 시맨틱 라우팅합니다.
