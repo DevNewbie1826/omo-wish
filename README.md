@@ -32,7 +32,7 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 
 ## 요구 사항
 
-이 프롬프트는 **omo v5.0.0-beta.40 이상 (senpi 2026.9.4+)** 에 맞춰져 있습니다. 실행 방식(js eval 기본 실행 환경, 병렬 디스패치, 비동기 모니터링)을 프롬프트가 직접 서술하지 않고 시스템 제공 정책에 위임하므로, eval 툴 설명에 실행 가이드가 내장된 엔진이 필요합니다. JS eval 커널은 Bun 1.4 이상 런타임에서 동작합니다.
+이 프롬프트는 **omo v5.0.0-beta.40 이상 (senpi 2026.9.4+)** 에 맞춰져 있습니다. 독립 태스크와 독립 DAG 노드의 병렬 디스패치는 wish.md가 명시하며, 저수준 툴·eval 실행 메커니즘만 시스템 제공 정책에 위임하므로 eval 툴 설명에 실행 가이드가 내장된 엔진이 필요합니다. JS eval 커널은 Bun 1.4 이상 런타임에서 동작합니다.
 
 ## 사용법
 
@@ -53,10 +53,11 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 ## 프롬프트가 하는 일
 
 1. **ultrawork explore** — 작업 맥락·히스토리 분석, 이상적인 상태를 하나의 최상위 목표로 정의
-2. **태스크 묶기** — 관련 작업은 한 태스크에 두고, 서로의 정합성에 영향을 주지 않을 때만 독립으로 분리
-3. **동시 실행** — 독립 태스크는 각자 git worktree와 PR을 가진 mass ulw DAG로 병렬 실행. 마지막 노드는 ultrabrain 검토(verdict: APPROVED/REVISE)
-4. **REVISE·merge** — REVISE면 deep agent가 병렬로 고친 뒤 재검토. merge는 최신 main과 동기화하고 검증을 다시 돌린 다음 한 번에 하나씩
-5. **최종 검토** — 모든 태스크 merge 후 ultrabrain이 전체 main을 최상위 목표 기준으로 검토. ulw loop는 전부 APPROVED로 merge되고 main이 초록이며 이 최종 검토가 APPROVED일 때만 끝남
+2. **단일 ulw loop** — 이 최상위 목표 하나만 ulw loop의 목표로 삼으며, 태스크는 별도의 목표가 아니라 목표를 달성하기 위한 작업 단위
+3. **태스크 묶기** — 관련 작업은 한 태스크에 두고, 서로의 정합성에 영향을 주지 않을 때만 독립으로 분리
+4. **DAG 실행** — 각 태스크는 전용 git worktree와 PR을 가진 mass ulw DAG 체인으로 실행하며, 모든 태스크 DAG에는 구현 노드, 검증 노드, 해당 DAG run을 본문에 인용하는 PR 노드, 최종 ultrabrain 검토 노드가 포함됨. 오케스트레이션 세션은 저장소 파일을 절대 수정하지 않고 모든 변경은 DAG 노드가 수행. 구현 노드와 fix-DAG 노드는 서로의 정확성에 영향을 주지 않을 때만 병렬 실행
+5. **동시 실행·검토** — 독립 태스크는 병렬 실행하고, 마지막 노드는 ultrabrain 검토(verdict: APPROVED/REVISE). REVISE면 deep agent가 요구 사항을 고친 뒤 재검토
+6. **merge·최종 검토** — merge는 최신 main과 동기화하고 검증을 다시 돌린 다음 한 번에 하나씩 진행. 나중에 발견된 작업은 같은 관련성 규칙에 따라 기존 태스크에 합치거나 새 태스크로 묶음. pre-merge 동기화 충돌, 검토한 diff의 변경, 재검증 실패가 발생하면 해당 태스크를 fix DAG loop로 돌려 새 ultrabrain 승인을 받은 뒤 merge. 모든 태스크 merge 후 ultrabrain이 전체 main을 최상위 목표 기준으로 검토하며, 전부 APPROVED로 merge되고 main이 초록이며 이 최종 검토가 APPROVED일 때만 ulw loop가 끝남
 
 ## 구조
 
