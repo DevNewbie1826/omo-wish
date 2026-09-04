@@ -53,10 +53,11 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 ## 프롬프트가 하는 일
 
 1. **ultrawork explore** — 작업 맥락·히스토리 분석, 이상적인 상태를 하나의 최상위 목표로 정의
-2. **태스크 묶기** — 관련 작업은 한 태스크에 두고, 서로의 정합성에 영향을 주지 않을 때만 독립으로 분리
-3. **동시 실행** — 독립 태스크는 각자 git worktree와 PR을 가진 mass ulw DAG로 병렬 실행. 마지막 노드는 ultrabrain 검토(verdict: APPROVED/REVISE)
-4. **REVISE·merge** — REVISE면 deep agent가 병렬로 고친 뒤 재검토. merge는 최신 main과 동기화하고 검증을 다시 돌린 다음 한 번에 하나씩
-5. **최종 검토** — 모든 태스크 merge 후 ultrabrain이 전체 main을 최상위 목표 기준으로 검토. ulw loop는 전부 APPROVED로 merge되고 main이 초록이며 이 최종 검토가 APPROVED일 때만 끝남
+2. **단일 ulw loop** — 이 최상위 목표 하나만 ulw loop의 목표로 삼으며, 태스크는 별도의 목표가 아니라 목표를 달성하기 위한 작업 단위
+3. **태스크 묶기** — 관련 작업은 한 태스크에 두고, 서로의 정합성에 영향을 주지 않을 때만 독립으로 분리
+4. **DAG 실행** — 각 태스크는 전용 git worktree와 PR을 가진 mass ulw DAG 체인으로 실행하며, 오케스트레이션 세션은 저장소 파일을 절대 수정하지 않고 모든 변경은 DAG 노드가 수행. 각 태스크의 PR 본문에는 해당 DAG run을 인용
+5. **동시 실행·검토** — 독립 태스크는 병렬 실행하고, 마지막 노드는 ultrabrain 검토(verdict: APPROVED/REVISE). REVISE면 deep agent가 요구 사항을 고친 뒤 재검토
+6. **merge·최종 검토** — merge는 최신 main과 동기화하고 검증을 다시 돌린 다음 한 번에 하나씩 진행. 모든 태스크 merge 후 ultrabrain이 전체 main을 최상위 목표 기준으로 검토하며, 전부 APPROVED로 merge되고 main이 초록이며 이 최종 검토가 APPROVED일 때만 ulw loop가 끝남
 
 ## 구조
 
