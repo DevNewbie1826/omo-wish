@@ -7,14 +7,12 @@ Use ultrawork explore to analyze the overall context and history of the work, as
 
 Apply the system-provided tool execution and eval policies consistently throughout the entire run.
 
-Group all work required to achieve this goal by relatedness: related work stays in one task, and dependent work either stays together or runs as ordered tasks with an explicit dependency (the dependent task starts after its prerequisite is merged). Run concurrently only tasks that cannot affect each other's correctness; when that is unclear, keep the work together. Run a single ulw loop on this top-level goal; tasks are execution units, never separate goals, and newly discovered work follows the same grouping rule.
+Group related work into tasks under a single ulw loop for this top-level goal. Tasks are execution units, not separate goals. Run independent task DAGs concurrently and order dependent work by its actual prerequisites. Keep work together when it cannot be safely separated.
 
-For each task, MUST create a dedicated Git worktree and use mass ulw to run implementation, verification, PR creation, and ultrabrain review as one DAG. Within each DAG, run independent work in parallel and dependent work in order. The review MUST end with the verdict APPROVED or REVISE, and on REVISE a numbered list of required changes.
+For each task, MUST create a dedicated Git worktree and use mass ulw to construct a DAG around the work and its actual dependencies. End that same DAG with combined verification -> PR creation -> ultrabrain review, in that dependency order. In every DAG, run independent work in parallel with disjoint write scopes and dependent work in order. The final ultrabrain review in each DAG MUST end with APPROVED or REVISE and list required changes on REVISE.
 
-If ultrabrain returns REVISE, MUST build the next mass ulw DAG in the same worktree from the required changes. Dispatch parallel workers for independent changes where possible, verify the combined result, and have ultrabrain re-review as the final node of the DAG. Repeat this DAG review/fix loop until APPROVED. NEVER merge before ultrabrain gives APPROVED.
+On REVISE, MUST build the next mass ulw DAG in the same worktree from the required changes. Run independent fixes in parallel, verify the combined result, and have ultrabrain re-review as the final node. Repeat until APPROVED.
 
-Run independent task DAGs concurrently. Merge tasks one at a time; right before each merge, sync the task branch with the latest main and re-run verification. If the sync produces conflicts, alters the reviewed change, or verification fails, return the task to the fix DAG loop and require a fresh APPROVED before merging.
-
-Once every task is merged and main is green, have ultrabrain review the whole of main against the original top-level goal. On REVISE, add the findings as new tasks under the same goal and continue the ulw loop. End the ulw loop only when every task is merged, main is green, and the final review is APPROVED.
+NEVER merge a PR before ultrabrain gives APPROVED. Merge approved tasks one at a time without waiting for unrelated tasks. If integration changes the verified code or base, verify the affected combined behavior; substantive changes to the reviewed implementation require re-review. Continue the ulw loop until all tasks are merged, main is green, and the original top-level goal is fully satisfied. Do not add a separate post-merge ultrabrain approval of the whole of main.
 
 Always respond in the user's language.
