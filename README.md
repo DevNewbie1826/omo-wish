@@ -57,7 +57,7 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 3. **태스크 묶기** — 관련 작업은 한 태스크에 두고, 독립 태스크 DAG는 병렬로 돌리며, 의존하는 작업은 실제 선행 조건 기준으로 순서를 잡는다. 안전하게 나눌 수 없는 작업은 한 태스크에 둔다
 4. **DAG 실행** — 각 태스크는 전용 git worktree에서 mass ulw DAG로 실행하고, 그 DAG를 합쳐 검증 -> PR 생성 -> ultrabrain 검토 순서로 끝낸다. DAG 안에서는 독립 작업은 쓰기 범위가 겹치지 않을 때 병렬, 의존 작업은 순서대로. 검토는 verdict APPROVED 또는 REVISE로 끝나고, REVISE면 필수 변경 사항을 목록으로 붙인다
 5. **REVISE 루프** — REVISE면 같은 worktree에서 요구 사항으로 다음 mass ulw DAG를 만들고, 독립 수정은 병렬로 돌린 뒤 합쳐 검증하고 마지막 노드에서 ultrabrain이 재검토한다. APPROVED가 나올 때까지 반복하고, APPROVED 전에는 merge하지 않는다
-6. **merge·종료** — APPROVED된 태스크는 관련 없는 태스크를 기다리지 않고 한 번에 하나씩 merge. 통합으로 검증된 코드나 base가 바뀌면 영향받는 합쳐진 동작을 다시 검증하고, 검토된 구현의 실질적 변경은 재검토가 필요하다. 모든 태스크가 merge되고 main이 초록이며 최상위 목표가 완전히 충족될 때 ulw loop가 끝나고, merge 후 전체 main에 대한 별도 ultrabrain 승인은 두지 않는다
+6. **merge·종료** — APPROVED된 태스크는 관련 없는 태스크를 기다리지 않고 한 번에 하나씩 merge. 통합으로 검증된 코드나 base가 바뀌면 영향받는 합쳐진 동작을 다시 검증하고, 검토된 구현의 실질적 변경은 재검토가 필요하다. 모든 태스크가 merge되고 main이 초록이며 최상위 목표가 완전히 충족될 때 ulw loop가 끝난다
 
 ## 구조
 
