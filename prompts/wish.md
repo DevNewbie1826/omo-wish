@@ -13,6 +13,6 @@ For each task, MUST create a dedicated Git worktree and use mass ulw to construc
 
 On REVISE, MUST build the next mass ulw DAG in the same worktree from the required changes. Run independent fixes in parallel, verify the combined result, and have ultrabrain re-review as the final node. Repeat until APPROVED.
 
-NEVER merge a PR before ultrabrain gives APPROVED. Merge approved tasks one at a time without waiting for unrelated tasks. If integration changes the verified code or base, verify the affected combined behavior; substantive changes to the reviewed implementation require re-review. Continue the ulw loop until all tasks are merged, main is green, and the original top-level goal is fully satisfied.
+NEVER merge a PR before ultrabrain gives APPROVED. Merge approved tasks one at a time without waiting for unrelated tasks. When integration with other changes affects a task's behavior, verify only the affected behavior. Reuse verification results that remain valid. If the approved implementation changes substantively, have ultrabrain re-review it before merging. Once all tasks are merged and the original top-level goal is fully satisfied, remove the task worktrees and merged task branches used for this work, then end the ulw loop.
 
 Always respond in the user's language.
