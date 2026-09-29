@@ -1,15 +1,16 @@
 {
   "name": "omo-wish",
   "version": "0.1.0",
-  "description": "/wish slash command — 소원을 빕니다. ultrawork + ulw loop + mass ulw orchestration prompt as a prompt-template plugin for OmO.",
+  "description": "/wish slash command — 소원을 빕니다. Bounded wish skill coordinator for OmO.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DevNewbie1826/omo-wish.git"
   },
   "license": "MIT",
-  "keywords": ["omo", "omo-plugin", "prompt-template"],
+  "keywords": ["omo", "omo-plugin", "prompt-template", "skill"],
   "pi": {
     "prompts": ["prompts"],
-    "extensions": ["extensions/wish-ultrawork-arm.js"]
+    "skills": ["skills/wish"],
+    "extensions": ["extensions/wish.js"]
   }
 }
