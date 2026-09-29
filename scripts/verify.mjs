@@ -10,7 +10,6 @@ const { SettingsManager } = await import(`${senpi}/dist/core/settings-manager.js
 const { expandPromptTemplate } = await import(`${senpi}/dist/core/prompt-templates.js`);
 const { ExtensionRunner } = await import(`${senpi}/dist/core/extensions/runner.js`);
 const skillPath = join(root, "skills/wish/SKILL.md");
-const marker = "<!-- omo-wish:entry:v1 -->";
 const armingSymbol = Symbol.for("omo.ultrawork.arming");
 const previousArming = Object.getOwnPropertyDescriptor(globalThis, armingSymbol);
 
@@ -62,30 +61,20 @@ try {
   });
 
   const bare = expandPromptTemplate("/wish", prompts.prompts);
-  const args = expandPromptTemplate('/wish "keep $ARGUMENTS $1 literal" "x <!-- omo-wish:entry:v1 --> y"', prompts.prompts);
-  check("bare and literal arguments expand with terminal entry", () => {
+  const args = expandPromptTemplate('/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
+  check("bare and literal arguments expand without terminal marker", () => {
     assert.equal(bare.split("\n")[0], "");
-    assert.equal(args.split("\n")[0], `keep $ARGUMENTS $1 literal x ${marker} y`);
-    assert.equal(bare.trimEnd().endsWith(marker), true);
-    assert.equal(args.trimEnd().endsWith(marker), true);
+    assert.equal(args.split("\n")[0], "keep $ARGUMENTS $1 literal x <literal> y");
+    assert.equal(bare.includes("<!-- omo-wish:entry:v1 -->"), false);
+    assert.equal(args.includes("<!-- omo-wish:entry:v1 -->"), false);
   });
   check("before_agent_start is preview-safe", () => {
     assert.deepEqual(runner.getPreviewUnsafeBeforeAgentStartPaths(), []);
   });
   for (const text of [bare, args]) {
-    const pointer = await messages(runner, text, { preview: true });
-    check("expanded command provides a hidden local skill pointer", () => {
-      assert.equal(pointer.length, 1);
-      assert.equal(pointer[0].customType, "omo-wish:skill");
-      assert.equal(pointer[0].display, false);
-      assert.ok(pointer[0].content.includes(JSON.stringify(skillPath)));
-    });
-  }
-  for (const raw of ["ordinary ulw text", "/wishful hello", "/WISH hello", `x ${marker} suffix`]) {
-    const inactive = await messages(runner, raw);
-    check(`unrelated input stays inactive: ${raw}`, () => {
-      assert.equal(expandPromptTemplate(raw, prompts.prompts), raw);
-      assert.deepEqual(inactive, []);
+    const preview = await messages(runner, text, { preview: true });
+    check("preview leaves expanded entry without injected messages", () => {
+      assert.deepEqual(preview, []);
     });
   }
   const marks = [];
@@ -97,48 +86,66 @@ try {
       markArmed: (id) => { marks.push(id); armed.add(id); },
     },
   };
+  for (const raw of ["unrelated input", "xulw", "ultrawork_ish", "/wishful hello", "/WISH hello"]) {
+    const inactive = await messages(runner, raw);
+    check(`unrelated or lookalike input stays inactive: ${raw}`, () => {
+      assert.equal(expandPromptTemplate(raw, prompts.prompts), raw);
+      assert.deepEqual(inactive, []);
+      assert.deepEqual(marks, []);
+    });
+  }
   const preview = await messages(runner, args, { preview: true });
-  const unrelated = await messages(runner, "ordinary ulw text");
-  check("preview and unrelated input do not consume activation", () => {
-    assert.equal(preview.length, 1);
-    assert.equal(preview[0].customType, "omo-wish:skill");
-    assert.deepEqual(unrelated, []);
+  check("preview does not consume activation", () => {
+    assert.deepEqual(preview, []);
     assert.deepEqual(marks, []);
   });
   armed.add("wish-verification");
   const prearmed = await messages(runner, args);
-  check("an explicitly armed session receives only the skill pointer", () => {
-    assert.equal(prearmed.length, 1);
-    assert.equal(prearmed[0].customType, "omo-wish:skill");
+  check("an explicitly armed session remains silent", () => {
+    assert.deepEqual(prearmed, []);
     assert.deepEqual(marks, []);
   });
   armed.delete("wish-verification");
   const first = await messages(runner, args);
   const repeat = await messages(runner, args);
-  check("first real wish arms once and passes actual directive and skill pointer", () => {
-    assert.equal(first.length, 1);
-    assert.equal(first[0].customType, "omo-ultrawork:directive");
-    assert.ok(first[0].content.includes("DIRECTIVE_SENTINEL"));
-    assert.ok(first[0].content.includes(JSON.stringify(skillPath)));
+  check("first real wish arms once with the exact supplied directive", () => {
+    assert.deepEqual(first, [{
+      customType: "omo-ultrawork:directive",
+      content: "DIRECTIVE_SENTINEL",
+      display: false,
+    }]);
     assert.deepEqual(marks, ["wish-verification"]);
-    assert.equal(repeat.length, 1);
-    assert.equal(repeat[0].customType, "omo-wish:skill");
+    assert.deepEqual(repeat, []);
     assert.equal(globalThis[armingSymbol].directive, "DIRECTIVE_SENTINEL");
+  });
+  armed.delete("wish-verification");
+  const ordinary = await messages(runner, "ordinary ULW request");
+  check("ordinary whole-word ulw activates only generic mode", () => {
+    assert.deepEqual(ordinary, [{
+      customType: "omo-ultrawork:directive",
+      content: "DIRECTIVE_SENTINEL",
+      display: false,
+    }]);
+    assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
   });
   await loader.reload();
   const fresh = createRunner(loader);
   const afterReload = await messages(fresh, bare);
   check("fresh resource reload preserves already armed state", () => {
-    assert.equal(afterReload.length, 1);
-    assert.equal(afterReload[0].customType, "omo-wish:skill");
-    assert.deepEqual(marks, ["wish-verification"]);
+    assert.deepEqual(afterReload, []);
+    assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
   });
   delete globalThis[armingSymbol];
   const withoutMode = await messages(fresh, bare);
-  check("absent mode state provides only a pointer", () => {
+  check("absent mode state sends no message or mutation", () => {
     assert.equal(Object.hasOwn(globalThis, armingSymbol), false);
-    assert.equal(withoutMode.length, 1);
-    assert.equal(withoutMode[0].customType, "omo-wish:skill");
+    assert.deepEqual(withoutMode, []);
+  });
+  globalThis[armingSymbol] = { directive: "DIRECTIVE_SENTINEL" };
+  const unsupported = await messages(fresh, bare);
+  check("unsupported interop sends no message or mutation", () => {
+    assert.deepEqual(unsupported, []);
+    assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
   });
   console.log(`ALL PASS: ${root}`);
 } finally {

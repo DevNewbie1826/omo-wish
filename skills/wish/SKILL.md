@@ -1,6 +1,6 @@
 ---
 name: wish
-description: "Runs a user-authorized /wish request end to end inside its original purpose: bounded discovery, one plan with a minimal plan gate, one ulw loop goal, worktree DAG execution with behavioral TDD, QA, PR, and a final ultrabrain review. Use when a /wish entry pointer or the wish command names this skill."
+description: "Runs a user-authorized /wish request end to end inside its original purpose: bounded discovery, one plan with a minimal plan gate, one ulw loop goal, worktree DAG execution with behavioral TDD, QA, PR, and a final ultrabrain review. Use when the /wish command or the user names this skill."
 metadata:
   short-description: Bounded wish orchestration over ulw-plan, ulw-loop, and mass-ulw
 ---
@@ -9,7 +9,7 @@ metadata:
 
 A `/wish` invocation is the user's request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract. The three references specialize the native skills for each stage; read each one when its stage begins, not before.
 
-Resolve every path in this skill relative to the directory of this SKILL.md. The runtime pointer or skill metadata gives that directory; never guess an install location.
+Resolve every path in this skill relative to the directory of this SKILL.md. The skill registration gives that directory; never guess an install location.
 
 ## The purpose boundary
 
@@ -21,8 +21,7 @@ The original request is the boundary for every stage: discovery, plan, TDD, QA, 
 - A finding is **out of scope** otherwise, including real pre-existing bugs. Record it for later with evidence, reproduction, impact, and the reason it was excluded. Don't fix it.
 - When impact is **uncertain**, run the smallest check that decides it. If the check shows it affects the request, it's in scope. An unrelated hypothetical that can't be decided may become a follow-up with what was tried. Uncertainty that keeps you from proving the request is delivered, or that the change introduced no regression, is invalid evidence, not a follow-up: verify it adequately or report an honest blocker. Deferring it never turns a criterion into a PASS.
 
-This specializes native skill defaults that conflict with it. The rows are examples, not a complete list: any other scope, approval or plan transition, QA rerun, or final-review default that conflicts with this file yields to it too.
-
+This specializes native skill defaults that conflict with it. When a generic workflow default conflicts, original-purpose scope, the approved plan-to-execution transition, QA evidence reuse, and the final review **MUST** follow this file's procedures. **NEVER** expand the scope under a conflicting default, add a duplicate approval step, rerun unaffected verification, or add an extra product-review panel. The rows below are examples, not a complete list.
 
 | Native default | Wish rule |
 | --- | --- |
@@ -37,7 +36,7 @@ This specializes native skill defaults that conflict with it. The rows are examp
 
 Assume ultrawork is active. The wish plugin may have armed it for this request, or the user armed it earlier. Don't arm it again, reset it, or disarm it from here.
 
-While it's active, this file and its references are the workflow for this authorized request. They take over the mode's scope, approval and plan transition, QA rerun, and final-review procedures wherever those conflict. Everything compatible still applies in full: evidence capture, behavioral TDD, cleanup receipts, asynchronous waiting, never suppressing failures, and verification rigor. This skill doesn't outrank system or developer instructions, later explicit user requests, or gates a tool actually enforces. If no mode turns out to be active, this skill is enough on its own.
+While it's active, this file and its references are the workflow for this authorized request. They take over the four procedures named under the purpose boundary wherever those conflict. Everything compatible still applies in full: evidence capture, behavioral TDD, cleanup receipts, asynchronous waiting, never suppressing failures, and verification rigor. This skill doesn't outrank system or developer instructions, later explicit user requests, or gates a tool actually enforces. If no mode turns out to be active, this skill is enough on its own.
 
 ## Stages and when to load each reference
 
@@ -58,10 +57,21 @@ Loop back rather than restart: a REVISE returns to stage 2 with a correction DAG
 
 ## Delegation prompts
 
-Every worker and reviewer prompt carries the purpose boundary: the original request, the task's scope, what counts as a blocker (goal failure, introduced regression, invalid proof), and the instruction to report out-of-scope findings instead of fixing them. A reviewer that flags unrelated quality issues is producing follow-up notes, not blockers.
+Every implementation, QA, and review prompt **MUST** carry the purpose boundary: the original request, the task's scope, what counts as a blocker (goal failure, introduced regression, invalid proof), and the instruction to report out-of-scope findings instead of fixing them. A reviewer that flags unrelated quality issues is producing follow-up notes, not blockers.
+
+Before dispatch, check that the assignment itself explicitly contains all four items below. **NEVER** rely on the child having read the parent conversation or shared skill:
+
+- Purpose: the original requested outcome.
+- Scope: this assignment's permitted work.
+- Blockers: goal failure, introduced regression, and invalid proof; state all three, including in implementation and QA assignments.
+- Separate findings: document and report unrelated findings; do not fix them or treat them as blockers.
+
+The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement.
 
 ## Finish
 
-Stop when the requested work is merged, the QA scenarios pass on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and the follow-up list.
+Stop when the requested work is merged, the QA scenarios pass on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and separate findings.
+
+Out-of-scope findings **MUST** be documented and **MUST** also appear in the final report. For each one give the finding, its impact, why it wasn't fixed now, and where it's documented. If there were none, say so explicitly. A note in a file alone isn't disclosure. The checklist is in `references/verification.md`.
 
 Always respond in the user's language. Agent prompts stay in English.

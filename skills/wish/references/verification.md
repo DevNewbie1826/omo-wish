@@ -24,7 +24,7 @@ Open one PR for the task after combined verification passes. The body lists the 
 
 ## Final ultrabrain review
 
-After the PR exists, spawn one review with `category: "ultrabrain"`. Pass the original request, the purpose boundary, the diff, the goal and criteria, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence. Anything else it raises is a follow-up note.
+After the PR exists, spawn one review with `category: "ultrabrain"`. Pass the original request, the task's scope, the blocker definitions, the diff, the goal and criteria, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence. Anything else it raises is a follow-up note.
 
 This review is mandatory and isn't replaced by anything below.
 
@@ -46,4 +46,11 @@ Repeat until APPROVED.
 - Never merge before APPROVED. Merge approved tasks one at a time without waiting on unrelated tasks.
 - If integrating with other merges changes a task's behavior, rerun only the affected targets. If the approved implementation changes substantively, get an ultrabrain re-review before merging.
 - After all tasks merge, confirm every QA scenario on the merged result, reusing valid evidence. A failing scenario becomes a fix task through the same flow.
-- When the goal is satisfied, remove this wish's worktrees and merged task branches, complete the loop goal, and report to the user in their language: results, evidence, limits, and the follow-up list.
+- When the goal is satisfied, remove this wish's worktrees and merged task branches, complete the loop goal, and report to the user in their language.
+
+## Final report checklist
+
+- Results: what was delivered and merged.
+- Evidence: the QA scenarios and tests, with artifact locations.
+- Limits: what wasn't proven or what the host couldn't do.
+- Separate findings: for each out-of-scope finding, the finding, its impact, why it wasn't fixed now, and the document path. If there were none, write that explicitly. Listing them only in a file doesn't count.
