@@ -89,27 +89,56 @@ try {
     });
   }
   const marks = [];
+  const armed = new Set();
   globalThis[armingSymbol] = {
-    directive: "<existing directive>",
-    arming: { isArmed: () => true, markArmed: (id) => marks.push(id) },
+    directive: "DIRECTIVE_SENTINEL",
+    arming: {
+      isArmed: (id) => armed.has(id),
+      markArmed: (id) => { marks.push(id); armed.add(id); },
+    },
   };
-  const twice = [await messages(runner, args), await messages(runner, args)];
-  check("repeated invocation preserves explicit mode state", () => {
-    assert.deepEqual(twice.map((result) => result.length), [1, 1]);
+  const preview = await messages(runner, args, { preview: true });
+  const unrelated = await messages(runner, "ordinary ulw text");
+  check("preview and unrelated input do not consume activation", () => {
+    assert.equal(preview.length, 1);
+    assert.equal(preview[0].customType, "omo-wish:skill");
+    assert.deepEqual(unrelated, []);
     assert.deepEqual(marks, []);
-    assert.equal(globalThis[armingSymbol].directive, "<existing directive>");
   });
-  delete globalThis[armingSymbol];
-  const withoutMode = await messages(runner, bare);
-  check("absent mode state also produces a pointer", () => {
-    assert.equal(Object.hasOwn(globalThis, armingSymbol), false);
-    assert.equal(withoutMode.length, 1);
+  armed.add("wish-verification");
+  const prearmed = await messages(runner, args);
+  check("an explicitly armed session receives only the skill pointer", () => {
+    assert.equal(prearmed.length, 1);
+    assert.equal(prearmed[0].customType, "omo-wish:skill");
+    assert.deepEqual(marks, []);
+  });
+  armed.delete("wish-verification");
+  const first = await messages(runner, args);
+  const repeat = await messages(runner, args);
+  check("first real wish arms once and passes actual directive and skill pointer", () => {
+    assert.equal(first.length, 1);
+    assert.equal(first[0].customType, "omo-ultrawork:directive");
+    assert.ok(first[0].content.includes("DIRECTIVE_SENTINEL"));
+    assert.ok(first[0].content.includes(JSON.stringify(skillPath)));
+    assert.deepEqual(marks, ["wish-verification"]);
+    assert.equal(repeat.length, 1);
+    assert.equal(repeat[0].customType, "omo-wish:skill");
+    assert.equal(globalThis[armingSymbol].directive, "DIRECTIVE_SENTINEL");
   });
   await loader.reload();
   const fresh = createRunner(loader);
   const afterReload = await messages(fresh, bare);
-  check("fresh resource reload still provides a pointer", () => {
+  check("fresh resource reload preserves already armed state", () => {
     assert.equal(afterReload.length, 1);
+    assert.equal(afterReload[0].customType, "omo-wish:skill");
+    assert.deepEqual(marks, ["wish-verification"]);
+  });
+  delete globalThis[armingSymbol];
+  const withoutMode = await messages(fresh, bare);
+  check("absent mode state provides only a pointer", () => {
+    assert.equal(Object.hasOwn(globalThis, armingSymbol), false);
+    assert.equal(withoutMode.length, 1);
+    assert.equal(withoutMode[0].customType, "omo-wish:skill");
   });
   console.log(`ALL PASS: ${root}`);
 } finally {

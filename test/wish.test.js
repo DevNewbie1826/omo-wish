@@ -84,26 +84,56 @@ test("ordinary mode words and lookalike commands do not add a wish pointer", asy
   }
 });
 
-test("repeated and freshly loaded invocations leave explicit mode arming untouched", async () => {
+test("real wish entry arms once; preview, unrelated input and pre-armed sessions do not", async () => {
   const { templates } = resources();
   const text = expandPromptTemplate("/wish again", templates);
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
   const marks = [];
+  const armed = new Set();
   try {
     globalThis[symbol] = {
-      directive: "<existing directive>",
-      arming: { isArmed: () => true, markArmed: (id) => marks.push(id) },
+      directive: "DIRECTIVE_SENTINEL",
+      arming: {
+        isArmed: (id) => armed.has(id),
+        markArmed: (id) => { marks.push(id); armed.add(id); },
+      },
     };
     const first = await runner();
-    expect(await messages(first, text)).toHaveLength(1);
-    expect(await messages(first, text)).toHaveLength(1);
-    expect(await messages(await runner(), text)).toHaveLength(1);
+    const preview = await messages(first, text, { preview: true });
+    expect(preview).toHaveLength(1);
+    expect(preview[0].customType).toBe("omo-wish:skill");
+    expect(await messages(first, "ordinary ulw text")).toEqual([]);
     expect(marks).toEqual([]);
-    expect(globalThis[symbol].directive).toBe("<existing directive>");
+    armed.add("wish-test");
+    const prearmed = await messages(first, text);
+    expect(prearmed).toHaveLength(1);
+    expect(prearmed[0].customType).toBe("omo-wish:skill");
+    expect(marks).toEqual([]);
+    armed.delete("wish-test");
+    const activation = await messages(first, text);
+    expect(activation).toHaveLength(1);
+    expect(activation[0].customType).toBe("omo-ultrawork:directive");
+    expect(activation[0].content).toContain("DIRECTIVE_SENTINEL");
+    expect(activation[0].content).toContain(JSON.stringify(join(repo, "skills/wish/SKILL.md")));
+    expect(marks).toEqual(["wish-test"]);
+    for (const next of [first, await runner()]) {
+      const pointer = await messages(next, text);
+      expect(pointer).toHaveLength(1);
+      expect(pointer[0].customType).toBe("omo-wish:skill");
+    }
+    expect(marks).toEqual(["wish-test"]);
+    expect(globalThis[symbol].directive).toBe("DIRECTIVE_SENTINEL");
     delete globalThis[symbol];
-    expect(await messages(first, text)).toHaveLength(1);
+    const withoutMode = await messages(first, text);
+    expect(withoutMode).toHaveLength(1);
+    expect(withoutMode[0].customType).toBe("omo-wish:skill");
     expect(Object.hasOwn(globalThis, symbol)).toBe(false);
+    globalThis[symbol] = { directive: "DIRECTIVE_SENTINEL" };
+    const withoutInterop = await messages(first, text);
+    expect(withoutInterop).toHaveLength(1);
+    expect(withoutInterop[0].customType).toBe("omo-wish:skill");
+    expect(marks).toEqual(["wish-test"]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
     else delete globalThis[symbol];

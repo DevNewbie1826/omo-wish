@@ -1,6 +1,6 @@
 # wish: execution
 
-Read this when the plan gate passes. It composes `ulw-loop` (goal, evidence, checkpoints) and `mass-ulw` (DAG runs). Read those skills' own instructions for their APIs; this file only says how wish uses them. Also read `verification.md` before you define a task's DAG, because the DAG's closing nodes (combined verification, PR, ultrabrain review) follow it. Those nodes still execute only after the production nodes settle.
+Read this when the plan gate passes. It composes `ulw-loop` (goal, evidence, checkpoints) and `mass-ulw` (DAG runs). Read those skills' own instructions for their APIs; this file only says how wish uses them. Also read `references/verification.md`, relative to the wish skill directory, before you define a task's DAG, because the DAG's closing nodes (combined verification, PR, ultrabrain review) follow it. Those nodes still execute only after the production nodes settle.
 
 ## One loop goal
 

@@ -1,6 +1,6 @@
 # wish: discovery and plan
 
-Read this when a wish starts. It specializes `ulw-plan` for a request the user has already authorized end to end. You leave this stage when the plan gate passes; then read `execution.md`.
+Read this when a wish starts. It specializes `ulw-plan` for a request the user has already authorized end to end. You leave this stage when the plan gate passes; then read `references/execution.md`, relative to the wish skill directory.
 
 ## Discovery
 

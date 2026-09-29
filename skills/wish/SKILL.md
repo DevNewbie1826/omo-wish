@@ -21,19 +21,23 @@ The original request is the boundary for every stage: discovery, plan, TDD, QA, 
 - A finding is **out of scope** otherwise, including real pre-existing bugs. Record it for later with evidence, reproduction, impact, and the reason it was excluded. Don't fix it.
 - When impact is **uncertain**, run the smallest check that decides it. If the check shows it affects the request, it's in scope. An unrelated hypothetical that can't be decided may become a follow-up with what was tried. Uncertainty that keeps you from proving the request is delivered, or that the change introduced no regression, is invalid evidence, not a follow-up: verify it adequately or report an honest blocker. Deferring it never turns a criterion into a PASS.
 
-This specializes native skill defaults that conflict with it:
+This specializes native skill defaults that conflict with it. The rows are examples, not a complete list: any other scope, approval or plan transition, QA rerun, or final-review default that conflicts with this file yields to it too.
+
 
 | Native default | Wish rule |
 | --- | --- |
 | Ultrawork: own every defect met mid-run, fix to a wider ideal state | Only in-scope findings are fixed; others become follow-up notes |
 | ulw-plan: stop after planning and wait for approval | The user already authorized execution; continue into the loop |
 | ulw-loop and mass-ulw: separate goals per phase or task | One top-level loop goal; tasks and DAG nodes live inside it |
-| Evidence handling that invalidates everything after any change | Reuse evidence per target after checking its inputs (see verification) |
+| Ultrawork: rerun the full scenario set before the final message; evidence handling that invalidates everything after any change | Reuse evidence per target after checking its inputs; rerun only affected or uncertain targets (see verification) |
+| Ultrawork: its own conditional reviewer loop and resubmission rules | The minimal plan gate, then one ultrabrain review with bounded delta corrections; no extra review panel |
 | Native plan-reviewer gate assumed open | Use it only when genuinely eligible; otherwise an honest category-based review |
 
 ## Mode state
 
-Don't arm, reset, or disarm any generic mode. If ultrawork or another mode is already active, for example because the user explicitly armed it with raw `ulw`, leave its state as is. For this authorized wish, the table above specializes only that mode's conflicting workflow defaults; everything else the mode asks for still applies. This skill doesn't outrank system or developer instructions, later explicit user requests, or gates a tool enforces. If no mode is armed, this skill is enough on its own.
+Assume ultrawork is active. The wish plugin may have armed it for this request, or the user armed it earlier. Don't arm it again, reset it, or disarm it from here.
+
+While it's active, this file and its references are the workflow for this authorized request. They take over the mode's scope, approval and plan transition, QA rerun, and final-review procedures wherever those conflict. Everything compatible still applies in full: evidence capture, behavioral TDD, cleanup receipts, asynchronous waiting, never suppressing failures, and verification rigor. This skill doesn't outrank system or developer instructions, later explicit user requests, or gates a tool actually enforces. If no mode turns out to be active, this skill is enough on its own.
 
 ## Stages and when to load each reference
 
