@@ -30,7 +30,7 @@ A test must be able to fail for the regression it names. Don't pin prose, prompt
 
 ## Findings during execution
 
-Apply the boundary from `SKILL.md`. In-scope findings get a node in the current DAG, or an amendment to it. Out-of-scope findings go into this work's evidence file (finding, reproduction, evidence, impact, exclusion reason) and get a memory entry with the summary, why it wasn't fixed, and the evidence-file path. They also go in the final report. Workers report findings; the lead decides which side they fall on and corrects any worker that starts fixing unrelated work.
+Apply the boundary from `SKILL.md`. In-scope findings get a node in the current DAG, or an amendment to it. Out-of-scope findings go into the follow-up file recorded in the plan (finding, reproduction, evidence, impact, exclusion reason) and get a memory entry with the summary, why it wasn't fixed, and that path. Later attempts reuse the same file and keep its existing records; `currentAttemptDir` and the ledger never replace it. They also go in the final report. Workers report findings; the lead decides which side they fall on and corrects any worker that starts fixing unrelated work.
 
 ## Recovery
 
