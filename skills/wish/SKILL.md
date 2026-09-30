@@ -9,7 +9,7 @@ metadata:
 
 A `/wish` invocation is the user's request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract. The three references specialize the native skills for each stage; read each one when its stage begins, not before.
 
-Resolve every path in this skill relative to the directory of this SKILL.md. The skill registration gives that directory; never guess an install location.
+Resolve every reference-document path in this skill relative to the directory of this SKILL.md. SDK and work-artifact paths, such as the follow-up file, follow their own rules below. The skill registration gives that directory; never guess an install location.
 
 ## The purpose boundary
 
@@ -18,7 +18,8 @@ The original request is the boundary for every stage: discovery, plan, TDD, QA, 
 - Discovery may look wide to find who and what the result touches. Wide discovery doesn't authorize solving every affected party's discomfort.
 - The ideal state is the state where the original request is fully delivered with no regression it introduces. Don't widen it into a general improvement of the product.
 - A finding is **in scope** when it shows the request isn't delivered, the change introduces a regression, or the proof is invalid. Fix it autonomously, inside the same task.
-- A finding is **out of scope** otherwise, including real pre-existing bugs. Don't fix it. Record it in this work's evidence file with the finding, reproduction, evidence, impact, and the reason it was excluded. Also save a persistent memory entry with a short summary, why it wasn't fixed in this work, and the evidence-file path. Memory is an index; the evidence file keeps the detail.
+- A finding is **out of scope** otherwise, including real pre-existing bugs. Don't fix it. Record it in this work's follow-up file (defined below) with the finding, reproduction, evidence, impact, and the reason it was excluded. Also save a persistent memory entry with a short summary, why it wasn't fixed in this work, and the evidence-file path. Memory is an index; the follow-up file keeps the detail.
+- The **follow-up file** is `<evidence directory>/follow-ups.md`. With ulw-loop, the evidence directory is `agentToolkit.status().result.evidenceRoot`; resolve a relative root against `result.binding.cwd`, never the installed skill directory or `currentAttemptDir`. Without ulw-loop, it's the evidence directory chosen for this work, even a temporary one. The plan records one absolute path and every later finding, memory entry, and final report reuses it. The loop ledger only indexes progress, verdicts, and evidence references; it isn't the follow-up file. Create the file only when a real finding exists. Timing is in `references/planning.md`.
 - When impact is **uncertain**, run the smallest check that decides it. If the check shows it affects the request, it's in scope. An unrelated hypothetical that can't be decided may become a follow-up with what was tried. Uncertainty that keeps you from proving the request is delivered, or that the change introduced no regression, is invalid evidence, not a follow-up: verify it adequately or report an honest blocker. Deferring it never turns a criterion into a PASS.
 
 This specializes native skill defaults that conflict with it. When a generic workflow default conflicts, original-purpose scope, the approved plan-to-execution transition, QA evidence reuse, and the final review **MUST** follow this file's procedures. **NEVER** expand the scope under a conflicting default, add a duplicate approval step, rerun unaffected verification, or add an extra product-review panel. The rows below are examples, not a complete list.
@@ -64,7 +65,7 @@ Before dispatch, check that the assignment itself explicitly contains all four i
 - Purpose: the original requested outcome.
 - Scope: this assignment's permitted work.
 - Blockers: goal failure, introduced regression, and invalid proof; state all three, including in implementation and QA assignments.
-- Separate findings: record unrelated findings in the evidence file, index them in memory, and report them; do not fix them or treat them as blockers.
+- Separate findings: record unrelated findings in the follow-up file, index them in memory, and report them; do not fix them or treat them as blockers.
 
 The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement.
 
@@ -72,6 +73,6 @@ The lead owns the boundary. When a child drifts, reporting unrelated work as req
 
 Stop when the requested work is merged, the QA scenarios pass on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and separate findings.
 
-Out-of-scope findings **MUST** be documented and **MUST** also appear in the final report. For each one give the finding, its impact, why it wasn't fixed now, and its evidence-file path. If there were none, say so explicitly and don't create empty records. A note in a file alone isn't disclosure. The checklist is in `references/verification.md`.
+Out-of-scope findings **MUST** be documented and **MUST** also appear in the final report. For each one give the finding, its impact, why it wasn't fixed now, and its follow-up file path. If there were none, say so explicitly and don't create empty records. A note in a file alone isn't disclosure. The checklist is in `references/verification.md`.
 
 Always respond in the user's language. Agent prompts stay in English.
