@@ -53,4 +53,4 @@ Repeat until APPROVED.
 - Results: what was delivered and merged.
 - Evidence: the QA scenarios and tests, with artifact locations.
 - Limits: what wasn't proven or what the host couldn't do.
-- Separate findings: for each out-of-scope finding, the finding, its impact, why it wasn't fixed now, and the document path. If there were none, write that explicitly. Listing them only in a file doesn't count.
+- Separate findings: for each out-of-scope finding, the finding, its impact, why it wasn't fixed now, and its evidence-file path, with a matching memory entry saved. If there were none, write that explicitly and create no dummy records. Listing them only in a file doesn't count.
