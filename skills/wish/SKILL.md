@@ -78,7 +78,7 @@ Before dispatch, check that the assignment itself explicitly contains all four i
 - Purpose: the original requested outcome.
 - Scope: this assignment's permitted work.
 - Blockers: goal failure, introduced regression, and invalid proof; state all three, including in implementation and QA assignments.
-- Separate findings: record unrelated findings in the follow-up file, index them in memory, and report them; do not fix them or treat them as blockers.
+- Separate findings: report unrelated findings in your output and append them to the follow-up file when you can write it; do not fix them or treat them as blockers. The lead indexes them in memory.
 
 The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement.
 
