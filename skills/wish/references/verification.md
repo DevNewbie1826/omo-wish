@@ -35,7 +35,7 @@ The ulw-loop final checkpoint may require a quality-gate record whose reviewer f
 ## REVISE
 
 1. Stay in the same worktree and PR.
-2. Build a new mass-ulw correction DAG from the required changes only. Independent fixes run in parallel.
+2. Build a new mass-ulw correction DAG from the required changes only. The lead **NEVER** applies the fixes directly, even a one-line fix. Independent fixes run in parallel.
 3. Rerun the QA that the fixes affect, using the reuse rule above for the rest.
 4. End with an ultrabrain delta re-review: the delta diff, the required changes it cited, and fresh evidence for the affected targets. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
 

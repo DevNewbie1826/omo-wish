@@ -1,12 +1,16 @@
 # wish: execution
 
-Read this when the plan gate passes. It composes `ulw-loop` (goal, evidence, checkpoints) and `mass-ulw` (DAG runs). Read those skills' own instructions for their APIs; this file only says how wish uses them. Also read `references/verification.md`, relative to the wish skill directory, before you define a task's DAG, because the DAG's closing nodes (combined verification, PR, ultrabrain review) follow it. Those nodes still execute only after the production nodes settle.
+Read this when the plan gate passes. It composes `ulw-loop` (goal, evidence, checkpoints) and `mass-ulw` (DAG runs). This file only says how wish uses them; it never replaces their instructions. You **MUST** read the `ulw-loop` skill before seeding the goal, and the `mass-ulw` skill plus its `references/planning.md` in full before defining any DAG. Also read `references/verification.md`, relative to the wish skill directory, before you define a task's DAG, because the DAG's closing nodes (combined verification, PR, ultrabrain review) follow it. Those nodes still execute only after the production nodes settle.
 
 ## One loop goal
 
 Seed exactly one ulw loop goal from the plan: the ideal state, the success criteria, and the stop line. Tasks are execution units inside it. Don't create a goal per task or per phase, and don't start a second loop.
 
+Create it from a JS eval cell with ulw-loop's `agentToolkit.createGoals({ brief })`, the brief built from the plan, then register the returned handoff with `create_goal` as ulw-loop describes. **NEVER** register the goal any other way.
+
 ## One worktree and one DAG per task
+
+The lead creates the worktree and drives the run. Every change to the task's files, tests and fixes included, happens inside a node; the lead **NEVER** makes it directly.
 
 For each task, create a dedicated Git worktree off the integration base, then read the mass-ulw planning reference and define one DAG:
 

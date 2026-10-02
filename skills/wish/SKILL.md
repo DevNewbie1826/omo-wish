@@ -7,9 +7,9 @@ metadata:
 
 # wish
 
-A `/wish` invocation is the user's request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract. The three references specialize the native skills for each stage; read each one when its stage begins, not before.
+A `/wish` invocation is the user's request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract. The three references specialize the native skills `ulw-plan`, `ulw-loop`, and `mass-ulw` for each stage. Read each reference and each native skill when its stage begins, not before; the stage list below names exactly which files each stage requires.
 
-Resolve every reference-document path in this skill relative to the directory of this SKILL.md. SDK and work-artifact paths, such as the follow-up file, follow their own rules below. The skill registration gives that directory; never guess an install location.
+Resolve every reference-document path in this skill relative to the directory of this SKILL.md. SDK and work-artifact paths, such as the follow-up file, follow their own rules below. The skill registration gives that directory; never guess an install location. Read native skills from the locations the available skill list gives.
 
 ## The purpose boundary
 
@@ -27,7 +27,9 @@ This specializes native skill defaults that conflict with it. When a generic wor
 | Native default | Wish rule |
 | --- | --- |
 | Ultrawork: own every defect met mid-run, fix to a wider ideal state | Only in-scope findings are fixed; others become follow-up notes |
-| ulw-plan: stop after planning and wait for approval | The user already authorized execution; continue into the loop |
+| ulw-plan: plan mode is sticky; pledge no implementation, stop after the plan and wait for approval, leave execution to a separate session | The /wish invocation is that approval. Skip the pledge and the wait, and continue into the loop in this same session |
+| Ultrawork bootstrap: register your own goal with create_goal and open a notepad | Register no goal at bootstrap. ulw-loop owns the goal, and its ledger is the notepad; until the loop exists, the plan file holds your notes. create_goal only registers the createGoals handoff |
+| mass-ulw: one run per phase, never a whole job | Each task DAG is one phase: its production nodes plus the closing verification, PR, and review nodes. A REVISE correction is a new run |
 | ulw-loop and mass-ulw: separate goals per phase or task | One top-level loop goal; tasks and DAG nodes live inside it |
 | Ultrawork: rerun the full scenario set before the final message; evidence handling that invalidates everything after any change | Reuse evidence per target after checking its inputs; rerun only affected or uncertain targets (see verification) |
 | Ultrawork: its own conditional reviewer loop and resubmission rules | The minimal plan gate, then one ultrabrain review with bounded delta corrections; no extra review panel |
@@ -39,12 +41,23 @@ Assume ultrawork is active. The wish plugin may have armed it for this request, 
 
 While it's active, this file and its references are the workflow for this authorized request. They take over the four procedures named under the purpose boundary wherever those conflict. Everything compatible still applies in full: evidence capture, behavioral TDD, cleanup receipts, asynchronous waiting, never suppressing failures, and verification rigor. This skill doesn't outrank system or developer instructions, later explicit user requests, or gates a tool actually enforces. If no mode turns out to be active, this skill is enough on its own.
 
-## Stages and when to load each reference
+## Non-negotiable rules
+
+These rules hold for every model and every request size. Breaking one is a defect, not a judgment call. The `/wish` request is the user's explicit instruction to run this flow, so a generic preference for doing small work directly doesn't override them.
+
+1. **Read every required file at its stage entry.** The stage list names them. You **MUST** open each one in this run; having read this file, a summary, or an earlier run's copy doesn't count. If a required native skill is missing from the available skill list, stop and report it as a blocker. **NEVER** reconstruct its procedure from memory.
+2. **Report the reads.** The first handoff of each stage names the files you read for it.
+3. **The goal comes only from ulw-loop.** Create it with `agentToolkit.createGoals` through the ulw-loop SDK, then register the returned handoff with `create_goal`. **NEVER** call `create_goal` before that, or with an objective written outside the loop.
+4. **Changes to the task's files run only in DAG nodes.** Every edit, test write, and fix, including REVISE fixes, happens inside a `workflow` node defined through mass-ulw and working in the task's worktree. The lead plans, drives runs, reviews, merges, and cleans up; it **NEVER** edits the task's files itself, in the main session or the main checkout, however small the change.
+5. **NEVER define a DAG before reading mass-ulw's `references/planning.md` in full.**
+6. **Gate order holds.** **NEVER** open the PR before combined verification passes, and **NEVER** merge before the ultrabrain review returns APPROVED.
+
+## Stages and their required reads
 
 Move through the stages in order. Each transition names the file to read at that moment.
 
-1. **Discovery and plan.** Read `references/planning.md` now. Survey context and history, name the affected users and the ideal state inside the boundary, list the gaps, define QA scenarios from the users' perspective, write one plan, and pass the minimal plan gate described there. Leave this stage when the plan gate passes. Don't stop and wait for approval after it.
-2. **Execution.** Read `references/execution.md` when the plan gate passes, and read `references/verification.md` before defining any task DAG, since the DAG's closing nodes follow it. Seed one ulw loop goal from the plan, create one worktree per task, and run each task's DAG through mass-ulw with behavioral TDD. Leave this stage when the task's production nodes have settled.
+1. **Discovery and plan.** Required reads at entry: `references/planning.md` and the `ulw-plan` skill. Survey context and history, name the affected users and the ideal state inside the boundary, list the gaps, define QA scenarios from the users' perspective, write one plan, and pass the minimal plan gate described there. Leave this stage when the plan gate passes. Don't stop and wait for approval after it.
+2. **Execution.** Required reads when the plan gate passes, in this order: `references/execution.md`; the `ulw-loop` skill, before seeding the goal; the `mass-ulw` skill and its `references/planning.md` in full, then `references/verification.md`, before defining any task DAG, since the DAG's closing nodes follow it. Seed one ulw loop goal through the ulw-loop SDK from the plan, create one worktree per task, and run each task's DAG through mass-ulw with behavioral TDD. Leave this stage when the task's production nodes have settled.
 3. **Verification, PR, and review.** These are the DAG's closing nodes, already defined from `references/verification.md`, and they run after the production nodes. Run combined QA, open the PR, run the final ultrabrain review, handle REVISE, merge after APPROVED, verify the merged result, and clean up.
 
 Loop back rather than restart: a REVISE returns to stage 2 with a correction DAG in the same worktree and PR, then comes back to stage 3. The loop ends at APPROVED and a merged, verified result.
