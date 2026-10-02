@@ -76,8 +76,8 @@ omo remove https://github.com/DevNewbie1826/omo-wish
   │
   └─ 에이전트가 SKILL.md(핵심 규칙)를 읽고, 단계마다
       references/ 파일을 하나씩 추가로 읽음
-        planning.md      → 발견, 목표, 계획
-        execution.md     → worktree, DAG, TDD 실행
+        planning.md      → 발견, 목표, 계획 (+ ulw-plan 스킬)
+        execution.md     → worktree, DAG, TDD 실행 (+ ulw-loop, mass-ulw 스킬)
         verification.md  → QA, PR, 최종 리뷰, REVISE
 ```
 
@@ -94,6 +94,19 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 ### 2. 단계별 스킬 로딩
 
 핵심 파일 `skills/wish/SKILL.md`에는 전체를 지배하는 규칙과, 어느 시점에 어떤 참조 파일을 읽을지만 들어 있습니다. 세부 지침은 `references/`의 세 파일에 나뉘어 있고 해당 단계에 들어갈 때만 읽습니다. 처음부터 긴 지침을 전부 떠안지 않으니, 서로 충돌하는 정책이 한꺼번에 켜지는 일이 줄어듭니다.
+
+| 단계 | 들어갈 때 꼭 읽는 파일 |
+| --- | --- |
+| 1. 발견과 계획 | `references/planning.md`, `ulw-plan` 스킬 |
+| 2. 실행 (plan 게이트 통과 후) | `references/execution.md`, 목표를 만들기 전에 `ulw-loop` 스킬, DAG를 정의하기 전에 `mass-ulw` 스킬과 그 `references/planning.md` 전체, 이어서 `references/verification.md` |
+| 3. 검증, PR, 리뷰 | 2단계에서 `references/verification.md`로 정해 둔 DAG의 마지막 노드로 실행 |
+
+- SKILL.md는 파일 이름과 읽을 시점만 알려 줍니다. 내용은 그 단계에 들어갈 때 읽습니다.
+- 꼭 읽어야 하는 파일은 이번 실행에서 직접 열어야 합니다. SKILL.md를 읽었다거나 요약이나 예전 실행에서 본 내용으로는 대신할 수 없습니다.
+- 필요한 네이티브 스킬이 스킬 목록에 없으면 기억으로 절차를 흉내 내지 않고, 차단 사항으로 보고하고 멈춥니다.
+- 각 단계의 첫 보고에는 그 단계에서 읽은 파일을 적습니다.
+
+이렇게 단계마다 스킬 이름을 직접 적는 데는 이유가 있습니다. omo의 키워드 스킬 포인터는 사용자가 직접 입력한 원문만 봅니다. 템플릿이나 스킬 본문에 스킬 이름이 들어 있어도 그 스킬이 자동으로 붙지 않습니다. 그래서 wish가 단계별로 읽을 스킬을 이름으로 지정합니다.
 
 ### 3. 원래 목적이 경계
 
@@ -113,11 +126,18 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 - 태스크 하나는 worktree 하나, PR 하나, DAG 하나입니다. 목적이 다른 독립 태스크는 동시에 돌리고, 의존 태스크는 선행 태스크가 merge된 뒤 시작합니다. 승인된 merge는 한 번에 하나씩 합니다.
 - 새 런타임 동작은 기존 테스트를 먼저 확인한 뒤, 필요한 동작에 대해 실패(RED), 최소 구현으로 통과(GREEN), 동작을 유지한 개선(REFACTOR)을 진행합니다. 충분한 기존 테스트는 활용하고, 요구사항이 아닌 내부 호출이나 조정 가능한 값을 고정하지 않습니다. 문구를 고정하는 테스트나 마크다운에 대한 가짜 RED는 쓰지 않습니다.
 
+요청 크기와 상관없이 늘 지키는 규칙입니다.
+
+- 목표는 ulw-loop SDK의 `agentToolkit.createGoals`로만 만들고, `create_goal`은 그 결과로 받은 handoff를 등록할 때만 씁니다. 그 전에 부르거나 루프 밖에서 쓴 목표로 부르지 않습니다.
+- 테스트 작성과 REVISE 수정을 포함해 태스크 파일을 바꾸는 일은 모두 mass-ulw로 정의한 DAG 노드 안에서, 태스크의 worktree에서 합니다. 리드는 아무리 작은 수정이라도 메인 세션이나 메인 체크아웃에서 직접 고치지 않습니다.
+- mass-ulw의 `references/planning.md`를 다 읽기 전에는 DAG를 정의하지 않습니다.
+- 합산 검증이 통과하기 전에는 PR을 열지 않고, ultrabrain 리뷰가 APPROVED를 내기 전에는 merge하지 않습니다.
+
 ### 5. 검증, PR, 최종 리뷰
 
 순서는 합산 QA, PR 생성, ultrabrain 최종 리뷰입니다. 리뷰 결과는 APPROVED 또는 REVISE입니다. 완료·승인을 막을 수 있는 건 목표 미달, 새로 생긴 회귀, 잘못된 증거뿐입니다. 관련 없는 품질 지적은 나중 작업 메모로 남습니다.
 
-REVISE가 나오면 같은 worktree와 같은 PR에서 수정용 DAG를 새로 만들고, 영향받은 QA만 다시 돌린 뒤 바뀐 부분만 다시 리뷰받습니다. 매번 전체 프로젝트를 새로 리뷰하지 않습니다.
+REVISE가 나오면 같은 worktree와 같은 PR에서 수정용 DAG를 새로 만들고(수정도 DAG 노드가 하며 리드가 직접 고치지 않습니다), 영향받은 QA만 다시 돌린 뒤 바뀐 부분만 다시 리뷰받습니다. 매번 전체 프로젝트를 새로 리뷰하지 않습니다.
 
 ### 6. 증거 재사용
 

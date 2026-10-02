@@ -1,6 +1,6 @@
 # wish: discovery and plan
 
-Read this when a wish starts. It specializes `ulw-plan` for a request the user has already authorized end to end. You leave this stage when the plan gate passes; then read `references/execution.md`, relative to the wish skill directory.
+Read this when a wish starts, together with the `ulw-plan` skill, which you **MUST** also read now. ulw-plan supplies the planning discipline: the affected users, the ideal state, the gap list, a decision-complete plan, and agent-executed QA. This file specializes it for a request the user has already authorized end to end. Where they conflict, such as the plan-mode pledge, the approval wait, the separate execution session, or the review gate, this file and `SKILL.md` win. You leave this stage when the plan gate passes; then read the files `SKILL.md` lists for execution, starting with `references/execution.md`, relative to the wish skill directory.
 
 ## Discovery
 
