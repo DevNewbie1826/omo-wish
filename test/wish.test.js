@@ -6,8 +6,9 @@ import { fileURLToPath } from "node:url";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const senpi = process.env.SENPI_ROOT ?? join(homedir(), ".bun/install/global/node_modules/@code-yeongyu/senpi");
-const { loadPromptTemplates, expandPromptTemplate } = await import(`${senpi}/dist/core/prompt-templates.js`);
-const { loadSkills } = await import(`${senpi}/dist/core/skills.js`);
+const { expandPromptTemplate } = await import(`${senpi}/dist/core/prompt-templates.js`);
+const { DefaultResourceLoader } = await import(`${senpi}/dist/core/resource-loader.js`);
+const { SettingsManager } = await import(`${senpi}/dist/core/settings-manager.js`);
 const { loadExtensions } = await import(`${senpi}/dist/core/extensions/loader.js`);
 const { ExtensionRunner } = await import(`${senpi}/dist/core/extensions/runner.js`);
 const fixtures = [];
@@ -16,20 +17,22 @@ afterAll(() => {
   for (const dir of fixtures) rmSync(dir, { recursive: true, force: true });
 });
 
-function resources(root = repo) {
+async function resources(root = repo) {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).pi;
   const paths = (field) => (manifest[field] ?? []).map((entry) => resolve(root, entry));
-  const templates = loadPromptTemplates({
-    cwd: root, agentDir: join(root, ".absent-agent"), promptPaths: paths("prompts"), includeDefaults: false,
+  const loader = new DefaultResourceLoader({
+    cwd: root,
+    agentDir: join(root, ".absent-agent"),
+    settingsManager: SettingsManager.inMemory(),
+    additionalExtensionPaths: [root],
+    noContextFiles: true,
   });
-  const skills = loadSkills({
-    cwd: root, agentDir: join(root, ".absent-agent"), skillPaths: paths("skills"), includeDefaults: false,
-  });
-  return { templates, skills, extensionPaths: paths("extensions") };
+  await loader.reload();
+  return { templates: loader.getPrompts().prompts, skills: loader.getSkills(), extensionPaths: paths("extensions") };
 }
 
 async function runner(root = repo) {
-  const { extensionPaths } = resources(root);
+  const { extensionPaths } = await resources(root);
   const loaded = await loadExtensions(extensionPaths, root);
   expect(loaded.errors).toEqual([]);
   const sessionManager = {
@@ -46,7 +49,7 @@ async function messages(extensionRunner, prompt, options = {}) {
 }
 
 test("expanded wish and ordinary whole-word ulw arm generic mode with only the host directive", async () => {
-  const { templates } = resources();
+  const { templates } = await resources();
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
   const armed = new Set();
@@ -77,8 +80,8 @@ test("expanded wish and ordinary whole-word ulw arm generic mode with only the h
   }
 });
 
-test("package resources discover the available wish skill", () => {
-  const { templates, skills, extensionPaths } = resources();
+test("package resources discover the available wish skill", async () => {
+  const { templates, skills, extensionPaths } = await resources();
   expect(templates.map((template) => template.name)).toContain("wish");
   expect(skills.diagnostics).toEqual([]);
   expect(skills.skills.find((skill) => skill.name === "wish")?.filePath)
@@ -87,7 +90,7 @@ test("package resources discover the available wish skill", () => {
 });
 
 test("bare and quoted /wish arguments reach the expanded entry without recursive expansion", async () => {
-  const { templates } = resources();
+  const { templates } = await resources();
   const extensionRunner = await runner();
   const bare = expandPromptTemplate("/wish", templates);
   const withArgs = expandPromptTemplate('/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', templates);
@@ -101,7 +104,7 @@ test("bare and quoted /wish arguments reach the expanded entry without recursive
 });
 
 test("lookalike words do not activate generic mode", async () => {
-  const { templates } = resources();
+  const { templates } = await resources();
   const extensionRunner = await runner();
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
@@ -127,7 +130,7 @@ test("lookalike words do not activate generic mode", async () => {
 });
 
 test("real wish entry arms once; preview, unrelated input and pre-armed sessions do not", async () => {
-  const { templates } = resources();
+  const { templates } = await resources();
   const text = expandPromptTemplate("/wish again", templates);
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
@@ -182,7 +185,7 @@ test("an installation path with spaces, quotes, #, and Unicode discovers skill a
   cpSync(join(repo, "prompts"), join(dir, "prompts"), { recursive: true });
   cpSync(join(repo, "extensions"), join(dir, "extensions"), { recursive: true });
   cpSync(join(repo, "skills/wish"), join(dir, "skills/wish"), { recursive: true });
-  const { templates, skills } = resources(dir);
+  const { templates, skills } = await resources(dir);
   const actualSkillPath = join(dir, "skills/wish/SKILL.md");
   expect(skills.diagnostics).toEqual([]);
   expect(skills.skills.find((skill) => skill.name === "wish")?.filePath).toBe(actualSkillPath);
