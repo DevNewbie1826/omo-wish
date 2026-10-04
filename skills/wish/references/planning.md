@@ -19,7 +19,7 @@ Write one plan file with:
 - **Test decision.** Where runtime behavior changes and the repository can hold tests for it, plan behavioral TDD: which behavior gets a failing test first. Prose, prompts, and docs get read-through QA, never wording tests.
 - **Tasks and DAG shape.** Usually one task. Name the nodes, their write scopes, and real dependencies. Don't invent nodes to fill a quota.
 - **Out of scope.** Anything discovery surfaced that the request doesn't need.
-- **Follow-up file.** The absolute path of `<evidence directory>/follow-ups.md` from `SKILL.md`. Without ulw-loop, record it when you pick the evidence directory. A fresh loop exposes `evidenceRoot` only after it initializes, so keep the plan-before-loop order: hold discovery findings in the plan, then record the path once the root exists, before execution or dispatch. Once the path is recorded, transfer any held findings to that file and apply the memory and disclosure rules. If there are no findings, leave the file absent.
+- **Follow-up file.** The absolute path of `<evidence directory>/follow-ups.md` from `SKILL.md`. A fresh loop exposes `evidenceRoot` only after it initializes, so keep the plan-before-loop order: hold discovery findings in the plan, then record the path once the root exists, before execution or dispatch. Once the path is recorded, transfer any held findings to that file and apply the memory and disclosure rules. If there are no findings, leave the file absent.
 
 ## Minimal plan gate
 
