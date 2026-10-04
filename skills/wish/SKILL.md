@@ -67,6 +67,7 @@ Loop back rather than restart: a REVISE returns to stage 2 with a correction DAG
 - One top-level loop goal for the whole wish. Never register tasks as separate goals.
 - One requested piece of work is one task: one worktree, one PR, one DAG. Gaps are nodes inside that DAG, not tasks.
 - Create a second task only for work with a different purpose. Tasks are independent when neither can affect the other's correctness; when that's unclear, keep one task.
+- Across the wish, the unit of parallelism is the task, not a split of one task's DAG into several runs: each task has exactly one DAG, and the DAGs of independent tasks run at the same time. A task is never split into several DAGs to go faster. Large work splits into tasks only along the purpose lines above; a large single-purpose request stays one task and gets its concurrency from parallel nodes inside its DAG. The single loop goal still holds every task.
 - Independent tasks run concurrently. A dependent task starts after its prerequisite merges. Approved merges happen one at a time.
 
 ## Delegation prompts
@@ -81,6 +82,10 @@ Before dispatch, check that the assignment itself explicitly contains all four i
 - Separate findings: report unrelated findings in your output and append them to the follow-up file when you can write it; do not fix them or treat them as blockers. The lead indexes them in memory.
 
 The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement.
+
+## Progress reporting
+
+Keep the todo list current for the whole run. At every node and stage transition, update the todo state (start, done, append, drop) and report it to the user in a short handoff naming what just finished, what is running, and what comes next. Never let the todo list lag behind the loop ledger or the DAG run.
 
 ## Finish
 

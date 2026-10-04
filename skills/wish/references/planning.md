@@ -6,6 +6,8 @@ Read this when a wish starts, together with the `ulw-plan` skill, which you **MU
 
 Gather evidence before deciding anything: code, git history of paths you'll touch, memory, and earlier session evidence. Identify everyone and everything the result touches, including end users, other developers, and dependent code, and how they use it now and will use it.
 
+Collect as much of that evidence as the request can use, in parallel. When the request touches a library, an external API, or documentation outside the repository, spawn `librarian` to gather the current facts instead of relying on what you remember about them. When the code layout is unfamiliar, spawn `explore` to map it. Run them in the background alongside your own reads, and fold their findings into the plan before deciding anything they could change.
+
 Use that picture to set the boundary, not to grow the request. For each affected party, ask one question: does the original request need to change something for them? If yes, it's part of the ideal state. If no, but you saw real pain, it's a follow-up note.
 
 ## The plan
