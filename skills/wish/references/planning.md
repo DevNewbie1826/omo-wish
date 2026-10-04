@@ -30,7 +30,7 @@ One gate is enough. Pick the first path that applies:
 
 A `/wish` invocation doesn't open the native gate by itself. Never unlock the gate by hand, and never retry a gate denial. A denial means path 2.
 
-Don't run every native advisory lane or a full review panel. A plan blocker is something that would make the plan fail the request, introduce a regression, or rest on invalid proof. Fix those and review again under the path you used. Native `plan-reviewer` is one-shot and refuses follow-up messages, so each round is a fresh native review session under its own contract. A category-based reviewer gets the delta resubmitted to the same session when that's supported, or a fresh one with the same prompt otherwise. Record other remarks as notes.
+Don't run every native advisory lane or a full review panel. A plan blocker is something that would make the plan fail the request, introduce a regression, or rest on invalid proof. Fix those and review again under the path you used. Every review round goes to a new reviewer, never back to the one that reviewed the last round, so no reviewer re-reads its own verdict. Native `plan-reviewer` is one-shot anyway, so each round is a fresh native review session under its own contract. A category-based round spawns a fresh `task` with the same reviewer prompt plus the delta, the blockers the last round cited, and the already-approved parts marked out of scope. Record other remarks as notes.
 
 ## Leaving this stage
 

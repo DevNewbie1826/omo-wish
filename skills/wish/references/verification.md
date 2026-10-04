@@ -12,7 +12,7 @@ If a scenario fails, it's in scope by definition. Fix it in the same worktree be
 
 Evidence is valid for a target (a scenario, test, or review claim) until something it depends on changes. Before reusing it:
 
-1. Check what changed since capture: the files it exercised, its dependencies, and the environment it ran in.
+1. Check what changed since capture: the files it exercised, its dependencies, and the environment it ran in. At minimum, treat as affected the tests of every file the change touched and of the files that import it, and the scenarios that exercise them.
 2. If none of those changed, reuse it. Keep the original capture's provenance (when, where, which commit) and write down why it's still valid.
 3. If any changed, or you can't tell, rerun that target.
 
@@ -37,7 +37,7 @@ The ulw-loop final checkpoint may require a quality-gate record whose reviewer f
 1. Stay in the same worktree and PR.
 2. Build a new mass-ulw correction DAG from the required changes only. The lead **NEVER** applies the fixes directly, even a one-line fix. Independent fixes run in parallel.
 3. Rerun the QA that the fixes affect, using the reuse rule above for the rest.
-4. End with an ultrabrain delta re-review: the delta diff, the required changes it cited, and fresh evidence for the affected targets. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
+4. End with an ultrabrain delta re-review by a new reviewer, never the one that returned REVISE: the delta diff, the required changes it cited, and fresh evidence for the affected targets. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
 
 Repeat until APPROVED.
 
