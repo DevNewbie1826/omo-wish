@@ -1,6 +1,6 @@
 # wish: discovery and plan
 
-Read this when a wish starts, together with the `ulw-plan` skill, which you **MUST** also read now. ulw-plan supplies the planning discipline: the affected users, the ideal state, the gap list, a decision-complete plan, and agent-executed QA. This file specializes it for a request the user has already authorized end to end. Where they conflict, such as the plan-mode pledge, the approval wait, the separate execution session, or the review gate, this file and `SKILL.md` win. You leave this stage when the plan gate passes; then read the files `SKILL.md` lists for execution, starting with `references/execution.md`, relative to the wish skill directory.
+Stage 1; required reads follow `SKILL.md`, Stages and required reads; this file specializes ulw-plan per `SKILL.md`, Native skills and mode.
 
 ## Discovery
 
@@ -16,10 +16,10 @@ Write one plan file with:
 
 - **Affected users and ideal state.** One IS row per property the delivered request must have, each with its reason. One GAP row per difference from today. Every todo closes a GAP; every IS row has a success criterion.
 - **QA scenarios from the users' side.** Each names the real surface, the exact invocation, and the single PASS/FAIL observable.
-- **Test decision.** Where runtime behavior changes and the repository can hold tests for it, plan behavioral TDD: which behavior gets a failing test first. Prose, prompts, and docs get read-through QA, never wording tests.
+- **Test decision.** Name which behavior gets a failing test first, or why read-through QA suffices, under `references/execution.md`, Behavioral TDD, which stage 2 requires before defining nodes.
 - **Tasks and DAG shape.** Usually one task. Name the nodes, their write scopes, and real dependencies. Don't invent nodes to fill a quota.
 - **Out of scope.** Anything discovery surfaced that the request doesn't need.
-- **Follow-up file.** The absolute path of `<evidence directory>/follow-ups.md` from `SKILL.md`. A fresh loop exposes `evidenceRoot` only after it initializes, so keep the plan-before-loop order: hold discovery findings in the plan, then record the path once the root exists, before execution or dispatch. Once the path is recorded, transfer any held findings to that file and apply the memory and disclosure rules. If there are no findings, leave the file absent.
+- **Follow-up file.** Follow the path and timing in `SKILL.md`, Follow-up record.
 
 ## Minimal plan gate
 
@@ -34,4 +34,4 @@ Don't run every native advisory lane or a full review panel. A plan blocker is s
 
 ## Leaving this stage
 
-When the gate returns OKAY, continue straight into execution. The user already authorized it, so don't stop with a planning-only summary and don't ask for approval again.
+When the gate returns OKAY, continue straight into execution under `SKILL.md`, Stages and required reads, stage 2. Don't stop with a planning-only summary or ask for a second approval (see `SKILL.md`, Native skills and mode).

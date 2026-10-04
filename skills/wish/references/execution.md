@@ -1,27 +1,34 @@
 # wish: execution
 
-Read this when the plan gate passes. It composes `ulw-loop` (goal, evidence, checkpoints) and `mass-ulw` (DAG runs). This file only says how wish uses them; it never replaces their instructions. You **MUST** read the `ulw-loop` skill before seeding the goal, and the `mass-ulw` skill plus its `references/planning.md` in full before defining any DAG. Also read `references/verification.md`, relative to the wish skill directory, before you define a task's DAG, because the DAG's closing nodes (combined verification, PR, ultrabrain review) follow it. Those nodes still execute only after the production nodes settle.
+Stage 2; required reads follow `SKILL.md`, Stages and required reads; native instructions apply except where `SKILL.md`, Native skills and mode, specializes them.
 
 ## One loop goal
 
-Seed exactly one ulw loop goal from the plan: the ideal state, the success criteria, and the stop line. Tasks are execution units inside it. Don't create a goal per task or per phase, and don't start a second loop.
+Build the brief from the plan's ideal state, success criteria, and stop line, under `SKILL.md`, Native skills and mode.
 
-Create it from a JS eval cell with ulw-loop's `agentToolkit.createGoals({ brief })`, the brief built from the plan, then register the returned handoff with `create_goal` as ulw-loop describes. **NEVER** register the goal any other way.
+From a JS eval cell, use ulw-loop's `agentToolkit.createGoals({ brief })`, then register its returned handoff under `SKILL.md` rule 3.
 
-## One worktree and one DAG per task
+For wish's same-session completed-aggregate policy, follow the archive procedure in `SKILL.md`, Native skills and mode. Use the existing loop's artifact paths as the sources; the `cmp` checks compare each source with its archived copy. After those checks pass, the SDK call is `agentToolkit.createGoals({ brief, force: true })`.
 
-The lead creates the worktree and drives the run. Every change to the task's files, tests and fixes included, happens inside a node; the lead **NEVER** makes it directly.
+## Worktree and node design
 
-For each task, create a dedicated Git worktree off the integration base, then read the mass-ulw planning reference and define one DAG:
+Create each task's dedicated Git worktree off the integration base, following `SKILL.md`, Task shape and rule 4. Every command in a node prompt **MUST** pin that worktree: use `git -C <worktree> ...` or `cd <worktree> && ...`, never the node's default cwd.
 
-- Split into independent nodes wherever correctness allows. Parallel nodes need disjoint write scopes; dependent nodes run in order.
-- Where that split exists, split all of the work into small nodes that run at the same time, not only the easy parts. Route each node's category by difficulty, not by size: a small node that needs a design decision or carries many edge cases gets a higher-capability category such as `deep-low` or `deep-high`, and a large but mechanical node gets `quick`. Then verify harder, most of all for `quick` nodes, which run on small models: each node's prompt carries a concrete success criterion with the exact VERIFY command, and each `quick` prompt also carries numbered must-do steps and forbidden deviations; each dependent node's prompt re-checks the specific upstream facts it builds on before trusting them; and on every completion wake the lead reads that node's output against its criterion and recovers an unproven node in place with `retry`, `send`, or `amend` instead of trusting its claim.
+Follow mass-ulw's `references/planning.md` for splitting and dependencies. Wish-specific requirements:
+
+- Split all work into small nodes wherever correctness allows, not only the easy parts.
+- Route by difficulty, not size: a small design decision or edge-heavy node needs a higher-capability category such as `deep-low` or `deep-high`; a large mechanical node can use `quick`.
+- Verify harder, especially for `quick` nodes on small models. Each prompt carries a concrete success criterion and exact VERIFY command. Each `quick` prompt also carries numbered must-do steps and forbidden deviations.
+- Each dependent node's prompt requires it to re-check the specific upstream facts it builds on before trusting them.
+- On every completion wake, the lead reads the output against its criterion and recovers unproven work under Recovery below, instead of trusting its claim.
 - Use only categories that exist on this host: the categories the `task` tool lists as available. Native skill tables, such as the ones in ulw-plan and mass-ulw, can name categories this host doesn't have, such as `git`; never invent a category or copy one that isn't in that list. Before `start`, check every node's category against the list together with mass-ulw's dependency-matrix self-check. A verification node can't catch this: a node with an unknown category fails at dispatch with `plan_unresolved`, and its dependents never run. If one slips through, recover the same run with `amend` to an existing category.
 - Keep each production change and its behavioral proof in the same node.
-- End the DAG with combined verification including the task's QA scenarios, then PR creation, then the ultrabrain review, in that order.
-- Every node prompt, including QA and review nodes, follows the delegation rule in `SKILL.md`: original request, scope, blocker definitions, report out-of-scope findings.
+- Define closing nodes from `references/verification.md`, following `SKILL.md`, Stages and required reads and Task shape.
+- Every node prompt follows `SKILL.md`, Delegation prompts.
 
-Independent tasks run their DAGs at the same time. A dependent task starts only after its prerequisite merges.
+## Commits
+
+Each verified unit is committed inside the task worktree by a node, in the repository's commit style, with only that unit's files staged. Parallel nodes share one Git index, so serialize commits: use a dependent committing node or chain the committing nodes.
 
 ## Behavioral TDD
 
@@ -36,8 +43,12 @@ A test must be able to fail for the regression it names. Don't pin prose, prompt
 
 ## Findings during execution
 
-Apply the boundary from `SKILL.md`. In-scope findings get a node in the current DAG, or an amendment to it. Out-of-scope findings go into the follow-up file recorded in the plan (finding, reproduction, evidence, impact, exclusion reason) and get a memory entry with the summary, why it wasn't fixed, and that path. Later attempts reuse the same file and keep its existing records; `currentAttemptDir` and the ledger never replace it. They also go in the final report. Workers report findings; the lead decides which side they fall on and corrects any worker that starts fixing unrelated work.
+Apply `SKILL.md`, The purpose boundary and Follow-up record. In-scope findings get a node in the current run or an amendment to it. The lead decides which side each finding falls on and corrects drift under `SKILL.md`, Delegation prompts.
 
 ## Recovery
 
-A host transport failure (timeout, dropped child) is recovered in place with the run's retry or send, not by redesigning the graph. Keep the original DAG definition so later amendments build on it.
+A host transport failure (timeout, dropped child) is recovered in place, not by redesigning the graph. Keep the original DAG definition object so later amendments build on it.
+
+- Running child: use `send`.
+- Failed or cancelled node after the run settles: use `retry`. It is refused while the run is running (`run_still_active`).
+- Completed node whose output shows it didn't do the work, or a wrong definition: use `amend`; `retry` refuses completed nodes.
