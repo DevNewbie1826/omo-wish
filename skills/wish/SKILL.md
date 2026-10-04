@@ -22,7 +22,7 @@ The original request is the boundary for every stage: discovery, plan, TDD, QA, 
 - The **follow-up file** is `<evidence directory>/follow-ups.md`. With ulw-loop, the evidence directory is `agentToolkit.status().result.evidenceRoot`; resolve a relative root against `result.binding.cwd`, never the installed skill directory or `currentAttemptDir`. ulw-loop ships with omo, so every wish has a loop; this is not a path for running without one. Until the loop initializes and `evidenceRoot` exists, hold findings in the plan file, then record the path. The plan records one absolute path and every later finding, memory entry, and final report reuses it. The loop ledger only indexes progress, verdicts, and evidence references; it isn't the follow-up file. Create the file only when a real finding exists. Timing is in `references/planning.md`.
 - When impact is **uncertain**, run the smallest check that decides it. If the check shows it affects the request, it's in scope. An unrelated hypothetical that can't be decided may become a follow-up with what was tried. Uncertainty that keeps you from proving the request is delivered, or that the change introduced no regression, is invalid evidence, not a follow-up: verify it adequately or report an honest blocker. Deferring it never turns a criterion into a PASS.
 
-This specializes native skill defaults that conflict with it. When a generic workflow default conflicts, original-purpose scope, the approved plan-to-execution transition, QA evidence reuse, and the final review **MUST** follow this file's procedures. **NEVER** expand the scope under a conflicting default, add a duplicate approval step, rerun unaffected verification, or add an extra product-review panel. The rows below are examples, not a complete list.
+This specializes native skill defaults that conflict with it. When a generic workflow default conflicts, original-purpose scope, the approved plan-to-execution transition, QA evidence reuse, and the final review **MUST** follow this file's procedures. **NEVER** expand the scope under a conflicting default, add a duplicate approval step, rerun unaffected verification mid-run, or add an extra product-review panel. The rows below are examples, not a complete list.
 
 | Native default | Wish rule |
 | --- | --- |
@@ -31,7 +31,7 @@ This specializes native skill defaults that conflict with it. When a generic wor
 | Ultrawork bootstrap: register your own goal with create_goal and open a notepad | Register no goal and open no separate notepad at bootstrap; the wish stages replace the bootstrap's plan, goal, and notepad. In stage 1 the plan file is the plan and holds your notes. In stage 2, after the plan gate, ulw-loop creates the goal and its ledger becomes the notepad. create_goal only registers the createGoals handoff |
 | mass-ulw: one run per phase, never a whole job | Each task DAG is one phase: its production nodes plus the closing verification, PR, and review nodes. A REVISE correction is a new run |
 | ulw-loop and mass-ulw: separate goals per phase or task | One top-level loop goal; tasks and DAG nodes live inside it |
-| Ultrawork: reuse evidence per target, then run the full set once more before the final message | Reuse evidence per target after checking its inputs, through the final report too; rerun only affected or uncertain targets, with no extra full run (see verification) |
+| Ultrawork: reuse evidence per target, then run the full set once more before the final message | Same: reuse evidence per target after checking its inputs and rerun only affected or uncertain targets, then run the full verification set once on the merged result before the final report (see verification) |
 | Ultrawork: its own conditional reviewer loop and resubmission rules | The minimal plan gate, then one ultrabrain review with bounded delta corrections; no extra review panel |
 | Native plan-reviewer gate assumed open | Use it only when genuinely eligible; otherwise an honest category-based review |
 
@@ -89,7 +89,7 @@ Keep the todo list current for the whole run. At every node and stage transition
 
 ## Finish
 
-Stop when the requested work is merged, the QA scenarios pass on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and separate findings.
+Stop when the requested work is merged, the full verification set passes on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and separate findings. 
 
 Out-of-scope findings **MUST** be documented and **MUST** also appear in the final report. For each one give the finding, its impact, why it wasn't fixed now, and its follow-up file path. If there were none, say so explicitly and don't create empty records. A note in a file alone isn't disclosure. The checklist is in `references/verification.md`.
 
