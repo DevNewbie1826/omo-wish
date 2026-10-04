@@ -89,7 +89,7 @@ Keep the todo list current for the whole run. At every node and stage transition
 
 ## Finish
 
-Stop when the requested work is merged, the full verification set passes on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and separate findings. 
+Stop when the requested work is merged, the full verification set passes on the merged result, task worktrees and merged task branches are removed, and the user has a report in their language covering results, honest limits, and separate findings.
 
 Out-of-scope findings **MUST** be documented and **MUST** also appear in the final report. For each one give the finding, its impact, why it wasn't fixed now, and its follow-up file path. If there were none, say so explicitly and don't create empty records. A note in a file alone isn't disclosure. The checklist is in `references/verification.md`.
 
