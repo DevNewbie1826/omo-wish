@@ -16,7 +16,7 @@ Evidence is valid for a target (a scenario, test, or review claim) until somethi
 2. If none of those changed, reuse it. Keep the original capture's provenance (when, where, which commit) and write down why it's still valid.
 3. If any changed, or you can't tell, rerun that target.
 
-Don't invalidate all evidence because one file changed, and don't rerun the full matrix after every patch.
+Don't invalidate all evidence because one file changed, and don't rerun the full matrix after every patch. The one full pass happens before the final report (see Merge and finish).
 
 ## PR
 
@@ -45,7 +45,7 @@ Repeat until APPROVED.
 
 - Never merge before APPROVED. Merge approved tasks one at a time without waiting on unrelated tasks.
 - If integrating with other merges changes a task's behavior, rerun only the affected targets. If the approved implementation changes substantively, get an ultrabrain re-review before merging.
-- After all tasks merge, confirm every QA scenario on the merged result, reusing valid evidence. A failing scenario becomes a fix task through the same flow.
+- After all tasks merge, right before the final report, run the full verification set once on the merged result: every QA scenario plus the repository's test suite, typecheck, and build where it has them. Until that point the per-target reuse rule decides what reruns; this one full pass is the only exception. A failing target becomes a fix task through the same flow.
 - When the goal is satisfied, remove this wish's worktrees and merged task branches, complete the loop goal, and report to the user in their language.
 
 ## Final report checklist
