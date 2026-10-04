@@ -1,10 +1,10 @@
 # wish: execution
 
-Stage 2; required reads follow `SKILL.md`, Stages and required reads; native instructions apply except where `SKILL.md`, Native skills and mode, specializes them.
+This file covers stage 2. Its required reads are listed in `SKILL.md`, Stages and required reads. Native instructions apply except where `SKILL.md`, Native skills and mode, specializes them.
 
 ## One loop goal
 
-Build the brief from the plan's ideal state, success criteria, and stop line, under `SKILL.md`, Native skills and mode.
+Build the brief from the plan's ideal state, success criteria, and stop line. It seeds the one top-level loop goal for the whole wish (`SKILL.md`, Native skills and mode, ulw-loop row).
 
 From a JS eval cell, use ulw-loop's `agentToolkit.createGoals({ brief })`, then register its returned handoff under `SKILL.md` rule 3.
 
@@ -28,7 +28,7 @@ Follow mass-ulw's `references/planning.md` for splitting and dependencies. Wish-
 
 ## Commits
 
-Each verified unit is committed inside the task worktree by a node, in the repository's commit style, with only that unit's files staged. Parallel nodes share one Git index, so serialize commits: use a dependent committing node or chain the committing nodes.
+A node commits each verified unit inside the task worktree, in the repository's commit style, with only that unit's files staged. Parallel nodes share one Git index, so serialize commits: use a dependent committing node or chain the committing nodes.
 
 ## Behavioral TDD
 

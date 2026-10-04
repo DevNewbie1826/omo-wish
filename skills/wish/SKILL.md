@@ -16,7 +16,13 @@ Resolve every reference-document path in this skill relative to the directory of
 Move through the stages in order. Read each reference and each native skill at the timing below, not before.
 
 1. **Discovery and plan.** Required reads at entry: `references/planning.md` and the `ulw-plan` skill. Survey context and history, name the affected users and the ideal state inside the boundary, list the gaps, define QA scenarios from the users' perspective, write one plan, and pass the minimal plan gate described there. Leave this stage when the plan gate passes.
-2. **Execution.** Required reads when the plan gate passes, in this order: `references/execution.md`; the `ulw-loop` skill, before seeding the goal; the `mass-ulw` skill and its `references/planning.md` in full, then `references/verification.md`, before defining any task DAG, since the DAG's closing nodes follow it. Seed the loop from the plan, create a worktree per task, and run the work through mass-ulw with behavioral TDD. Leave this stage when the task's production nodes have settled.
+2. **Execution.** Required reads when the plan gate passes, in this order:
+   1. `references/execution.md`.
+   2. The `ulw-loop` skill, before seeding the goal.
+   3. The `mass-ulw` skill, then its `references/planning.md` in full, before defining any task DAG.
+   4. `references/verification.md`, also before defining any task DAG, because the DAG's closing nodes (stage 3) are defined from it.
+
+   Seed the loop from the plan, create a worktree per task, and run the work through mass-ulw with behavioral TDD. Leave this stage when the task's production nodes have settled.
 3. **Verification, PR, and review.** These are the DAG's closing nodes, already defined from `references/verification.md`, and they run after the production nodes. Follow that reference through combined QA, PR, review, merge, verification of the merged result, and cleanup.
 
 Loop back rather than restart: a REVISE returns to stage 2 with a correction run in the same worktree and PR, then comes back to stage 3. The loop ends at APPROVED and a merged, verified result.
@@ -69,18 +75,18 @@ This skill doesn't outrank system or developer instructions, later explicit user
 | Ultrawork bootstrap: goal and notepad | No goal or notepad at bootstrap; the stage 1 plan file holds notes; stage 2 ulw-loop creates the goal and its ledger is the notepad (see rule 3 for registration) |
 | ulw-loop: separate goal per phase or task | One top-level loop goal for the whole wish; tasks and runs live inside it. mass-ulw already registers no second goal under ulw-loop; wish agrees |
 | ulw-loop: completed aggregate requires a fresh session | Wish deliberately reuses the same session: archive `goals.json`, `ledger.jsonl`, and `brief.md` to `.omo/ulw-loop/archive/<name>/`, verify with `cmp`, then `createGoals({ force: true })`; never `addGoal` onto a completed aggregate (see `references/execution.md`, One loop goal) |
-| mass-ulw: one run per phase | A task's work runs as sequential runs (see Task shape); a correction is a new run in the same worktree |
+| mass-ulw: one run per phase | A task's work runs as sequential runs (see Task shape); a correction run is a new run in the same worktree |
 | Ultrawork: conditional reviewer loop, at most two re-reviews then ask the user | Minimal plan gate, then one mandatory ultrabrain final review; REVISE rounds are delta-scoped, each by a new reviewer, and unlimited until APPROVED (deliberate owner decision; see `references/verification.md`, REVISE) |
 | Ultrawork: tests only when the repo keeps them and a regression would pass unnoticed; no RED/GREEN mandate | Wish keeps behavioral TDD where runtime behavior changes and the repo can hold tests (see `references/execution.md`, Behavioral TDD) |
 | ulw-loop: evidence bound to tree hash, rerun at current HEAD when the tree differs | Wish decides reruns per target (see `references/verification.md`, Evidence reuse per target); loop evidence records and the final checkpoint come from the final full pass on the merged result, so the loop's tree rule is never bypassed |
-| Ultrawork: blast-radius fix versus tracked issue | Same split (see The purpose boundary); the follow-up record plus its memory entry is the tracked issue |
+| Ultrawork: blast-radius fix versus tracked issue | Same split (see The purpose boundary); a record in the follow-up file plus its memory entry is the tracked issue (see Follow-up record) |
 
-Still applies: every compatible native rule applies in full - evidence capture, cleanup receipts, asynchronous waiting, never suppressing failures, verification rigor, recording regressions caught and QA invocations in memory, per-target evidence reuse and the one final full pass (ultrawork agrees).
+Still applies: every compatible native rule applies in full - evidence capture, cleanup receipts, asynchronous waiting, never suppressing failures, verification rigor, recording regressions caught and QA invocations in memory, and ultrawork's per-target evidence reuse with one final full pass, which wish shares (the ulw-loop tree-hash rule is the specialized row above).
 
 ## Task shape
 
 - One requested purpose is one task. Per pre-merge delivery, it has one worktree, one PR, and one branch; gaps are nodes, not tasks.
-- Its work runs as one or more **sequential** workflow runs (mass-ulw phases): the initial run, then runs defined from what earlier runs proved, such as polish, REVISE corrections, and post-merge fixes. **NEVER** split a task into parallel runs for speed; concurrency comes from parallel nodes inside a run.
+- Its work runs as one or more **sequential** runs. A run is one mass-ulw `workflow` DAG (one mass-ulw phase), and its nodes are the DAG nodes rule 4 refers to. The sequence is the initial run, then runs defined from what earlier runs proved, such as polish, REVISE corrections, and post-merge fixes. **NEVER** split a task into parallel runs for speed; concurrency comes from parallel nodes inside a run.
 - Create a second task only for work with a different purpose. Tasks are independent when neither can affect the other's correctness; when that's unclear, keep one task.
 - Across the wish, the task is the unit of parallelism. Large work splits into tasks only along the purpose lines above; a large single-purpose request stays one task.
 - Independent tasks run concurrently. A dependent task starts after its prerequisite merges. Approved merges happen one at a time without waiting on unrelated tasks.
@@ -96,7 +102,7 @@ Before dispatch, every implementation, QA, and review assignment **MUST** explic
 - Blockers: goal failure, introduced regression, and invalid proof; state all three, including in implementation and QA assignments.
 - Separate findings: report unrelated findings instead of fixing them or treating them as blockers; follow Follow-up record.
 
-The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement.
+The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement. A reviewer that flags unrelated quality issues is producing follow-up notes, not blockers.
 
 For command paths, see `references/execution.md`, Worktree and node design.
 

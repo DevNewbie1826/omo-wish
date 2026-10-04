@@ -1,6 +1,6 @@
 # wish: verification, PR, review, and merge
 
-Stage 3 content; define its closing nodes before the DAG and execute them after production nodes settle, as `SKILL.md`, Stages and required reads, requires.
+This file covers stage 3. Define these closing nodes when you define the task DAG in stage 2, before the DAG starts; they run after the production nodes settle (`SKILL.md`, Stages and required reads).
 
 ## Combined verification
 
@@ -39,7 +39,7 @@ The ulw-loop final checkpoint may require a quality-gate record whose reviewer f
 3. Rerun the QA that the fixes affect, using the reuse rule above for the rest.
 4. End with an ultrabrain delta re-review by a new reviewer, never the one that returned REVISE: the delta diff, the required changes it cited, and fresh evidence for the affected targets. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
 
-Repeat until APPROVED; the unlimited-round owner policy is in `SKILL.md`, Native skills and mode.
+Repeat until APPROVED. There is no round limit; see the owner policy in `SKILL.md`, Native skills and mode.
 
 ## Merge and finish
 

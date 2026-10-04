@@ -1,6 +1,6 @@
 # wish: discovery and plan
 
-Stage 1; required reads follow `SKILL.md`, Stages and required reads; this file specializes ulw-plan per `SKILL.md`, Native skills and mode.
+This file covers stage 1. Its required reads are listed in `SKILL.md`, Stages and required reads. It specializes ulw-plan as `SKILL.md`, Native skills and mode, describes.
 
 ## Discovery
 
@@ -16,7 +16,7 @@ Write one plan file with:
 
 - **Affected users and ideal state.** One IS row per property the delivered request must have, each with its reason. One GAP row per difference from today. Every todo closes a GAP; every IS row has a success criterion.
 - **QA scenarios from the users' side.** Each names the real surface, the exact invocation, and the single PASS/FAIL observable.
-- **Test decision.** Name which behavior gets a failing test first, or why read-through QA suffices, under `references/execution.md`, Behavioral TDD, which stage 2 requires before defining nodes.
+- **Test decision.** Where runtime behavior changes and the repository can hold tests for it, plan behavioral TDD: which behavior gets a failing test first. Prose, prompts, and docs get read-through QA, never wording tests.
 - **Tasks and DAG shape.** Usually one task. Name the nodes, their write scopes, and real dependencies. Don't invent nodes to fill a quota.
 - **Out of scope.** Anything discovery surfaced that the request doesn't need.
 - **Follow-up file.** Follow the path and timing in `SKILL.md`, Follow-up record.
