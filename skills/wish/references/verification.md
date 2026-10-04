@@ -1,6 +1,6 @@
 # wish: verification, PR, review, and merge
 
-Read this before defining a task's DAG, because the DAG's closing nodes follow it. Those nodes execute after the production nodes settle. It covers the end of every task DAG and the REVISE loop. The stage ends when the task is merged, verified on the merged result, and cleaned up.
+This file covers stage 3. Define these closing nodes when you define the task DAG in stage 2, before the DAG starts; they run after the production nodes settle (`SKILL.md`, Stages and required reads).
 
 ## Combined verification
 
@@ -20,11 +20,11 @@ Don't invalidate all evidence because one file changed, and don't rerun the full
 
 ## PR
 
-Open one PR for the task after combined verification passes. The body lists the behavior delivered, the tests and QA run, and the real limits. No blanket enforcement claims.
+Follow `SKILL.md` rule 6 and Task shape for PR timing and shape. The body lists the behavior delivered, the tests and QA run, and the real limits. No blanket enforcement claims.
 
 ## Final ultrabrain review
 
-After the PR exists, spawn one review with `category: "ultrabrain"`. Pass the original request, the task's scope, the blocker definitions, the diff, the goal and criteria, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence. Anything else it raises is a follow-up note.
+After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence. Anything else it raises is a follow-up note.
 
 This review is mandatory and isn't replaced by anything below.
 
@@ -34,23 +34,23 @@ The ulw-loop final checkpoint may require a quality-gate record whose reviewer f
 
 ## REVISE
 
-1. Stay in the same worktree and PR.
-2. Build a new mass-ulw correction DAG from the required changes only. The lead **NEVER** applies the fixes directly, even a one-line fix. Independent fixes run in parallel.
+1. Follow `SKILL.md`, Task shape and Stages and required reads, for the correction run's worktree and PR.
+2. Build a new mass-ulw correction run from the required changes only, under `SKILL.md` rule 4. Independent fixes run in parallel.
 3. Rerun the QA that the fixes affect, using the reuse rule above for the rest.
 4. End with an ultrabrain delta re-review by a new reviewer, never the one that returned REVISE: the delta diff, the required changes it cited, and fresh evidence for the affected targets. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
 
-Repeat until APPROVED.
+Repeat until APPROVED. There is no round limit; see the owner policy in `SKILL.md`, Native skills and mode.
 
 ## Merge and finish
 
-- Never merge before APPROVED. Merge approved tasks one at a time without waiting on unrelated tasks.
-- If integrating with other merges changes a task's behavior, rerun only the affected targets. If the approved implementation changes substantively, get an ultrabrain re-review before merging.
-- After all tasks merge, right before the final report, run the full verification set once on the merged result: every QA scenario plus the repository's test suite, typecheck, and build where it has them. Until that point the per-target reuse rule decides what reruns; this one full pass is the only exception. A failing target becomes a fix task through the same flow.
-- When the goal is satisfied, remove this wish's worktrees and merged task branches, complete the loop goal, and report to the user in their language.
+- Follow `SKILL.md` rule 6 and Task shape for approved merges.
+- If integrating with other merges changes a task's behavior, rerun only the affected targets. If the approved implementation changes substantively, get an ultrabrain re-review by a new reviewer before merging.
+- After all tasks merge, right before the final report, run the full verification set once on the merged result: every QA scenario plus the repository's test suite, typecheck, and build where it has them. Until that point the per-target reuse rule decides what reruns; this one full pass is the only exception. Record loop evidence and the final checkpoint from this final pass so the loop's tree-hash rule is satisfied. For a failing target, follow `SKILL.md`, Task shape, for post-merge continuation.
+- When the goal is satisfied, perform the cleanup in `SKILL.md`, Finish, complete the loop goal, and deliver the report below.
 
 ## Final report checklist
 
 - Results: what was delivered and merged.
 - Evidence: the QA scenarios and tests, with artifact locations.
 - Limits: what wasn't proven or what the host couldn't do.
-- Separate findings: for each out-of-scope finding, the finding, its impact, why it wasn't fixed now, and the follow-up file path recorded in the plan, with a matching memory entry pointing to that same file. If there were none, write that explicitly and create no dummy records. Listing them only in a file doesn't count.
+- Separate findings: follow `SKILL.md`, Follow-up record.
