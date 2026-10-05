@@ -6,6 +6,8 @@ This file covers stage 3. Define these closing nodes when you define the task DA
 
 Run the task's QA scenarios through their real surfaces, plus the tests the repository keeps for the changed behavior. Tests alone don't prove the user-visible behavior; each scenario needs its own artifact. Record the command, the observable, PASS or FAIL, and cleanup receipts for anything the QA started.
 
+Check the plan's risk list. For every `guard` row, the named test exists and passes, and its injection diff, injection-failure, and restore-pass captures exist, with the diff producing the regression the guard names. For every `no-test` row, the reason is one of the allowed ones and any QA scenario it names passed. A missing guard test, a missing capture, an injection that doesn't produce the guard's regression, an injection that stayed green, or a `no-test` reason outside the list is invalid evidence. An untested behavior that isn't on the list is a follow-up note, unless it shows the request isn't delivered or this change introduced a regression.
+
 If a scenario fails, it's in scope by definition. Fix it in the same worktree before opening the PR.
 
 ## Evidence reuse per target
@@ -24,7 +26,7 @@ Follow `SKILL.md` rule 6 and Task shape for PR timing and shape. The body lists 
 
 ## Final ultrabrain review
 
-After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence. Anything else it raises is a follow-up note.
+After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, the plan's risk list, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence, including risk-list evidence that fails the check under Combined verification. Anything else it raises is a follow-up note.
 
 This review is mandatory and isn't replaced by anything below.
 

@@ -1,6 +1,6 @@
 ---
 name: wish
-description: "Runs a user-authorized /wish request end to end inside its original purpose: bounded discovery, one plan with a minimal plan gate, one ulw loop goal, worktree DAG execution with behavioral TDD, QA, PR, and a final ultrabrain review. Use when the /wish command or the user names this skill."
+description: "Runs a user-authorized /wish request end to end inside its original purpose: bounded discovery, one plan with a minimal plan gate, one ulw loop goal, worktree DAG execution with risk-based regression tests, QA, PR, and a final ultrabrain review. Use when the /wish command or the user names this skill."
 metadata:
   short-description: Bounded wish orchestration over ulw-plan, ulw-loop, and mass-ulw
 ---
@@ -22,7 +22,7 @@ Move through the stages in order. Read each reference and each native skill at t
    3. The `mass-ulw` skill, then its `references/planning.md` in full, before defining any task DAG.
    4. `references/verification.md`, also before defining any task DAG, because the DAG's closing nodes (stage 3) are defined from it.
 
-   Seed the loop from the plan, create a worktree per task, and run the work through mass-ulw with behavioral TDD. Leave this stage when the task's production nodes have settled.
+   Seed the loop from the plan, create a worktree per task, and run the work through mass-ulw with risk-based regression tests. Leave this stage when the task's production nodes have settled.
 3. **Verification, PR, and review.** These are the DAG's closing nodes, already defined from `references/verification.md`, and they run after the production nodes. Follow that reference through combined QA, PR, review, merge, verification of the merged result, and cleanup.
 
 Loop back rather than restart: a REVISE returns to stage 2 with a correction run in the same worktree and PR, then comes back to stage 3. The loop ends at APPROVED and a merged, verified result.
@@ -40,7 +40,7 @@ These rules hold for every model and every request size. Breaking one is a defec
 
 ## The purpose boundary
 
-The original request is the boundary for every stage: discovery, plan, TDD, QA, and review.
+The original request is the boundary for every stage: discovery, plan, tests, QA, and review.
 
 - Discovery may look wide to find who and what the result touches. Wide discovery doesn't authorize solving every affected party's discomfort.
 - The ideal state is the state where the original request is fully delivered with no regression it introduces. Don't widen it into a general improvement of the product.
@@ -77,7 +77,7 @@ This skill doesn't outrank system or developer instructions, later explicit user
 | ulw-loop: completed aggregate requires a fresh session | Wish deliberately reuses the same session: archive `goals.json`, `ledger.jsonl`, and `brief.md` to `.omo/ulw-loop/archive/<name>/`, verify with `cmp`, then `createGoals({ force: true })`; never `addGoal` onto a completed aggregate (see `references/execution.md`, One loop goal) |
 | mass-ulw: one run per phase | A task's work runs as sequential runs (see Task shape); a correction run is a new run in the same worktree |
 | Ultrawork: conditional reviewer loop, at most two re-reviews then ask the user | Minimal plan gate, then one mandatory ultrabrain final review; REVISE rounds are delta-scoped, each by a new reviewer, and unlimited until APPROVED (deliberate owner decision; see `references/verification.md`, REVISE) |
-| Ultrawork: tests only when the repo keeps them and a regression would pass unnoticed; no RED/GREEN mandate | Wish keeps behavioral TDD where runtime behavior changes and the repo can hold tests (see `references/execution.md`, Behavioral TDD) |
+| Ultrawork: tests only when the repo keeps them and a regression would pass unnoticed; no RED/GREEN mandate | Same rule, with no RED-first mandate: the plan's risk list fixes which regressions get a test, and every guard test passes an injection check (see `references/execution.md`, Regression tests) |
 | ulw-loop: evidence bound to tree hash, rerun at current HEAD when the tree differs | Wish decides reruns per target (see `references/verification.md`, Evidence reuse per target); loop evidence records and the final checkpoint come from the final full pass on the merged result, so the loop's tree rule is never bypassed |
 | Ultrawork: blast-radius fix versus tracked issue | Same split (see The purpose boundary); a record in the follow-up file plus its memory entry is the tracked issue (see Follow-up record) |
 
