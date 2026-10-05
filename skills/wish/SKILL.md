@@ -1,6 +1,6 @@
 ---
 name: wish
-description: "Runs a user-authorized /wish request end to end inside its original purpose: bounded discovery, one plan with a minimal plan gate, one ulw loop goal, worktree DAG execution with risk-based regression tests, QA, PR, and a final ultrabrain review. Use when the /wish command or the user names this skill."
+description: "Runs a user-authorized /wish request end to end inside its original purpose and companion scope: bounded discovery, one plan with a single architect plan review, one ulw loop goal, worktree DAG execution with risk-based regression tests, QA, PR, and a final ultrabrain review. Use when the /wish command or the user names this skill."
 metadata:
   short-description: Bounded wish orchestration over ulw-plan, ulw-loop, and mass-ulw
 ---
@@ -9,14 +9,14 @@ metadata:
 
 A `/wish` invocation is the user's request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract. The three references specialize the native skills `ulw-plan`, `ulw-loop`, and `mass-ulw` for each stage.
 
-Resolve every reference-document path in this skill relative to the directory of this SKILL.md. SDK and work-artifact paths, such as the follow-up file, follow their own rules below. The skill registration gives that directory; never guess an install location. Read native skills from the locations the available skill list gives.
+Resolve every reference-document path in this skill relative to the directory of this `SKILL.md`. SDK and work-artifact paths, such as the follow-up file, follow their own rules below. The skill registration gives that directory; never guess an install location. Read native skills from the locations the available skill list gives.
 
 ## Stages and required reads
 
 Move through the stages in order. Read each reference and each native skill at the timing below, not before.
 
-1. **Discovery and plan.** Required reads at entry: `references/planning.md` and the `ulw-plan` skill. Survey context and history, name the affected users and the ideal state inside the boundary, list the gaps, define QA scenarios from the users' perspective, write one plan, and pass the minimal plan gate described there. Leave this stage when the plan gate passes.
-2. **Execution.** Required reads when the plan gate passes, in this order:
+1. **Discovery and plan.** Required reads at entry: `references/planning.md` and the `ulw-plan` skill. Survey context and history, name the affected users and the ideal state inside the boundary, list the gaps, define QA scenarios from the users' perspective, write one plan, and pass the single architect plan review in `references/planning.md`, Plan review. Leave this stage when the one architect round has returned and every cited blocker has a recorded fix under that procedure.
+2. **Execution.** Required reads when stage 1's exit condition holds, in this order:
    1. `references/execution.md`.
    2. The `ulw-loop` skill, before seeding the goal.
    3. The `mass-ulw` skill, then its `references/planning.md` in full, before defining any task DAG.
@@ -40,12 +40,19 @@ These rules hold for every model and every request size. Breaking one is a defec
 
 ## The purpose boundary
 
-The original request is the boundary for every stage: discovery, plan, tests, QA, and review.
+The original request and its companion items are the boundary for every stage: discovery, plan, tests, QA, and review.
 
 - Discovery may look wide to find who and what the result touches. Wide discovery doesn't authorize solving every affected party's discomfort.
-- The ideal state is the state where the original request is fully delivered with no regression it introduces. Don't widen it into a general improvement of the product.
-- A finding is **in scope** when it shows the request isn't delivered, the change introduces a regression (including a failing test or a stale doc of code this change touched), or the proof is invalid. Fix it autonomously, inside the same task.
-- A finding is **out of scope** otherwise, including real pre-existing bugs. Don't fix it. Record it as a follow-up (next section).
+- The ideal state is the state where the request IS rows and COMPANION rows are fully delivered with no regression the change introduces. **NEVER** widen it into a general improvement of the product.
+- **In scope** means the request IS rows plus COMPANION rows: those planned from the start, or items found later that pass guards (a)-(c) below and are then added as a COMPANION row under guard (d). A planned COMPANION row not delivered is "request not delivered", just like an unmet request IS row.
+- A **companion** item is the same grain as the change and something the requester would naturally expect done together. Ask: "Would the requester look at the PR and ask why this was not done?" It must pass these guards:
+  - **(a) One hop only.** Attach it directly to a request IS row, **NEVER** to another companion.
+  - **(b) No new owner decision.** Anything the user must choose is not companion; ask the decision or record a follow-up.
+  - **(c) Same task and PR.** Anything needing a separate task is not companion.
+  - **(d) Visible in the plan.** Record each as `COMPANION: <item> <- <request IS row> : <why expected>`.
+- Same-pattern pre-existing bugs at sibling locations found while fixing are companion items under these guards, not unrelated follow-ups.
+- A finding is **in scope** when it shows an IS or COMPANION row isn't delivered, the change introduces a regression (including a failing test or a stale doc of code this change touched), or the proof is invalid. Fix it autonomously, inside the same task. For a newly found companion, add its row as above and fix it in that task.
+- Everything else is **out of scope**, including unrelated pre-existing bugs. **NEVER** fix it in this task. Record it under `SKILL.md`, Follow-up record.
 - When impact is **uncertain**, run the smallest check that decides it. If the check shows it affects the request, it's in scope. An unrelated hypothetical that can't be decided may become a follow-up with what was tried. Uncertainty that keeps you from proving the request is delivered, or that the change introduced no regression, is invalid evidence, not a follow-up: verify it adequately or report an honest blocker. Deferring it never turns a criterion into a PASS.
 
 ## Follow-up record
@@ -54,7 +61,7 @@ The **follow-up file** is `<evidenceRoot>/follow-ups.md`, where `evidenceRoot` i
 
 Until the loop initializes and `evidenceRoot` exists, hold findings in the plan file. Once it exists, record one absolute path in the plan before execution or dispatch, then transfer any held findings to that file. Every later finding, memory entry, and final report reuses that path.
 
-Each record contains the finding, reproduction, evidence, impact, and exclusion reason. Later attempts reuse the same file and keep its existing records. The loop ledger only indexes progress, verdicts, and evidence references; it never replaces the follow-up file. Create the file only when a real finding exists.
+Each record contains the finding, reproduction, evidence, impact, and exclusion reason, including why it is not companion: name which guard (a)-(d) it fails under `SKILL.md`, The purpose boundary. Later attempts reuse the same file and keep its existing records. The loop ledger only indexes progress, verdicts, and evidence references; it never replaces the follow-up file. Create the file only when a real finding exists.
 
 Workers report findings and append them when they can write the file; the lead saves a persistent memory entry with a short summary, why the finding wasn't fixed in this work, and the follow-up file path. Memory is an index; the follow-up file keeps the detail.
 
@@ -70,23 +77,24 @@ This skill doesn't outrank system or developer instructions, later explicit user
 
 | Native default | Wish rule |
 | --- | --- |
-| ulw-plan: plan mode is sticky; pledge, approval brief and wait, separate execution session | `/wish` is the approval; no pledge or wait; continue in this session. ulw-plan's planning discipline (ideal state, IS/GAP rows, decision-complete plan, explore before asking, agent-executed QA per todo, test strategy, which in wish is the risk list) and its owner-decision rule stay: genuine owner-decisions (irreversible, destructive, spend) are still asked, and an explicit user request to be interviewed is honored |
-| ulw-plan: native plan-reviewer gate opens only for its own recorded plans | Wish's minimal gate: native plan-reviewer only when genuinely eligible, otherwise one category-based read-only review (see `references/planning.md`, Minimal plan gate) |
-| Ultrawork bootstrap: goal and notepad | No goal or notepad at bootstrap; the stage 1 plan file holds notes; stage 2 ulw-loop creates the goal and its ledger is the notepad (see rule 3 for registration) |
+| ulw-plan: plan mode is sticky; pledge, approval brief and wait, separate execution session | `/wish` is the approval; no pledge or wait; continue in this session. ulw-plan's planning discipline (ideal state, IS/GAP rows, decision-complete plan, explore before asking, agent-executed QA per todo, test strategy, which in wish is the three test principles and the risk list under `references/execution.md`, Regression tests) and its owner-decision rule stay: genuine owner-decisions (irreversible, destructive, spend) are still asked, and an explicit user request to be interviewed is honored |
+| ulw-plan: native plan-review gate opens only for its own recorded plans | A single architect plan review under `references/planning.md`, Plan review; that procedure defines blocker fixes, their record, and stage 1's exit |
+| Ultrawork bootstrap: goal and notepad | No goal or notepad at bootstrap; the stage 1 plan file holds notes; stage 2 ulw-loop creates the goal and its ledger is the notepad (see `SKILL.md`, Non-negotiable rules, rule 3 for registration) |
 | ulw-loop: separate goal per phase or task | One top-level loop goal for the whole wish; tasks and runs live inside it. mass-ulw already registers no second goal under ulw-loop; wish agrees |
 | ulw-loop: completed aggregate requires a fresh session | Wish deliberately reuses the same session: archive `goals.json`, `ledger.jsonl`, and `brief.md` to `.omo/ulw-loop/archive/<name>/`, verify with `cmp`, then `createGoals({ force: true })`; never `addGoal` onto a completed aggregate (see `references/execution.md`, One loop goal) |
-| mass-ulw: one run per phase | A task's work runs as sequential runs (see Task shape); a correction run is a new run in the same worktree |
-| Ultrawork: conditional reviewer loop, at most two re-reviews then ask the user | Minimal plan gate, then one mandatory ultrabrain final review; REVISE rounds are delta-scoped, each by a new reviewer, and unlimited until APPROVED (deliberate owner decision; see `references/verification.md`, REVISE) |
-| Ultrawork: tests only when the repo keeps them and a regression would pass unnoticed; no RED/GREEN mandate | Same: no RED-first step; the order of writing code and tests is free. Wish adds that the plan's risk list decides which regressions get a test and that every guard's test passes an injection check (see `references/execution.md`, Regression tests) |
+| mass-ulw: one run per phase | A task's work runs as sequential runs (see `SKILL.md`, Task shape); a correction run is a new run in the same worktree |
+| mass-ulw: quick-first ladder, cheap closing verification node | Route by difficulty with host-listed categories only; one verification node per parallel batch at >= the batch's hardest difficulty, gating the next batch by verdict file (see `references/execution.md`, Worktree and node design) |
+| Ultrawork: conditional reviewer loop, at most two re-reviews then ask the user | The single architect plan review under `references/planning.md`, Plan review, then one mandatory ultrabrain final review; REVISE rounds are delta-scoped, each by a new reviewer, and unlimited until APPROVED (deliberate owner decision; see `references/verification.md`, REVISE) |
+| Ultrawork: tests only when the repo keeps them and a regression would pass unnoticed; no RED/GREEN mandate | No RED-first step; code first under the three test principles in `references/execution.md`, Regression tests. That section also governs the plan's risk list, which decides which regressions get a test, and the injection check every guard's test must pass |
 | ulw-loop: evidence bound to tree hash, rerun at current HEAD when the tree differs | Wish decides reruns per target (see `references/verification.md`, Evidence reuse per target); loop evidence records and the final checkpoint come from the final full pass on the merged result, so the loop's tree rule is never bypassed |
-| Ultrawork: blast-radius fix versus tracked issue | Same split (see The purpose boundary); a record in the follow-up file plus its memory entry is the tracked issue (see Follow-up record) |
+| Ultrawork: blast-radius fix versus tracked issue | Same split plus COMPANION items (see `SKILL.md`, The purpose boundary); a record in the follow-up file plus its memory entry is the tracked issue (see `SKILL.md`, Follow-up record) |
 
 Still applies: every compatible native rule applies in full - evidence capture, cleanup receipts, asynchronous waiting, never suppressing failures, verification rigor, recording regressions caught and QA invocations in memory, and ultrawork's per-target evidence reuse with one final full pass, which wish shares (the ulw-loop tree-hash rule is the specialized row above).
 
 ## Task shape
 
 - One requested purpose is one task. Per pre-merge delivery, it has one worktree, one PR, and one branch; gaps are nodes, not tasks.
-- Its work runs as one or more **sequential** runs. A run is one mass-ulw `workflow` DAG (one mass-ulw phase), and its nodes are the DAG nodes rule 4 refers to. The sequence is the initial run, then runs defined from what earlier runs proved, such as polish, REVISE corrections, and post-merge fixes. **NEVER** split a task into parallel runs for speed; concurrency comes from parallel nodes inside a run.
+- Its work runs as one or more **sequential** runs. A run is one mass-ulw `workflow` DAG (one mass-ulw phase), and its nodes are the DAG nodes in `SKILL.md`, Non-negotiable rules, rule 4. The sequence is the initial run, then runs defined from what earlier runs proved, such as polish, REVISE corrections, and post-merge fixes. **NEVER** split a task into parallel runs for speed; concurrency comes from parallel nodes inside a run.
 - Create a second task only for work with a different purpose. Tasks are independent when neither can affect the other's correctness; when that's unclear, keep one task.
 - Across the wish, the task is the unit of parallelism. Large work splits into tasks only along the purpose lines above; a large single-purpose request stays one task.
 - Independent tasks run concurrently. A dependent task starts after its prerequisite merges. Approved merges happen one at a time without waiting on unrelated tasks.
@@ -99,8 +107,10 @@ Before dispatch, every implementation, QA, and review assignment **MUST** explic
 
 - Purpose: the original requested outcome.
 - Scope: this assignment's permitted work.
-- Blockers: goal failure, introduced regression, and invalid proof; state all three, including in implementation and QA assignments.
-- Separate findings: report unrelated findings instead of fixing them or treating them as blockers; follow Follow-up record.
+- Blockers: goal failure = an IS or COMPANION row not delivered; introduced regression; invalid proof. State all three, including in implementation and QA assignments.
+- Separate findings: unrelated means not companion under `SKILL.md`, The purpose boundary. Report those findings instead of fixing them or treating them as blockers; follow `SKILL.md`, Follow-up record.
+
+Every child prompt **MUST** also carry the companion definition, by an explicit pointer to `SKILL.md`, The purpose boundary, or a quote from that section. Node prompt fields, including the success criterion, exact VERIFY, numbered must-do steps, and forbidden deviations, follow `references/execution.md`, Worktree and node design.
 
 The lead owns the boundary. When a child drifts, reporting unrelated work as required or widening its own scope, correct it with a follow-up message or a re-scoped prompt. Don't accept that work as a requirement. A reviewer that flags unrelated quality issues is producing follow-up notes, not blockers.
 
@@ -108,10 +118,10 @@ For command paths, see `references/execution.md`, Worktree and node design.
 
 ## Progress reporting
 
-Keep the todo list current for the whole run. At every node and stage transition, update the todo state (start, done, append, drop) and report it to the user in a short handoff naming what just finished, what is running, and what comes next. Never let the todo list lag behind the loop ledger or the DAG run.
+Keep the todo list current for the whole run. At every node and stage transition, update the todo state (start, done, append, drop) and report it to the user in a short handoff naming what just finished, what is running, and what comes next. When each batch verification node finishes, report its verdict on that wake; apply the verdict and recovery procedure in `references/execution.md`, Worktree and node design. **NEVER** let the todo list lag behind the loop ledger or the DAG run.
 
 ## Finish
 
-Stop when the requested work is merged, the full verification set passes on the merged result, task worktrees and merged task branches are removed, and the report is delivered. For report contents, see `references/verification.md`, Final report checklist; for out-of-scope disclosure, see Follow-up record.
+Stop when the requested work is merged, the full verification set passes on the merged result, task worktrees and merged task branches are removed, and the report is delivered. For report contents, see `references/verification.md`, Final report checklist; for out-of-scope disclosure, see `SKILL.md`, Follow-up record.
 
 Always respond in the user's language. Agent prompts stay in English.
