@@ -11,9 +11,11 @@ Then check the plan's risk list:
 - Every `guard` row: its test exists and passes, and its injection check shows the injection diff, the failing output, and the passing output after restore, with the diff producing the regression the guard names.
 - Every `no-test` row: the reason is one of the allowed ones, and any QA scenario it names passed.
 
-A missing guard test, a missing capture, an injection diff that doesn't produce the guard's regression, an injection that stayed green, or a `no-test` reason outside the list is invalid evidence. A touched behavior missing from the list is a follow-up note, unless it shows the request isn't delivered or this change introduced a regression.
+A missing guard test, a missing capture, an injection diff that doesn't produce the guard's regression, an injection that stayed green, or a `no-test` reason outside the list is invalid evidence. A touched behavior missing from the risk list is in scope when it shows an IS or COMPANION row not delivered, when this change introduced a regression, or when it passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary): add the COMPANION row and fix it in the same worktree. Otherwise it is a follow-up note (`SKILL.md`, Follow-up record).
 
 If a scenario fails, it's in scope by definition. Fix it in the same worktree before opening the PR.
+
+Then build the **conformance table**, one row per IS row of the plan, with these columns: the IS row; `GAP` with the gap it closed, or `no gap` with the evidence it was already met; the todo that closed it; the QA evidence path with `PASS` or `FAIL`; and the `guard` row that protects it, or `none`. A row whose evidence is missing or failed is a mismatch: fix it in the same worktree, then refill the table. The PR opens only when every row matches. If an IS row itself proves wrong, such as a wrong party or rows that contradict, fix only that row in the plan and record why; **NEVER** restart the run for it.
 
 ## Evidence reuse per target
 
@@ -27,11 +29,11 @@ Don't invalidate all evidence because one file changed, and don't rerun the full
 
 ## PR
 
-Follow `SKILL.md` rule 6 and Task shape for PR timing and shape. The body lists the behavior delivered, the tests and QA run, and the real limits. No blanket enforcement claims.
+Follow `SKILL.md` rule 6 and Task shape for PR timing and shape. The body lists the behavior delivered, the tests and QA run, and the real limits. It also carries the conformance table from Combined verification and the plan's COMPANION rows. No blanket enforcement claims.
 
 ## Final ultrabrain review
 
-After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, the plan's risk list, and the QA artifacts. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure, an introduced regression, or invalid evidence, including risk-list evidence that fails the Combined verification check. Anything else it raises is a follow-up note.
+After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, the plan's risk list, the conformance table, the plan's Plan review record (`references/planning.md`, Plan review), and the QA artifacts. The review checks the plan-review blocker fixes. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure (`SKILL.md`, Delegation prompts), an introduced regression, or invalid evidence, including risk-list evidence that fails the Combined verification check; an item that passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary) counts as goal failure. Anything else it raises is a follow-up note.
 
 This review is mandatory and isn't replaced by anything below.
 
@@ -52,12 +54,13 @@ Repeat until APPROVED. There is no round limit; see the owner policy in `SKILL.m
 
 - Follow `SKILL.md` rule 6 and Task shape for approved merges.
 - If integrating with other merges changes a task's behavior, rerun only the affected targets. If the approved implementation changes substantively, get an ultrabrain re-review by a new reviewer before merging.
-- After all tasks merge, right before the final report, run the full verification set once on the merged result: every QA scenario plus the repository's test suite, typecheck, and build where it has them. Until that point the per-target reuse rule decides what reruns; this one full pass is the only exception. Record loop evidence and the final checkpoint from this final pass so the loop's tree-hash rule is satisfied. For a failing target, follow `SKILL.md`, Task shape, for post-merge continuation.
+- After all tasks merge, right before the final report, run the full verification set once on the merged result: every QA scenario plus the repository's test suite, typecheck, and build where it has them. Until that point the per-target reuse rule decides what reruns; this one full pass is the only exception. Refill the conformance table from this pass for the report. Record loop evidence and the final checkpoint from this final pass so the loop's tree-hash rule is satisfied. For a failing target, follow `SKILL.md`, Task shape, for post-merge continuation.
 - When the goal is satisfied, perform the cleanup in `SKILL.md`, Finish, complete the loop goal, and deliver the report below.
 
 ## Final report checklist
 
 - Results: what was delivered and merged.
 - Evidence: the QA scenarios and tests, with artifact locations.
+- Conformance: the conformance table refilled from the final full pass, and the COMPANION items delivered.
 - Limits: what wasn't proven or what the host couldn't do.
-- Separate findings: follow `SKILL.md`, Follow-up record.
+- Separate findings: follow `SKILL.md`, Follow-up record; give each follow-up the companion guard (a)-(d) it fails, so its exclusion is judgeable.
