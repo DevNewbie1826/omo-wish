@@ -4,14 +4,14 @@ This file covers stage 3. Define these closing nodes when you define the task DA
 
 ## Combined verification
 
-Run the task's QA scenarios through their real surfaces, plus the tests the repository keeps for the changed behavior. Tests alone don't prove the user-visible behavior; each scenario needs its own artifact. Record the command, the observable, PASS or FAIL, and cleanup receipts for anything the QA started.
+Run the task's QA scenarios through their real surfaces, plus the tests the repository keeps for the changed behavior. Tests alone don't prove the user-visible behavior; each scenario needs its own artifact. Record the command, the observable, PASS or FAIL, and cleanup receipts for anything the QA started. Assert the identity and marker of each record, not only its count: totals can hold steady while records change or vanish, and a locator that can match an aggregate checks the aggregate. Record the reference set by identifier and marker, and diff that. Every artifact a verdict, conformance row, or PR body cites must exist at the cited path when cited and show the observable itself, uncropped; quote each figure from the artifact of the run it names, recorded with that run's identifier.
 
 Then check the plan's risk list:
 
 - Every `guard` row: its test exists and passes, and its injection check shows the injection diff, the failing output, and the passing output after restore, with the diff producing the regression the guard names.
 - Every `no-test` row: the reason is one of the allowed ones, and any QA scenario it names passed.
 
-A missing guard test, a missing capture, an injection diff that doesn't produce the guard's regression, an injection that stayed green, or a `no-test` reason outside the list is invalid evidence. A touched behavior missing from the risk list is in scope when it shows an IS or COMPANION row not delivered, when this change introduced a regression, or when it passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary): add the COMPANION row and fix it in the same worktree. Otherwise it is a follow-up note (`SKILL.md`, Follow-up record).
+A missing guard test, a missing capture, an injection diff that doesn't produce the guard's regression, an injection that stayed green, a scenario that skipped a step it claims (`references/planning.md`, The plan, QA scenarios from the users' side), or a `no-test` reason outside the list is invalid evidence. A touched behavior missing from the risk list is in scope when it shows an IS or COMPANION row not delivered, when this change introduced a regression, or when it passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary): add the COMPANION row and fix it in the same worktree. Otherwise it is a follow-up note (`SKILL.md`, Follow-up record).
 
 If a scenario fails, it's in scope by definition. Fix it in the same worktree before opening the PR.
 
@@ -24,6 +24,8 @@ Evidence is valid for a target (a scenario, test, or review claim) until somethi
 1. Check what changed since capture: the files it exercised, its dependencies, and the environment it ran in. At minimum, treat as affected the tests of every file the change touched and of the files that import it, and the scenarios that exercise them.
 2. If none of those changed, reuse it. Keep the original capture's provenance (when, where, which commit) and write down why it's still valid.
 3. If any changed, or you can't tell, rerun that target.
+
+Never overwrite or delete a captured artifact. Write each rerun to a new file suffixed with its attempt number and keep every earlier one. A verdict file the gate reads at its fixed path (`references/execution.md`, Worktree and node design) is the one exception: it carries no suffix.
 
 Don't invalidate all evidence because one file changed, and don't rerun the full matrix after every patch. The one full pass happens before the final report (see Merge and finish).
 
