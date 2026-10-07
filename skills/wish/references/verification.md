@@ -6,10 +6,12 @@ This file covers stage 3. Define these closing nodes when you define the task DA
 
 Run the task's QA scenarios through their real surfaces, plus the tests the repository keeps for the changed behavior. Tests alone don't prove the user-visible behavior; each scenario needs its own artifact. Record the command, the observable, PASS or FAIL, and cleanup receipts for anything the QA started. Assert the identity and marker of each record, not only its count: totals can hold steady while records change or vanish, and a locator that can match an aggregate checks the aggregate. Record the reference set by identifier and marker, and diff that. Every artifact a verdict, conformance row, or PR body cites must exist at the cited path when cited and show the observable itself, uncropped; quote each figure from the artifact of the run it names, recorded with that run's identifier.
 
+A QA comparator or harness is evidence only when it fails closed. Run it once on a corrupted or missing input as a control and capture that failure beside its passing run. A comparator seen only passing, or one that still passes with an input missing, is invalid evidence.
+
 Then check the plan's risk list:
 
 - Every `guard` row: its test exists and passes, and its injection check shows the injection diff, the failing output, and the passing output after restore, with the diff producing the regression the guard names.
-- Every `no-test` row: the reason is one of the allowed ones, and any QA scenario it names passed.
+- Every `no-test` row: the reason is one of the allowed ones, and any QA scenario it names passed. Check each claim the row makes against the source it cites, and record that check, with the file and line, as evidence; a claim with no source, or one the source doesn't establish, is invalid evidence.
 
 A missing guard test, a missing capture, an injection diff that doesn't produce the guard's regression, an injection that stayed green, a scenario that skipped a step it claims (`references/planning.md`, The plan, QA scenarios from the users' side), or a `no-test` reason outside the list is invalid evidence. A touched behavior missing from the risk list is in scope when it shows an IS or COMPANION row not delivered, when this change introduced a regression, or when it passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary): add the COMPANION row and fix it in the same worktree. Otherwise it is a follow-up note (`SKILL.md`, Follow-up record).
 
@@ -46,9 +48,9 @@ The ulw-loop final checkpoint may require a quality-gate record whose reviewer f
 ## REVISE
 
 1. Follow `SKILL.md`, Task shape and Stages and required reads, for the correction run's worktree and PR.
-2. Build a new mass-ulw correction run from the required changes only, under `SKILL.md` rule 4. Independent fixes run in parallel.
+2. Build a new mass-ulw correction run from the required changes only, under `SKILL.md` rule 4. Fix each required change as the defect class it represents, not only the instance or wording it cites: find that class's other inputs and interleavings, such as the same ID where the review cited a different one, and fix them in the same run. Independent fixes run in parallel.
 3. Rerun the QA that the fixes affect, using the reuse rule above for the rest.
-4. End with an ultrabrain delta re-review by a new reviewer, never the one that returned REVISE: the delta diff, the required changes it cited, and fresh evidence for the affected targets. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
+4. End with an ultrabrain delta re-review by a new reviewer, never the one that returned REVISE: the delta diff, the required changes it cited, and fresh evidence for the affected targets, including, for each interleaving or input the previous verdict named, a capture showing its test fails with the fix reverted and passes with it. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
 
 Repeat until APPROVED. There is no round limit; see the owner policy in `SKILL.md`, Native skills and mode.
 
@@ -65,4 +67,5 @@ Repeat until APPROVED. There is no round limit; see the owner policy in `SKILL.m
 - Evidence: the QA scenarios and tests, with artifact locations.
 - Conformance: the conformance table refilled from the final full pass, and the COMPANION items delivered.
 - Limits: what wasn't proven or what the host couldn't do.
+- Removed tests: each existing or approved test removed, why, and the evidence that replaces it (`references/execution.md`, Regression tests), or none.
 - Separate findings: follow `SKILL.md`, Follow-up record; give each follow-up the companion guard (a)-(d) it fails, so its exclusion is judgeable.

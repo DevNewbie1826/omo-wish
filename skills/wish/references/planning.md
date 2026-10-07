@@ -24,7 +24,7 @@ Write one plan file with:
 - **QA scenarios from the users' side.** At least one scenario per IS row, each with the reason it proves that row. A scenario names the real surface, the exact invocation, the single PASS/FAIL observable, the happy case and the failure case, and the evidence path. A scenario proves only the steps it actually performed: a rehearsal that skips, stubs, or assumes a step it claims, such as a reconnect or a restore, is invalid evidence for that step, and its artifact must show the state after that step.
 - **Risk list.** One row for each behavior the change touches, in one of two forms:
   - `guard: <regression a user would hit> -> <node> [<existing test path::name>, when one already catches it]`
-  - `no-test: <reason>`, where the reason is exactly one of: the change is prose, a prompt, or docs (read-through QA, never wording tests); or the behavior can't be tested in this repository, so QA scenario `<id>` covers it.
+  - `no-test: <reason>`, where the reason is exactly one of: the change is prose, a prompt, or docs (read-through QA, never wording tests); or the behavior can't be tested in this repository, so QA scenario `<id>` covers it. When the row rests on a claim about behavior, such as restart or recovery, it names the source that establishes the claim.
 
   A guard names a regression a user would hit, never an implementation step. Only `guard` rows get new tests (see `references/execution.md`, Regression tests).
 - **Tasks and DAG shape.** Usually one task. Name the nodes, their write scopes, and real dependencies. Don't invent nodes to fill a quota. Route each node by difficulty against the categories the host lists (`references/execution.md`, Worktree and node design); name no category here.
@@ -38,7 +38,7 @@ One review round, by `category: "architect"`. Spawn one `task` with that categor
 
 Don't run every native advisory lane or a full review panel. A plan blocker is something that would make the plan fail the request, introduce a regression, or rest on invalid proof. For the risk list, that means a regression a user would plainly hit has neither a `guard` row nor a valid `no-test` row, a guard names an implementation step instead of a regression, or a `no-test` reason is outside the allowed list. A COMPANION row that fails a guard (a)-(d), or a plainly expected item missing both as an IS or COMPANION row and as a reasoned follow-up, is also a blocker (`SKILL.md`, The purpose boundary).
 
-Fix every cited blocker in the plan and record it in the plan's Plan review record. The round is not re-reviewed; the final ultrabrain review checks these fixes (`references/verification.md`, Final ultrabrain review). Record other remarks as notes.
+Fix every cited blocker in the plan and record it in the plan's Plan review record. The round is not re-reviewed; the final ultrabrain review checks these fixes (`references/verification.md`, Final ultrabrain review). Before execution starts, the lead re-reads the plan once and confirms that each recorded fix is actually in it; that check is not a second review round. Record other remarks as notes.
 
 ## Leaving this stage
 
