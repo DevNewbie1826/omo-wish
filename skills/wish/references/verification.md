@@ -7,7 +7,7 @@ This file covers stage 3, plus the checks the batch verification nodes run in st
 Each batch verification node (`references/execution.md`, Worktree and node design) runs these checks in addition to rerunning every node's VERIFY, and its verdict names every finding:
 
 - **Defect classes.** Answer the question of each class the plan chose whose Checked at column in `references/planning.md`, Defect classes, says Batch verification, against the batch's output.
-- **Mutation check.** Pick the three to five highest-risk behaviors the batch changed. For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record the result as killed (a test failed) or survived (none did). A survivor is a finding for the node that owns that behavior. Keep it to three to five behaviors; this isn't a full mutation-testing run.
+- **Mutation check.** When the batch changes testable runtime behavior, pick the three to five highest-risk changed behaviors, or all of them when fewer than three changed. For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record the result as killed (a test failed) or survived (none did). A survivor is a finding for the node that owns that behavior. Behaviors covered by a valid `no-test` row, including every change in a prose-only batch, get no production mutation; the verdict records that and why, and they follow Combined verification. This is a bounded sample, not a full mutation-testing run.
 
 ## Combined verification
 
