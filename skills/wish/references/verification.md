@@ -1,12 +1,19 @@
 # wish: verification, PR, review, and merge
 
-This file covers stage 3. Define these closing nodes when you define the task DAG in stage 2, before the DAG starts; they run after the production nodes settle (`SKILL.md`, Stages and required reads).
+This file covers stage 3, plus the checks the batch verification nodes run in stage 2. Define these closing nodes when you define the task DAG in stage 2, before the DAG starts; they run after the production nodes settle (`SKILL.md`, Stages and required reads).
+
+## Batch verification checks
+
+Each batch verification node (`references/execution.md`, Worktree and node design) runs these checks in addition to rerunning every node's VERIFY, and its verdict names every finding:
+
+- **Defect classes.** Answer the question of each class the plan chose whose Checked at column in `references/planning.md`, Defect classes, says Batch verification, against the batch's output.
+- **Mutation check.** When the batch changes testable runtime behavior, pick the three to five highest-risk changed behaviors, or all of them when fewer than three changed. For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record the result as killed (a test failed) or survived (none did). A survivor is a finding for the node that owns that behavior. Behaviors covered by a valid `no-test` row, including every change in a prose-only batch, get no production mutation; the verdict records that and why, and they follow Combined verification. This is a bounded sample, not a full mutation-testing run.
 
 ## Combined verification
 
 Run the task's QA scenarios through their real surfaces, plus the tests the repository keeps for the changed behavior. Tests alone don't prove the user-visible behavior; each scenario needs its own artifact. Record the command, the observable, PASS or FAIL, and cleanup receipts for anything the QA started. Assert the identity and marker of each record, not only its count: totals can hold steady while records change or vanish, and a locator that can match an aggregate checks the aggregate. Record the reference set by identifier and marker, and diff that. Every artifact a verdict, conformance row, or PR body cites must exist at the cited path when cited and show the observable itself, uncropped; quote each figure from the artifact of the run it names, recorded with that run's identifier.
 
-A QA comparator or harness is evidence only when it fails closed. Run it once on a corrupted or missing input as a control and capture that failure beside its passing run. A comparator seen only passing, or one that still passes with an input missing, is invalid evidence.
+A QA comparator or harness is evidence only when it fails closed. Run it once on a corrupted or missing input as a control and capture that failure beside its passing run. A comparator seen only passing, or one that still passes with an input missing, is invalid evidence. The control must go through the same comparison as the passing run: a control that would still pass with that comparison replaced by a constant is tautological and isn't a control.
 
 Then check the plan's risk list:
 
@@ -37,7 +44,7 @@ Follow `SKILL.md` rule 6 and Task shape for PR timing and shape. The body lists 
 
 ## Final ultrabrain review
 
-After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, the plan's risk list, the conformance table, the plan's Plan review record (`references/planning.md`, Plan review), and the QA artifacts. The review checks the plan-review blocker fixes. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure (`SKILL.md`, Delegation prompts), an introduced regression, or invalid evidence, including risk-list evidence that fails the Combined verification check; an item that passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary) counts as goal failure. Anything else it raises is a follow-up note.
+After the PR exists, spawn one review with `category: "ultrabrain"`. Follow `SKILL.md`, Delegation prompts, and pass the diff, the goal and criteria, the plan's risk list, the conformance table, the plan's Plan review record (`references/planning.md`, Plan review), and the QA artifacts. The review checks the plan-review blocker fixes. It also answers each class in `references/planning.md`, Defect classes, whose Checked at column says Final review, for the docs, the PR body, and the reports. It ends with APPROVED or REVISE. On REVISE it lists required changes, and each one must show goal failure (`SKILL.md`, Delegation prompts), an introduced regression, or invalid evidence, including risk-list evidence that fails the Combined verification check; an item that passes companion guards (a)-(c) (`SKILL.md`, The purpose boundary) counts as goal failure. Anything else it raises is a follow-up note.
 
 This review is mandatory and isn't replaced by anything below.
 
@@ -48,7 +55,7 @@ The ulw-loop final checkpoint may require a quality-gate record whose reviewer f
 ## REVISE
 
 1. Follow `SKILL.md`, Task shape and Stages and required reads, for the correction run's worktree and PR.
-2. Build a new mass-ulw correction run from the required changes only, under `SKILL.md` rule 4. Fix each required change as the defect class it represents, not only the instance or wording it cites: find that class's other inputs and interleavings, such as the same ID where the review cited a different one, and fix them in the same run. Independent fixes run in parallel.
+2. Build a new mass-ulw correction run from the required changes only, under `SKILL.md` rule 4. Record each required change's cause class in the loop ledger, as for any work failure (`references/execution.md`, Recovery). Fix each required change as the defect class it represents, not only the instance or wording it cites: find that class's other inputs and interleavings, such as the same ID where the review cited a different one, and fix them in the same run. Independent fixes run in parallel.
 3. Rerun the QA that the fixes affect, using the reuse rule above for the rest.
 4. End with an ultrabrain delta re-review by a new reviewer, never the one that returned REVISE: the delta diff, the required changes it cited, and fresh evidence for the affected targets, including, for each interleaving or input the previous verdict named, a capture showing its test fails with the fix reverted and passes with it. Don't paste an old approval onto changed code, and don't run a fresh whole-project review each round.
 
