@@ -50,6 +50,7 @@ These are failure classes past wish runs let through to late review. Each is a c
 | D9 | Deliverable contradicts the source of truth | Do docs, the PR body, completion reports, and UI text match the actual behavior and source, with no claim stronger than its evidence and nothing invented? | Final review |
 | D10 | Superseded requirement not propagated | If the requirement changed during the work, do the implementation, tests, and docs prove the latest one rather than the superseded contract? | Plan review |
 | D11 | Nondeterministic or load-sensitive test | Does the test give the same result alone, repeated, and in the full suite under load? | Batch verification |
+| D12 | Same-class variant missed | If the change takes input or values, is there an automatic boundary-input test at the real entry point, covering large, empty, whitespace, unicode, and limit values, so one reviewed variant doesn't leave sibling variants? | Batch verification |
 
 ## Plan review
 
