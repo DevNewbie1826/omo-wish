@@ -466,3 +466,39 @@ test("boundary: an evidence root option with no value is a usage error", () => {
   expect(r.stderr).toContain("usage: node");
   expect(r.stdout).toBe("");
 });
+
+// --- appended for plan section T2b (Plan amendment A1): the symlinked archive and the dot-dot name ---
+
+test("control: 6e an archive entry that is a symbolic link is a root finding", () => {
+  const root = cleanRoot();
+  const target = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(target, "old.md"), "# archived pre-fix copy\n\n- stale: " + tick("captures/gone.txt") + "\n");
+  const link = symlink(target, join(root, "archive"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).not.toContain("SCAN ");
+  expect(r.stdout).not.toContain("SKIP ");
+  expect(lastLine(r)).toBe(`FAIL root archive is a symbolic link: ${link}`);
+});
+
+test("boundary: a scanned root whose own name begins with two dots is inside the evidence root", () => {
+  const evidence = makeRoot();
+  const root = makeCleanRootAt(join(evidence, "..x"));
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(0);
+  expect(r.stdout).toContain("SCAN report.md");
+  expect(lastLine(r)).toBe("PASS evidence-lint");
+});
+
+// --- appended for plan section T2c (Plan amendment A2): the parent directory of the evidence root ---
+
+test("control: 7d a scanned root that is the parent of the evidence root is outside", () => {
+  const base = makeRoot();
+  const evidence = join(base, "evidence");
+  mkdirSync(evidence);
+  const root = makeCleanRootAt(base);
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL root outside evidence root: ${root}`);
+  expect(r.stdout).not.toContain("SCAN ");
+});

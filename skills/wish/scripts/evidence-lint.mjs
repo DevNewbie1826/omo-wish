@@ -3,7 +3,7 @@
 // Checks, in order: cited-paths, hex-commits, file-line-citations, comparator-controls, archive-citations.
 // Imports are limited to node:fs, node:path, node:url, node:child_process; it writes only stdout.
 
-import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -85,6 +85,15 @@ function isDirectory(path) {
   }
 }
 
+// lstat, so a dangling link counts too: what matters is the entry itself, not its target.
+function isSymlink(path) {
+  try {
+    return lstatSync(path).isSymbolicLink();
+  } catch {
+    return false;
+  }
+}
+
 // Containment test shared by the --evidence-root check and the archive-citations check.
 // Both arguments must already be resolved through realpath.
 function isInside(parentReal, childReal) {
@@ -112,6 +121,11 @@ const splitLines = (text) => text.split("\n").map((line) => (line.endsWith("\r")
 function rootProblem(path) {
   if (!existsSync(path)) return `missing: ${path}`;
   if (!statSync(path).isDirectory()) return `not a directory: ${path}`;
+  // L2b: a symlinked archive entry hides its files from both the SKIP listing and the
+  // archive-citations check, so the lint fails closed before any scan. A regular file named
+  // archive is not an archive and stays ignored, as in base.
+  const archive = join(path, ARCHIVE_DIR_NAME);
+  if (isSymlink(archive)) return `archive is a symbolic link: ${archive}`;
   if (walk(path, MARKDOWN_EXTENSIONS, { skipRootArchive: true }).length === 0) return `no markdown files under: ${path}`;
   return null;
 }
