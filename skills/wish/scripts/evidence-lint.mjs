@@ -1,15 +1,16 @@
 // Evidence lint for wish run evidence directories.
-// Usage: node <skill-dir>/scripts/evidence-lint.mjs <root> [--repo <path>]
-// Checks, in order: cited-paths, hex-commits, file-line-citations, comparator-controls.
+// Usage: node <skill-dir>/scripts/evidence-lint.mjs <root> [--repo <path>] [--evidence-root <path>]
+// Checks, in order: cited-paths, hex-commits, file-line-citations, comparator-controls, archive-citations.
 // Imports are limited to node:fs, node:path, node:url, node:child_process; it writes only stdout.
 
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const SKILL_DIR = dirname(dirname(fileURLToPath(import.meta.url)));
 const SKIPPED_DIRS = new Set([".git", "node_modules"]);
+const ARCHIVE_DIR_NAME = "archive";
 const MARKDOWN_EXTENSIONS = [".md"];
 const CAPTURE_EXTENSIONS = [".txt", ".log", ".json", ".jsonl"];
 const PATH_EXTENSIONS = [".md", ".txt", ".json", ".jsonl", ".mjs", ".js", ".sh", ".diff", ".png", ".log"];
@@ -20,18 +21,23 @@ const HEX_RUN = /(?<![0-9A-Za-z])[0-9a-f]{40}(?![0-9A-Za-z])/g;
 const QUOTED_FRAGMENT = /^\s*(?:[-\u2014:=]\s*)?"([^"]+)"/;
 
 function usage() {
-  process.stderr.write("usage: node <skill-dir>/scripts/evidence-lint.mjs <root> [--repo <path>]\n");
+  process.stderr.write("usage: node <skill-dir>/scripts/evidence-lint.mjs <root> [--repo <path>] [--evidence-root <path>]\n");
   process.exit(2);
 }
 
 function parseArgs(argv) {
   let root = null;
   let repo = process.cwd();
+  let evidenceRoot = null;
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === "--repo") {
       if (i + 1 >= argv.length) usage();
       repo = argv[i + 1];
+      i += 1;
+    } else if (arg === "--evidence-root") {
+      if (i + 1 >= argv.length) usage();
+      evidenceRoot = argv[i + 1];
       i += 1;
     } else if (arg.startsWith("--")) {
       usage();
@@ -42,19 +48,20 @@ function parseArgs(argv) {
     }
   }
   if (root === null) usage();
-  return { root, repo };
+  return { root, repo, evidenceRoot };
 }
 
-function walk(dir, extensions) {
+function walk(dir, extensions, options = {}) {
   const found = [];
-  const stack = [dir];
+  const stack = [{ path: dir, depth: 0 }];
   while (stack.length > 0) {
-    const current = stack.pop();
+    const { path: current, depth } = stack.pop();
     for (const entry of readdirSync(current, { withFileTypes: true })) {
       const full = join(current, entry.name);
       if (entry.isDirectory()) {
-        if (!SKIPPED_DIRS.has(entry.name)) stack.push(full);
-      } else if (entry.isFile() && extensions.some((ext) => entry.name.endsWith(ext))) {
+        if (options.skipRootArchive && depth === 0 && entry.name === ARCHIVE_DIR_NAME) continue;
+        if (!SKIPPED_DIRS.has(entry.name)) stack.push({ path: full, depth: depth + 1 });
+      } else if (entry.isFile() && (options.anyExtension || extensions.some((ext) => entry.name.endsWith(ext)))) {
         found.push(full);
       }
     }
@@ -70,16 +77,46 @@ function isFile(path) {
   }
 }
 
+function isDirectory(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+// Containment test shared by the --evidence-root check and the archive-citations check.
+// Both arguments must already be resolved through realpath.
+function isInside(parentReal, childReal) {
+  const rel = relative(parentReal, childReal);
+  if (rel === "") return true;
+  return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
+}
+
+// The archive directory is the entry named exactly "archive" directly under the scanned root.
+// The name is matched as a directory entry string, so look-alike names (Archive, archived,
+// archive-old) and nested archive directories are scanned as before.
+function rootArchiveDir(rootPath) {
+  try {
+    const entry = readdirSync(rootPath, { withFileTypes: true }).find(
+      (candidate) => candidate.isDirectory() && candidate.name === ARCHIVE_DIR_NAME,
+    );
+    return entry ? join(rootPath, entry.name) : null;
+  } catch {
+    return null;
+  }
+}
+
 const splitLines = (text) => text.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 
 function rootProblem(path) {
   if (!existsSync(path)) return `missing: ${path}`;
   if (!statSync(path).isDirectory()) return `not a directory: ${path}`;
-  if (walk(path, MARKDOWN_EXTENSIONS).length === 0) return `no markdown files under: ${path}`;
+  if (walk(path, MARKDOWN_EXTENSIONS, { skipRootArchive: true }).length === 0) return `no markdown files under: ${path}`;
   return null;
 }
 
-const { root, repo } = parseArgs(process.argv.slice(2));
+const { root, repo, evidenceRoot } = parseArgs(process.argv.slice(2));
 
 const problem = rootProblem(root);
 if (problem !== null) {
@@ -87,8 +124,31 @@ if (problem !== null) {
   process.exit(1);
 }
 
-const mdFiles = walk(root, MARKDOWN_EXTENSIONS);
+if (evidenceRoot !== null) {
+  if (!existsSync(evidenceRoot)) {
+    console.log(`FAIL root evidence root missing: ${evidenceRoot}`);
+    process.exit(1);
+  }
+  if (!isDirectory(evidenceRoot)) {
+    console.log(`FAIL root evidence root not a directory: ${evidenceRoot}`);
+    process.exit(1);
+  }
+  if (!isInside(realpathSync(evidenceRoot), realpathSync(root))) {
+    console.log(`FAIL root outside evidence root: ${root}`);
+    process.exit(1);
+  }
+}
+
+const archiveDir = rootArchiveDir(root);
+
+const mdFiles = walk(root, MARKDOWN_EXTENSIONS, { skipRootArchive: true });
 for (const md of mdFiles) console.log(`SCAN ${relative(root, md)}`);
+
+if (archiveDir !== null) {
+  for (const file of walk(archiveDir, [], { anyExtension: true })) {
+    console.log(`SKIP ${relative(root, file)}`);
+  }
+}
 
 const mdLines = new Map();
 for (const md of mdFiles) mdLines.set(md, splitLines(readFileSync(md, "utf8")));
@@ -144,7 +204,7 @@ function checkCitedPaths() {
 function checkHexCommits() {
   const findings = [];
   const captured = new Set();
-  for (const capture of walk(root, CAPTURE_EXTENSIONS)) {
+  for (const capture of walk(root, CAPTURE_EXTENSIONS, { skipRootArchive: true })) {
     for (const run of readFileSync(capture, "utf8").matchAll(HEX_RUN)) captured.add(run[0]);
   }
   for (const md of mdFiles) {
@@ -218,11 +278,30 @@ function checkComparatorControls() {
   return findings;
 }
 
+function checkArchiveCitations() {
+  const findings = [];
+  if (archiveDir === null) return findings;
+  const archiveReal = realpathSync(archiveDir);
+  for (const md of mdFiles) {
+    for (const { n, text } of numberedLines(md)) {
+      for (const token of pathTokens(text)) {
+        const resolved = resolveToken(token.path);
+        if (resolved === null) continue;
+        if (isInside(archiveReal, realpathSync(resolved))) {
+          findings.push(`FAIL archive-citations ${display(md)}:${n} cites an archived copy: ${token.path}`);
+        }
+      }
+    }
+  }
+  return findings;
+}
+
 const findings = [
   ...checkCitedPaths(),
   ...checkHexCommits(),
   ...checkFileLineCitations(),
   ...checkComparatorControls(),
+  ...checkArchiveCitations(),
 ];
 
 if (findings.length > 0) {

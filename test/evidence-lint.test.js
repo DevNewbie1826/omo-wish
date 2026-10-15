@@ -276,3 +276,193 @@ test("meta: the control suite fails when the lint script is a constant pass", ()
   expect(output).toContain("control:");
   expect(r.status).not.toBe(0);
 });
+
+// --- appended for plan section T2: archive skip, archive citations, --evidence-root ---
+
+function runArgs(args) {
+  const r = spawnSync("node", [lint, ...args], { encoding: "utf8" });
+  if (r.error) throw r.error;
+  return r;
+}
+
+// Appended cases keep the existing node:fs import line byte-identical, so symlinks
+// are created through the platform's ln.
+function symlink(target, linkPath) {
+  const r = spawnSync("ln", ["-s", target, linkPath], { encoding: "utf8" });
+  if (r.error) throw r.error;
+  if (r.status !== 0) throw new Error(`ln -s ${target} ${linkPath} exited ${r.status}: ${r.stderr}`);
+  return linkPath;
+}
+
+function makeCleanRootAt(dir) {
+  mkdirSync(join(dir, "captures"), { recursive: true });
+  mkdirSync(join(dir, "notes"), { recursive: true });
+  writeFileSync(join(dir, "captures", "run.txt"), `commit ${commitHex}\nEXIT=0\n`);
+  writeFileSync(join(dir, "captures", "qa-1.txt"), "VERDICT: PASS\n");
+  writeFileSync(join(dir, "captures", "qa-1-control.txt"), "VERDICT: FAIL\nEXIT=1\n");
+  writeFileSync(join(dir, "report.md"), reportBody(dir).join("\n"));
+  writeFileSync(
+    join(dir, "notes", "extra.md"),
+    ["# notes", "", "- capture: " + tick("captures/run.txt"), ""].join("\n"),
+  );
+  return dir;
+}
+
+function archivedCopyRoot() {
+  const root = cleanRoot();
+  mkdirSync(join(root, "archive"));
+  writeFileSync(join(root, "archive", "old.md"), "# archived pre-fix copy\n\n- stale: " + tick("captures/gone.txt") + "\n");
+  writeFileSync(join(root, "archive", "old.txt"), "archived capture\n");
+  return root;
+}
+
+test("fixture: an archived pre-fix copy is skipped and listed, and does not fail the lint", () => {
+  const r = run(archivedCopyRoot());
+  expect(r.status).toBe(0);
+  expect(r.stdout.trimEnd().split("\n")).toEqual([
+    "SCAN notes/extra.md",
+    "SCAN report.md",
+    "SKIP archive/old.md",
+    "SKIP archive/old.txt",
+    "PASS evidence-lint",
+  ]);
+});
+
+test("control: 6a a live file citing the archived copy is an archive-citations finding", () => {
+  const root = archivedCopyRoot();
+  const line = appendReport(root, "- archived copy: " + tick("archive/old.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy: archive/old.txt`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 6b the same unresolved token in a live file is a cited-paths finding", () => {
+  const root = archivedCopyRoot();
+  const line = appendReport(root, "- stale live: " + tick("captures/gone.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL cited-paths report.md:${line} unresolved path: captures/gone.txt`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 6c directories whose names only resemble archive are still scanned", () => {
+  for (const name of ["archived", "archive-old", "Archive", "notes/archive"]) {
+    const root = cleanRoot();
+    mkdirSync(join(root, name), { recursive: true });
+    writeFileSync(join(root, name, "old.md"), "- stale: " + tick("captures/gone.txt") + "\n");
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`FAIL cited-paths ${name}/old.md:1 unresolved path: captures/gone.txt`);
+    expect(r.stdout).not.toContain("SKIP ");
+    expect(r.stdout).not.toContain("archive-citations");
+    expect(r.stdout).not.toContain("PASS evidence-lint");
+    expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+  }
+});
+
+test("boundary: a citation of a look-alike archive directory is not an archive-citations finding", () => {
+  const root = cleanRoot();
+  mkdirSync(join(root, "archive-old"));
+  writeFileSync(join(root, "archive-old", "old.txt"), "look-alike capture\n");
+  appendReport(root, "- look-alike: " + tick("archive-old/old.txt"));
+  const r = run(root);
+  expect(r.status).toBe(0);
+  expect(r.stdout).not.toContain("SKIP ");
+  expect(r.stdout).not.toContain("archive-citations");
+  expect(lastLine(r)).toBe("PASS evidence-lint");
+});
+
+test("control: 6d a commit hex held only by an archived capture is absent from captures", () => {
+  const root = cleanRoot();
+  mkdirSync(join(root, "archive"));
+  writeFileSync(join(root, "archive", "old.txt"), uncapturedCommitHex + "\n");
+  const line = appendReport(root, "- uncaptured: " + tick(uncapturedCommitHex));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL hex-commits report.md:${line} ${uncapturedCommitHex}: absent from captures`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 5c a root whose only markdown file is archived is a root finding", () => {
+  const root = makeRoot();
+  mkdirSync(join(root, "archive"));
+  writeFileSync(join(root, "archive", "old.md"), "# archived only\n");
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("FAIL root no markdown files under:");
+  expect(r.stdout).not.toContain("PASS evidence-lint");
+});
+
+test("control: 7a a scanned root outside the evidence root is a root finding", () => {
+  const evidence = makeRoot();
+  const root = cleanRoot();
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL root outside evidence root: ${root}`);
+  expect(r.stdout).not.toContain("SCAN ");
+});
+
+test("control: 7b a missing evidence root path is a root finding", () => {
+  const root = cleanRoot();
+  const evidence = join(makeRoot(), "nope");
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL root evidence root missing: ${evidence}`);
+  expect(r.stdout).not.toContain("SCAN ");
+});
+
+test("control: 7c a sibling whose name only extends the evidence root is outside", () => {
+  const base = makeRoot();
+  const evidence = join(base, "evidence");
+  const root = join(base, "evidence-x");
+  mkdirSync(evidence);
+  makeCleanRootAt(root);
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL root outside evidence root: ${root}`);
+  expect(r.stdout).not.toContain("SCAN ");
+});
+
+test("boundary: the evidence root itself passes as the scanned root", () => {
+  const root = makeCleanRootAt(makeRoot());
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", root]);
+  expect(r.status).toBe(0);
+  expect(lastLine(r)).toBe("PASS evidence-lint");
+});
+
+test("boundary: a scanned root reached through a symlink inside the evidence root passes", () => {
+  const evidence = makeRoot();
+  const real = makeCleanRootAt(join(evidence, "run"));
+  const link = symlink(real, join(makeRoot(), "run-link"));
+  const r = runArgs([link, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(0);
+  expect(lastLine(r)).toBe("PASS evidence-lint");
+});
+
+test("boundary: an evidence root that is a regular file is a root finding", () => {
+  const root = cleanRoot();
+  const evidence = join(makeRoot(), "evidence.txt");
+  writeFileSync(evidence, "not a directory\n");
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL root evidence root not a directory: ${evidence}`);
+  expect(r.stdout).not.toContain("SCAN ");
+});
+
+test("boundary: an archived copy cited through a symlinked root path is still an archive-citations finding", () => {
+  const root = archivedCopyRoot();
+  const link = symlink(root, join(makeRoot(), "root-link"));
+  const line = appendReport(root, "- archived via link: " + tick(join(link, "archive", "old.txt")));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy:`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("boundary: an evidence root option with no value is a usage error", () => {
+  const r = runArgs([cleanRoot(), "--repo", gitRepo, "--evidence-root"]);
+  expect(r.status).toBe(2);
+  expect(r.stderr).toContain("usage: node");
+  expect(r.stdout).toBe("");
+});
