@@ -118,11 +118,12 @@ test("control: 1 a cited path that does not exist is a cited-paths finding", () 
 
 test("control: 2a a forty-hex blob hash is a hex-commits finding", () => {
   const root = cleanRoot();
+  writeFileSync(join(root, "captures", "blob.txt"), blobHex + "\n");
   const line = appendReport(root, "- blob: " + tick(blobHex));
   const r = run(root);
   expect(r.status).toBe(1);
-  expect(r.stdout).toContain(`FAIL hex-commits report.md:${line}`);
-  expect(r.stdout).toContain(blobHex);
+  expect(r.stdout).toContain(`FAIL hex-commits report.md:${line} ${blobHex}: not a commit (blob)`);
+  expect(r.stdout).not.toContain("absent from captures");
   expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
 });
 
