@@ -4,7 +4,7 @@
 // Imports are limited to node:fs, node:path, node:url, node:child_process; it writes only stdout.
 
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -69,6 +69,23 @@ function walk(dir, extensions, options = {}) {
   return found.sort();
 }
 
+// The archive inventory is a listing, not a scan: it descends every directory (the .git and
+// node_modules exclusions and the extension filters belong to the live walk) and lists every
+// regular file, plus every symbolic link, which is listed as it is and never followed.
+function walkArchive(dir) {
+  const found = [];
+  const stack = [dir];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      const full = join(current, entry.name);
+      if (entry.isDirectory()) stack.push(full);
+      else if (entry.isFile() || entry.isSymbolicLink()) found.push(full);
+    }
+  }
+  return found.sort();
+}
+
 function isFile(path) {
   try {
     return statSync(path).isFile();
@@ -94,23 +111,53 @@ function isSymlink(path) {
   }
 }
 
-// Containment test shared by the --evidence-root check and the archive-citations check.
-// Both arguments must already be resolved through realpath.
-function isInside(parentReal, childReal) {
-  const rel = relative(parentReal, childReal);
-  if (rel === "") return true;
-  return !isAbsolute(rel) && rel !== ".." && !rel.startsWith(`..${sep}`);
+// The identity of two stats: the same directory entry, whatever spelling or link reached it.
+const sameFile = (a, b) => a.dev === b.dev && a.ino === b.ino;
+
+// Containment by filesystem identity, shared by the --evidence-root check and the
+// archive-citations check: every prefix of `path`, from the path itself up to the filesystem
+// root, is compared with `stat` by (dev, ino). A prefix IS the ancestor directory, so no spelling
+// ever decides the answer - a different case, a `./` or `../` segment, a duplicated separator,
+// or an aliasing symlink all reach the same directory entry. `path` is taken as given: the caller
+// chooses the lexical resolution (path.resolve, which normalizes the spelling textually and never
+// follows a symlink) or the physical one (realpathSync).
+function hitsIdentity(stat, path) {
+  let current = resolve(path);
+  for (;;) {
+    if (sameFile(statSync(current), stat)) return true;
+    const up = dirname(current);
+    if (up === current) return false;
+    current = up;
+  }
 }
 
-// The archive directory is the entry named exactly "archive" directly under the scanned root.
-// The name is matched as a directory entry string, so look-alike names (Archive, archived,
-// archive-old) and nested archive directories are scanned as before.
-function rootArchiveDir(rootPath) {
+// The --evidence-root containment test: the scanned root is inside the evidence root when their
+// physical paths share a directory entry. realpath does not normalize case on a case-insensitive
+// volume, so a shared ancestor spelled with a different case would fail a literal string test
+// while being the very same directory; the inode identity does not care.
+function isWithin(parentPath, childPath) {
+  return hitsIdentity(statSync(realpathSync(parentPath)), realpathSync(childPath));
+}
+
+// The archived-copy test: a citation is an archived copy when the archive directory lies on its
+// lexical path or on its physical path, and no spelling is compared on either. The lexical walk
+// catches every spelling of a path that runs through the archive - a case alias of the scanned
+// root or of one of its ancestors, `./` and `../` segments, duplicated separators, or a
+// symlinked directory inside the archive that points outside it (the prefix naming the link is
+// the archived entry itself, while realpath leaves the archive). The physical walk catches a
+// path that reaches the archive through a link somewhere above it.
+function citesArchive(archivePath, childPath) {
+  const archiveStat = statSync(archivePath);
+  return hitsIdentity(archiveStat, childPath) || hitsIdentity(archiveStat, realpathSync(childPath));
+}
+
+// The archive entry is the directory entry named exactly "archive" directly under the scanned
+// root. The name is read from the directory itself, so a look-alike spelling (Archive, ARCHIVE)
+// is not mistaken for it on a case-insensitive volume; look-alike names, nested archive
+// directories, and an entry that is a regular file are handled as in base.
+function rootArchiveEntry(rootPath) {
   try {
-    const entry = readdirSync(rootPath, { withFileTypes: true }).find(
-      (candidate) => candidate.isDirectory() && candidate.name === ARCHIVE_DIR_NAME,
-    );
-    return entry ? join(rootPath, entry.name) : null;
+    return readdirSync(rootPath, { withFileTypes: true }).find((entry) => entry.name === ARCHIVE_DIR_NAME) ?? null;
   } catch {
     return null;
   }
@@ -118,21 +165,25 @@ function rootArchiveDir(rootPath) {
 
 const splitLines = (text) => text.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 
-function rootProblem(path) {
+function rootProblem(path, archiveEntry) {
   if (!existsSync(path)) return `missing: ${path}`;
   if (!statSync(path).isDirectory()) return `not a directory: ${path}`;
   // L2b: a symlinked archive entry hides its files from both the SKIP listing and the
-  // archive-citations check, so the lint fails closed before any scan. A regular file named
-  // archive is not an archive and stays ignored, as in base.
-  const archive = join(path, ARCHIVE_DIR_NAME);
-  if (isSymlink(archive)) return `archive is a symbolic link: ${archive}`;
+  // archive-citations check, so the lint fails closed before any scan. The rejection applies
+  // only to the entry named exactly "archive"; a regular file of that name is not an archive
+  // and stays ignored, as in base.
+  if (archiveEntry !== null && isSymlink(join(path, archiveEntry.name))) {
+    return `archive is a symbolic link: ${join(path, archiveEntry.name)}`;
+  }
   if (walk(path, MARKDOWN_EXTENSIONS, { skipRootArchive: true }).length === 0) return `no markdown files under: ${path}`;
   return null;
 }
 
 const { root, repo, evidenceRoot } = parseArgs(process.argv.slice(2));
 
-const problem = rootProblem(root);
+const archiveEntry = rootArchiveEntry(root);
+
+const problem = rootProblem(root, archiveEntry);
 if (problem !== null) {
   console.log(`FAIL root ${problem}`);
   process.exit(1);
@@ -147,19 +198,19 @@ if (evidenceRoot !== null) {
     console.log(`FAIL root evidence root not a directory: ${evidenceRoot}`);
     process.exit(1);
   }
-  if (!isInside(realpathSync(evidenceRoot), realpathSync(root))) {
+  if (!isWithin(evidenceRoot, root)) {
     console.log(`FAIL root outside evidence root: ${root}`);
     process.exit(1);
   }
 }
 
-const archiveDir = rootArchiveDir(root);
+const archiveDir = archiveEntry !== null && archiveEntry.isDirectory() ? join(root, archiveEntry.name) : null;
 
 const mdFiles = walk(root, MARKDOWN_EXTENSIONS, { skipRootArchive: true });
 for (const md of mdFiles) console.log(`SCAN ${relative(root, md)}`);
 
 if (archiveDir !== null) {
-  for (const file of walk(archiveDir, [], { anyExtension: true })) {
+  for (const file of walkArchive(archiveDir)) {
     console.log(`SKIP ${relative(root, file)}`);
   }
 }
@@ -192,8 +243,15 @@ function pathTokens(lineText) {
   return tokens;
 }
 
+// The token is resolved the same way for both spellings: path.resolve normalizes `.` and `..`
+// segments and duplicated separators textually, so the spelling of a citation never decides
+// whether it is seen at all (an absolute token used to be stat-ed as written, which made a `..`
+// segment after a component that does not exist unresolvable). Symlinks are not followed here.
 function resolveToken(path) {
-  if (isAbsolute(path)) return isFile(path) ? path : null;
+  if (isAbsolute(path)) {
+    const target = resolve(path);
+    return isFile(target) ? target : null;
+  }
   for (const base of [root, repo, SKILL_DIR]) {
     const candidate = resolve(base, path);
     if (isFile(candidate)) return candidate;
@@ -295,13 +353,12 @@ function checkComparatorControls() {
 function checkArchiveCitations() {
   const findings = [];
   if (archiveDir === null) return findings;
-  const archiveReal = realpathSync(archiveDir);
   for (const md of mdFiles) {
     for (const { n, text } of numberedLines(md)) {
       for (const token of pathTokens(text)) {
         const resolved = resolveToken(token.path);
         if (resolved === null) continue;
-        if (isInside(archiveReal, realpathSync(resolved))) {
+        if (citesArchive(archiveDir, resolved)) {
           findings.push(`FAIL archive-citations ${display(md)}:${n} cites an archived copy: ${token.path}`);
         }
       }

@@ -502,3 +502,304 @@ test("control: 7d a scanned root that is the parent of the evidence root is outs
   expect(r.stdout).toContain(`FAIL root outside evidence root: ${root}`);
   expect(r.stdout).not.toContain("SCAN ");
 });
+
+// --- appended for fix1 (synthesis items 1-3): the archive inventory, the exact archive entry, identity containment ---
+
+// The case-variant cases below create each entry under its exact name and branch on whether
+// this volume folds case: on a case-insensitive volume the two spellings are the same
+// directory, on a case-sensitive one the differently spelled path does not exist, so the case
+// asserts the base-equivalent outcome there. Nothing is skipped either way.
+function pathExists(target) {
+  const code = "import('node:fs').then((fs) => process.exit(fs.existsSync(process.argv[1]) ? 0 : 1))";
+  return spawnSync("node", ["-e", code, target], { encoding: "utf8" }).status === 0;
+}
+
+function fsIsCaseInsensitive() {
+  const dir = makeRoot("evidence-lint-caseprobe-");
+  mkdirSync(join(dir, "CaseProbe-AbC"));
+  return pathExists(join(dir, "caseprobe-abc"));
+}
+
+function archivedFile(root, relativePath, body = "archived capture\n") {
+  const full = join(root, "archive", relativePath);
+  mkdirSync(dirname(full), { recursive: true });
+  writeFileSync(full, body);
+  return full;
+}
+
+function lookAlikeArchiveLink(spelling, target) {
+  const root = cleanRoot();
+  symlink(target, join(root, spelling));
+  return root;
+}
+
+function archiveTargetDir(name, body) {
+  const dir = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(dir, name), body);
+  return dir;
+}
+
+test("control: 8a a regular file under archive/.git is listed as SKIP", () => {
+  const root = cleanRoot();
+  archivedFile(root, ".git/old.txt");
+  archivedFile(root, "node_modules/old.txt");
+  archivedFile(root, "plain.txt");
+  const r = run(root);
+  expect(r.status).toBe(0);
+  expect(r.stdout.trimEnd().split("\n")).toEqual([
+    "SCAN notes/extra.md",
+    "SCAN report.md",
+    "SKIP archive/.git/old.txt",
+    "SKIP archive/node_modules/old.txt",
+    "SKIP archive/plain.txt",
+    "PASS evidence-lint",
+  ]);
+});
+
+test("control: 8b a regular file under archive/node_modules alone is listed as SKIP", () => {
+  const root = cleanRoot();
+  archivedFile(root, "node_modules/old.txt");
+  const r = run(root);
+  expect(r.status).toBe(0);
+  expect(r.stdout.trimEnd().split("\n")).toEqual([
+    "SCAN notes/extra.md",
+    "SCAN report.md",
+    "SKIP archive/node_modules/old.txt",
+    "PASS evidence-lint",
+  ]);
+});
+
+test("control: 8c excluded names nested with each other and with ordinary directories are all listed", () => {
+  const root = cleanRoot();
+  for (const name of [
+    ".git/node_modules/a.txt",
+    "node_modules/.git/b.txt",
+    "sub/.git/c.txt",
+    "sub/node_modules/d.txt",
+    "x/y/.git/e.txt",
+    "keep.txt",
+  ]) {
+    archivedFile(root, name);
+  }
+  const r = run(root);
+  expect(r.status).toBe(0);
+  expect(r.stdout.trimEnd().split("\n")).toEqual([
+    "SCAN notes/extra.md",
+    "SCAN report.md",
+    "SKIP archive/.git/node_modules/a.txt",
+    "SKIP archive/keep.txt",
+    "SKIP archive/node_modules/.git/b.txt",
+    "SKIP archive/sub/.git/c.txt",
+    "SKIP archive/sub/node_modules/d.txt",
+    "SKIP archive/x/y/.git/e.txt",
+    "PASS evidence-lint",
+  ]);
+});
+
+test("control: 8d a symlinked file inside archive is listed as SKIP and a citation of it is an archive-citations finding", () => {
+  const root = cleanRoot();
+  const target = join(makeRoot("evidence-lint-archive-target-"), "outside.txt");
+  writeFileSync(target, "outside copy\n");
+  mkdirSync(join(root, "archive"));
+  symlink(target, join(root, "archive", "link.txt"));
+  const line = appendReport(root, "- linked copy: " + tick("archive/link.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/link.txt");
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy: archive/link.txt`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 8e a symlinked directory inside archive is listed as SKIP and a citation through it is an archive-citations finding", () => {
+  const root = cleanRoot();
+  const outside = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(outside, "secret.txt"), "outside copy\n");
+  mkdirSync(join(root, "archive"));
+  symlink(outside, join(root, "archive", "linkdir"));
+  const line = appendReport(root, "- linked dir: " + tick("archive/linkdir/secret.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/linkdir");
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy: archive/linkdir/secret.txt`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 8f the review countercheck - a live citation of archive/node_modules/old.txt still fails", () => {
+  const root = cleanRoot();
+  archivedFile(root, ".git/old.txt");
+  archivedFile(root, "node_modules/old.txt");
+  const line = appendReport(root, "- excluded name: " + tick("archive/node_modules/old.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/node_modules/old.txt");
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy: archive/node_modules/old.txt`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 9a a look-alike archive symlink spelling is not the archive", () => {
+  for (const spelling of ["Archive", "ARCHIVE", "aRchive"]) {
+    const target = archiveTargetDir("old.md", "# archived pre-fix copy\n\n- stale: " + tick("captures/gone.txt") + "\n");
+    const root = lookAlikeArchiveLink(spelling, target);
+    const r = run(root);
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain("archive is a symbolic link");
+    expect(r.stdout).not.toContain("SKIP ");
+    expect(lastLine(r)).toBe("PASS evidence-lint");
+  }
+});
+
+test("control: 9b a dangling, file-targeted, or inside-root look-alike archive symlink is not the archive", () => {
+  const dangling = lookAlikeArchiveLink("Archive", join(cleanRoot(), "captures", "nope.txt"));
+  const toFile = lookAlikeArchiveLink("ARCHIVE", join(cleanRoot(), "captures", "run.txt"));
+  const insideRoot = (() => {
+    const root = cleanRoot();
+    symlink(join(root, "notes"), join(root, "aRchive"));
+    return root;
+  })();
+  for (const root of [dangling, toFile, insideRoot]) {
+    const r = run(root);
+    expect(r.status).toBe(0);
+    expect(r.stdout).not.toContain("archive is a symbolic link");
+    expect(r.stdout).not.toContain("SKIP ");
+    expect(lastLine(r)).toBe("PASS evidence-lint");
+  }
+});
+
+test("boundary: a lowercase archive symlink to a file or a dangling one is still a root finding", () => {
+  for (const target of ["captures/run.txt", "captures/gone.txt"]) {
+    const root = cleanRoot();
+    const link = symlink(join(root, target), join(root, "archive"));
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).not.toContain("SCAN ");
+    expect(r.stdout).not.toContain("SKIP ");
+    expect(lastLine(r)).toBe(`FAIL root archive is a symbolic link: ${link}`);
+  }
+});
+
+test("control: 9c a case-variant spelling of the evidence root that is the same directory passes", () => {
+  const base = makeRoot();
+  const evidence = join(base, "evi");
+  const root = makeCleanRootAt(join(evidence, "run"));
+  const spelled = join(base, "EVI");
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", spelled]);
+  if (fsIsCaseInsensitive()) {
+    expect(r.status).toBe(0);
+    expect(lastLine(r)).toBe("PASS evidence-lint");
+  } else {
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`FAIL root evidence root missing: ${spelled}`);
+  }
+});
+
+test("control: 9d a scanned root whose ancestor is spelled with a different case than the evidence root passes", () => {
+  const base = makeRoot();
+  const evidence = join(base, "c4evi");
+  mkdirSync(evidence);
+  const root = makeCleanRootAt(join(base, "C4EVI", "run"));
+  const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+  if (fsIsCaseInsensitive()) {
+    expect(r.status).toBe(0);
+    expect(lastLine(r)).toBe("PASS evidence-lint");
+  } else {
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain(`FAIL root outside evidence root: ${root}`);
+  }
+});
+
+test("boundary: an archived copy cited from a root spelled with a case variant is still an archive-citations finding", () => {
+  const base = makeRoot();
+  const root = join(base, "C6EVI", "run");
+  mkdirSync(join(root, "archive"), { recursive: true });
+  writeFileSync(join(root, "archive", "old.txt"), "archived capture\n");
+  writeFileSync(join(root, "report.md"), "- archived copy: " + tick("archive/old.txt") + "\n");
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/old.txt");
+  expect(r.stdout).toContain("FAIL archive-citations report.md:1 cites an archived copy: archive/old.txt");
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+// --- appended for fix1 attempt 3: a case-variant spelling of the archived symlink ---
+
+// The exact lowercase archive directory holds linkdir as a symbolic link to an outside
+// directory, and the live report cites that directory spelled with a capital A. On a volume that
+// folds case the two spellings are the same directory, so the citation is archived and must be a
+// finding; on a case-sensitive volume the differently spelled path does not exist, so the same
+// citation is the base-equivalent cited-paths finding. Nothing is skipped either way.
+test("control: 8g a case-variant spelling of a symlinked directory inside archive is an archive-citations finding", () => {
+  const root = cleanRoot();
+  const outside = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(outside, "secret.txt"), "outside copy\n");
+  mkdirSync(join(root, "archive"));
+  symlink(outside, join(root, "archive", "linkdir"));
+  const line = appendReport(root, "- case-variant linked dir: " + tick("Archive/linkdir/secret.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  if (fsIsCaseInsensitive()) {
+    expect(r.stdout).toContain("SKIP archive/linkdir");
+    expect(r.stdout).toContain(
+      `FAIL archive-citations report.md:${line} cites an archived copy: Archive/linkdir/secret.txt`,
+    );
+  } else {
+    expect(r.stdout).toContain(`FAIL cited-paths report.md:${line} unresolved path: Archive/linkdir/secret.txt`);
+  }
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+// --- appended for fix1 attempt 4: the absolute root alias, the symlinked root, and dot-dot segments ---
+
+// The three cases below reach a file that only exists outside the archive through a symbolic link
+// inside it, so the physical path leaves the archive: only an identity walk over the citation's
+// lexical path can see them. Each cites the copy by an absolute path whose spelling differs from
+// the scanned root's own - a case alias of the root, a symbolic link to the root, and a `..`
+// segment after a component that does not exist - so no spelling may decide the verdict.
+
+test("control: 8h an absolute citation through a case alias of the scanned root is an archive-citations finding", () => {
+  const base = makeRoot();
+  const root = makeCleanRootAt(join(base, "root"));
+  mkdirSync(join(root, "archive"));
+  const outside = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(outside, "secret.txt"), "outside copy\n");
+  symlink(outside, join(root, "archive", "linkdir"));
+  const alias = join(base, "ROOT");
+  const line = appendReport(root, "- archived via the root alias: " + tick(join(alias, "archive", "linkdir", "secret.txt")));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/linkdir");
+  if (fsIsCaseInsensitive()) {
+    expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy:`);
+  } else {
+    expect(r.stdout).toContain(`FAIL cited-paths report.md:${line} unresolved path:`);
+  }
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 8i an absolute citation through a symlinked path to the scanned root is an archive-citations finding", () => {
+  const root = cleanRoot();
+  mkdirSync(join(root, "archive"));
+  const outside = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(outside, "secret.txt"), "outside copy\n");
+  symlink(outside, join(root, "archive", "linkdir"));
+  const link = symlink(root, join(makeRoot("evidence-lint-root-alias-"), "root-link"));
+  const line = appendReport(root, "- archived via the root link: " + tick(join(link, "archive", "linkdir", "secret.txt")));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/linkdir");
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy:`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+test("control: 8j an absolute citation with a dot-dot segment after a missing component is an archive-citations finding", () => {
+  const root = cleanRoot();
+  mkdirSync(join(root, "archive"));
+  const outside = makeRoot("evidence-lint-archive-target-");
+  writeFileSync(join(outside, "secret.txt"), "outside copy\n");
+  symlink(outside, join(root, "archive", "linkdir"));
+  const line = appendReport(root, "- archived through a dot-dot segment: " + tick(root + "/archive/missing/../linkdir/secret.txt"));
+  const r = run(root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("SKIP archive/linkdir");
+  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy:`);
+  expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
