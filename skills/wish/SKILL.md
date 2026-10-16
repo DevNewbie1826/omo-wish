@@ -11,7 +11,7 @@ A `/wish` invocation is one authorized request plus authorization to plan, imple
 
 Resolve every reference path in this skill relative to the directory of this SKILL.md.
 
-`/wish` arms ultrawork, so assume it is active and never re-arm, reset, or disarm it, and create no goal or notepad at its bootstrap: the plan file holds the notes until step 4 creates the one goal through ulw-loop (`references/plan.md`, Step 4). The authorized request already covers every phase here, so never ask the user to authorize the plan, the run, the PR, the review, the merge, or the cleanup again, and never pause for a native reviewer loop or a failed-attempt question; steps 7, 9, and 11 are the review schedule, and a REVISE round continues in this session. A genuine owner decision (irreversible, destructive, or a spend) is still asked through the question tool.
+`/wish` arms ultrawork, so assume it is active and never re-arm, reset, or disarm it, and create no goal or notepad at its bootstrap: the plan file holds the notes until step 4 creates the one goal through ulw-loop (`references/plan.md`, Step 4). The authorized request already covers every phase here, so never ask the user to authorize the plan, the run, the PR, the review, the merge, or the cleanup again, and never pause for a native reviewer loop or a failed-attempt question; steps 7, 9, and 11 are the review schedule, and you run any REVISE round yourself. A genuine owner decision (irreversible, destructive, or a spend) is still asked through the question tool, or through whoever assigned you if the tool is unavailable.
 
 ## The 13 steps
 
@@ -24,8 +24,8 @@ Resolve every reference path in this skill relative to the directory of this SKI
 7. `omo-native-code-reviewer` once per round before the PR: findings by severity CRITICAL/HIGH/MEDIUM/LOW. Its prompt must require the reviewer to load and apply the `remove-ai-slops` and `programming` skills and to state in its report whether that check ran. Fix CRITICAL and HIGH once, then continue; no second pass. In a REVISE round it reviews only the delta diff. Details: `references/review.md`.
 8. Open the PR: behavior delivered, tests and QA run, real limits. Details: `references/review.md`.
 9. One ultrabrain final review (`category: ultrabrain`): reports every CODE defect of the PR in one verdict. Details: `references/review.md`.
-10. Evidence problems are never a REVISE reason; every reviewer prompt carries the rule verbatim from Delegation prompts below, and each such problem becomes a correction memo the main session fixes with no re-review. Details: `references/review.md`.
-11. APPROVED: merge (the working session merges). REVISE (code problems only): go back to step 1 and run steps 2, 5-9 again for the cited problems, in the same worktree and same PR with more commits. `omo-native-gate-reviewer` runs only when the loop final checkpoint requires a quality-gate record, bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and follows rule 10. Details: `references/review.md`.
+10. Evidence problems are never a REVISE reason; every reviewer prompt carries the rule verbatim from Delegation prompts below. Each memo comes back to you: check it and fix the evidence yourself, with no re-review. Details: `references/review.md`.
+11. APPROVED: merge the PR yourself. REVISE (code problems only): go back to step 1 and run steps 2, 5-9 again for the cited problems, in the same worktree and same PR with more commits. `omo-native-gate-reviewer` runs only when the loop final checkpoint requires a quality-gate record, bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and follows rule 10. Details: `references/review.md`.
 12. After merge, one full verification on the merged result: `omo-native-qa-executor` runs all QA scenarios, plus the repository test suite, typecheck, and build where they exist. Details: `references/review.md`.
 13. Cleanup, complete the goal, final report: results, evidence locations, limits, and out-of-scope findings with their follow-up record paths. Details: `references/review.md`.
 
@@ -52,7 +52,7 @@ Every child prompt carries: the Purpose (the original requested outcome); the Sc
 
 Every reviewer prompt (code-reviewer, ultrabrain, gate-reviewer, architect) carries the following rule verbatim.
 
-Evidence problems are never a REVISE reason. Typos, number errors, and wording or format problems in evidence or reports do not cause REVISE. Write each one as a correction memo in your report; the lead checks the memo and the main session fixes the evidence, with no re-review for it. Only a problem in CODE can cause REVISE.
+Evidence problems are never a REVISE reason. Typos, number errors, and wording or format problems in evidence or reports do not cause REVISE. Write each one as a correction memo in your report; do not fix the evidence yourself and do not request a re-review for it. Only a problem in CODE can cause REVISE.
 
 ## Finish
 

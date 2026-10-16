@@ -26,11 +26,11 @@ One review with `category: ultrabrain`, after the PR exists. It reports every CO
 
 ## Step 10: Evidence problems
 
-Evidence problems are never a REVISE reason. The verbatim rule, carried by every reviewer prompt, is in SKILL.md, Delegation prompts; apply it from there without restating it.
+Evidence problems are never a REVISE reason. Copy the reviewer sentence from SKILL.md, Delegation prompts, into every reviewer prompt without restating it; the memos are handled as SKILL.md step 10 says.
 
 ## Step 11: APPROVED or REVISE
 
-- APPROVED: the working session merges the PR.
+- APPROVED: merge the PR yourself.
 - REVISE, code problems only: go back to Step 1 (plan.md) for the cited problems: re-run discovery with the variant sweep; update the plan (Step 2: a COMPANION row for each in-scope variant, a risk row for each fix); run the fixes as a mass-ulw correction run under run.md, Step 5, in the SAME worktree and SAME PR with more commits; then run steps 6, 7 (delta diff), 8 (update the PR body), and 9 again. Steps 3 and 4 are not repeated: the plan review is one round and the goal already exists.
 - `omo-native-gate-reviewer` runs only when the loop's final checkpoint requires a quality-gate record. It is bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and it follows the evidence rule (SKILL.md, Delegation prompts).
 
