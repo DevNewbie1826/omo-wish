@@ -48,7 +48,7 @@ The original request and its companion items are the boundary for every step: di
 
 ## Delegation prompts
 
-Every child prompt carries: the Purpose (the original requested outcome); the Scope (this assignment's permitted work); the Blockers, stated as goal failure = an IS or COMPANION row not delivered, an introduced regression, or a proof that shows the code does not do what is claimed (a code defect); typos, number errors, and wording or format problems in evidence are correction memos; Separate findings (anything not companion under Purpose boundary: report it, never fix it here, never treat it as a blocker); the companion definition, by a pointer to Purpose boundary above; and the fields TASK, DELIVERABLE, SCOPE, VERIFY, and STOP WHEN.
+Every child prompt carries: the Purpose (the original requested outcome); the Scope (this assignment's permitted work); the Blockers, stated as goal failure = an IS or COMPANION row not delivered, an introduced regression, or a proof that shows the code does not do what is claimed (a code defect); typos, number errors, and wording or format problems in evidence are correction memos; Separate findings (anything not companion under Purpose boundary: report it, never fix it in this task, never treat it as a blocker); the companion definition, by a pointer to Purpose boundary above; and the fields TASK, DELIVERABLE, SCOPE, VERIFY, and STOP WHEN.
 
 Every reviewer prompt (code-reviewer, ultrabrain, gate-reviewer, architect) carries the following rule verbatim.
 
