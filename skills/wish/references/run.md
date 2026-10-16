@@ -1,4 +1,4 @@
-# wish2: execution with mass-ulw
+# wish: execution with mass-ulw
 
 Covers step 5 of the flow (see SKILL.md, The 13 steps).
 

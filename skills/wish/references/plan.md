@@ -1,4 +1,4 @@
-# wish2: discovery, plan, and goal
+# wish: discovery, plan, and goal
 
 Covers steps 1-4 of the flow (see SKILL.md, The 13 steps).
 
@@ -29,7 +29,7 @@ Write one plan file that holds:
 
 ## Step 3: Architect plan review
 
-Spawn one review with `category: architect`. The prompt follows SKILL.md, Delegation prompts, and carries the evidence rule from there. The reviewer reads the plan against the request and answers OKAY or lists blockers: a blocker is anything that would make the plan fail the request, introduce a regression, or rest on invalid proof. Record one fix per blocker in the plan's review record, then continue; the round is not re-reviewed. If the host lists no architect category, stop and report that as a blocker; name no substitute.
+Spawn one review with `category: architect`. The prompt follows SKILL.md, Delegation prompts, and carries the evidence rule from there. The reviewer reads the plan against the request and answers OKAY or lists blockers: a blocker is anything that would make the plan fail the request, introduce a regression, or rest on a proof that shows the code does not do what is claimed (a code defect); typos, number errors, and wording or format problems in evidence are correction memos. Record one fix per blocker in the plan's review record, then continue; the round is not re-reviewed. If the host lists no architect category, stop and report that as a blocker; name no substitute.
 
 ## Step 4: Register the goal
 

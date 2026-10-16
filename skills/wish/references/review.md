@@ -1,4 +1,4 @@
-# wish2: verification, review, and merge
+# wish: verification, review, and merge
 
 Covers steps 6-13 of the flow (see SKILL.md, The 13 steps).
 
