@@ -16,7 +16,7 @@ Resolve every reference path in this skill relative to the directory of this SKI
 ## The 13 steps
 
 1. Discovery: survey the code, the git history of the paths to touch, memory, and earlier session evidence. When a REVISE sends work back (step 11), re-run discovery for the cited problem and sweep for variants of the same defect class, with no separate sweep or report-merging nodes. Details: `references/plan.md`.
-2. One plan file: IS rows and COMPANION rows (the request is the boundary), gaps, user-side QA scenarios (real surface, exact command, binary pass condition), the IS-row to QA-scenario pairing, a risk list by defect class, and two pinned rules: worktree pinned for every command, commits serialized. Details: `references/plan.md`.
+2. One plan file: IS rows and COMPANION rows (the request is the boundary), gaps, user-side QA scenarios (real surface, exact command, binary pass condition), the IS-row to QA-scenario pairing, a risk list, and two pinned rules: worktree pinned for every command, commits serialized. Details: `references/plan.md`.
 3. One architect plan review (`category: architect`): OKAY or blockers; record a fix for each blocker. Details: `references/plan.md`.
 4. Register the goal (mass-ulw runs are goal-bound): the IS-to-QA pairing written as ONE paragraph, because line breaks split the brief. Details: `references/plan.md`.
 5. Run the plan with mass-ulw: a worktree per task, parallel nodes with disjoint write scopes, one node owning a change and its proof, an injection check inside the node (recreate the regression, capture the failing test, restore, capture the passing test), and serialized commits after each verified unit. Details: `references/run.md`.
@@ -41,7 +41,7 @@ The original request and its companion items are the boundary for every step: di
 
 ## Rules
 
-- Tests: code first; no RED-first mandate. A test must break when the behavior changes, not only when the implementation changes, and a fixture for a behavior that consumes more than one value supplies at least two, so a change that keeps only the first one breaks it. Add a test only when the repository keeps tests for that behavior and a regression would otherwise pass unnoticed; prose gets read-through QA, never wording tests. Every guard row gets the injection check (step 5).
+- Tests: code first; no RED-first mandate. A test must break when the behavior changes, not only when the implementation changes, and a fixture for a behavior that consumes more than one value supplies at least two distinct values, so a change that drops any of them breaks it. Add a test only when the repository keeps tests for that behavior and a regression would otherwise pass unnoticed; prose gets read-through QA, never wording tests. Every guard row gets the injection check (step 5).
 - Evidence capture: capture the command and its output; never retype a SHA or number by hand when a capture holds it; record only what you checked.
 - Test discipline: no sleeps; wait on the event or state change itself.
 - Gate order: never open the PR before step 6 passes and step 7 has run; never merge before the ultrabrain review returns APPROVED.

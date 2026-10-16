@@ -21,9 +21,9 @@ For each guard row the node owns, prove its test can fail, inside the same node:
 
 1. Recreate the regression the guard names: revert the fix, or make the one smallest edit that produces it.
 2. Run the guard's test once and capture the failing output.
-3. Restore the file from backup, check the restore by hash, run the test once more, and capture the passing output.
+3. Restore the file, run the test once more, and capture the passing output.
 
-The evidence set is the injection diff, the failing output, and the passing output after restore. A test that stays green under its injection guards nothing. Run inject, test, restore, and hash-check as one foreground command, never split across tool calls and never in a background session, so no turn can end mid-injection. Never inject into a worktree a reviewer or sibling node may read: inject before the reader starts, or in a private copy of the worktree.
+The evidence set is the injection diff, the failing output, and the passing output after restore. A test that stays green under its injection guards nothing. Run inject, test, and restore as one command, so nothing ends mid-injection.
 
 ### Commits
 
