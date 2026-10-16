@@ -13,7 +13,7 @@ Resolve every reference path in this skill relative to the directory of this SKI
 
 ## The 13 steps
 
-1. Discovery: survey the code, the git history of the paths to touch, memory, and earlier session evidence. When a REVISE sends work back (step 11), re-run discovery for the cited problem and also sweep for variants of the same defect class; there are no separate sweep or report-merging nodes. Details: `references/plan.md`.
+1. Discovery: survey the code, the git history of the paths to touch, memory, and earlier session evidence. When a REVISE sends work back (step 11), re-run discovery for the cited problem and sweep for variants of the same defect class, with no separate sweep or report-merging nodes. Details: `references/plan.md`.
 2. One plan file: IS rows and COMPANION rows (the request is the boundary), gaps, user-side QA scenarios (real surface, exact command, binary pass condition), the IS-row to QA-scenario pairing, a risk list by defect class, and two pinned rules: worktree pinned for every command, commits serialized. Details: `references/plan.md`.
 3. One architect plan review (`category: architect`): OKAY or blockers; record a fix for each blocker. Details: `references/plan.md`.
 4. Register the goal (mass-ulw runs are goal-bound): the IS-to-QA pairing written as ONE paragraph, because line breaks split the brief. Details: `references/plan.md`.

@@ -4,7 +4,7 @@ Covers steps 6-13 of the flow (see SKILL.md, The 13 steps).
 
 ## Step 6: Pre-PR verification, two parallel branches
 
-Branch (a), one node: run the repository test suite, then the mutation check. Pick the 3-5 highest-risk changed behaviors (all of them when fewer changed). For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record killed (a test failed) or survived (none did). A survivor is a finding for the node that owns that behavior. Behaviors under a valid no-test row get no mutation.
+Branch (a), one node: run the repository test suite, then the mutation check. Pick the 3-5 highest-risk changed behaviors (all of them if fewer changed). For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record killed (a test failed) or survived (none did). A survivor is a finding for the node that owns that behavior. Behaviors under a valid no-test row get no mutation.
 
 Branch (b), the agent `omo-native-qa-executor`: run the plan's QA scenarios on the real surface. Record per scenario the command, the observable, PASS or FAIL, the output capture, and the cleanup receipt for anything the scenario started. A comparator counts as evidence only when it can fail: run it once on a corrupted or missing input as a failing control, through the same comparison, and capture that failure beside the passing run. A scenario that fails is in scope by definition: fix it before the PR opens.
 
@@ -20,7 +20,7 @@ One PR to the repository's main branch. The body states the behavior delivered, 
 
 ## Step 9: Final review
 
-One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Prompt per SKILL.md, Delegation prompts.
+One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Its prompt follows SKILL.md, Delegation prompts.
 
 ## Step 10: Evidence problems
 

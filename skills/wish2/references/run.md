@@ -4,7 +4,7 @@ Covers step 5 of the flow (see SKILL.md, The 13 steps).
 
 ## Step 5: Run the plan with mass-ulw
 
-Read the mass-ulw skill and its references/planning.md in full before defining any task DAG; never define the DAG first and read later. Then run the plan's nodes under these rules:
+Read the mass-ulw skill and its references/planning.md in full before defining any task DAG. Then run the plan's nodes under these rules:
 
 ### Worktree and nodes
 
