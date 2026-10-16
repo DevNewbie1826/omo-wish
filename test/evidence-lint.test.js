@@ -749,11 +749,10 @@ test("control: 8g a case-variant spelling of a symlinked directory inside archiv
 
 // --- appended for fix1 attempt 4: the absolute root alias, the symlinked root, and dot-dot segments ---
 
-// The three cases below reach a file that only exists outside the archive through a symbolic link
-// inside it, so the physical path leaves the archive: only an identity walk over the citation's
-// lexical path can see them. Each cites the copy by an absolute path whose spelling differs from
-// the scanned root's own - a case alias of the root, a symbolic link to the root, and a `..`
-// segment after a component that does not exist - so no spelling may decide the verdict.
+// The first two cases reach an outside file through a symbolic link inside archive.
+// Archive traversal history must survive both a case alias and a symbolic link to the root.
+// The third case has a missing intermediate component: the OS cannot resolve it, so
+// R7 supersedes the former lexical archive verdict with a cited-paths finding.
 
 test("control: 8h an absolute citation through a case alias of the scanned root is an archive-citations finding", () => {
   const base = makeRoot();
@@ -790,7 +789,7 @@ test("control: 8i an absolute citation through a symlinked path to the scanned r
   expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
 });
 
-test("control: 8j an absolute citation with a dot-dot segment after a missing component is an archive-citations finding", () => {
+test("control: 8j an absolute citation with a missing intermediate is a cited-paths finding", () => {
   const root = cleanRoot();
   mkdirSync(join(root, "archive"));
   const outside = makeRoot("evidence-lint-archive-target-");
@@ -800,6 +799,184 @@ test("control: 8j an absolute citation with a dot-dot segment after a missing co
   const r = run(root);
   expect(r.status).toBe(1);
   expect(r.stdout).toContain("SKIP archive/linkdir");
-  expect(r.stdout).toContain(`FAIL archive-citations report.md:${line} cites an archived copy:`);
+  expect(r.stdout).toContain(`FAIL cited-paths report.md:${line} unresolved path:`);
+  expect(r.stdout).not.toContain("PASS evidence-lint");
   expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+});
+
+// --- appended for R7: the OS resolves links before parent components ---
+
+import { statSync } from "node:fs";
+
+function r7WrongFile(depth = 0, parents = 1) {
+  const home = makeRoot("evidence-lint-r7-");
+  const root = home + "/root";
+  const outside = home + "/outside";
+  const container = root + "/d".repeat(depth);
+  mkdirSync(container, { recursive: true });
+  mkdirSync(outside + "/s".repeat(parents), { recursive: true });
+  writeFileSync(root + "/d".repeat(Math.max(0, depth - parents + 1)) + "/secret.txt", "lexical-only\nsecond");
+  writeFileSync(outside + "/secret.txt", "physical-only");
+  symlink(outside + "/s".repeat(parents), container + "/link");
+  return { home, root, outside, raw: container + "/link" + "/..".repeat(parents) + "/secret.txt" };
+}
+
+for (const relative of [false, true]) for (const depth of [0, 1, 3]) {
+  test(`R7 citation: reads the physical file after a link and parent, relative=${relative}, depth=${depth}`, () => {
+    const f = r7WrongFile(depth);
+    expect(readFileSync(f.raw, "utf8")).toBe("physical-only");
+    const token = relative ? f.raw.slice(f.root.length + 1) : f.raw;
+    writeFileSync(f.root + "/report.md", tick(token + ":1") + ' "physical-only"\n');
+    const r = run(f.root);
+    expect(r.status).toBe(0);
+    expect(lastLine(r)).toBe("PASS evidence-lint");
+  });
+}
+
+for (const n of [2, 5]) {
+  test(`R7 citation: applies ${n} parents to the directory reached by the link`, () => {
+    const f = r7WrongFile(n, n);
+    expect(readFileSync(f.raw, "utf8")).toBe("physical-only");
+    writeFileSync(f.root + "/report.md", tick(f.raw + ":1") + ' "physical-only"\n');
+    expect(run(f.root).status).toBe(0);
+  });
+}
+
+for (const kind of ["missing", "dangling", "file", "cycle"]) for (const archive of [false, true]) {
+  test(`R7 citation: invalid ${kind} intermediate remains cited-paths, archive=${archive}`, () => {
+    const root = makeRoot("evidence-lint-r7-invalid-");
+    const base = root + (archive ? "/archive" : "");
+    mkdirSync(base, { recursive: true });
+    writeFileSync(base + "/secret.txt", "lexical decoy\n");
+    if (kind === "dangling") symlink("absent", base + "/bad");
+    if (kind === "cycle") symlink("bad", base + "/bad");
+    if (kind === "file") writeFileSync(base + "/bad", "not a directory\n");
+    const raw = base + "/bad/../secret.txt";
+    expect(() => statSync(raw)).toThrow();
+    writeFileSync(root + "/report.md", tick(raw) + "\n");
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("FAIL cited-paths report.md:1");
+    expect(r.stdout).not.toContain("FAIL archive-citations");
+    expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+  });
+}
+
+test("R7 citation: rejects lexical quote and out-of-range physical line", () => {
+  const f = r7WrongFile();
+  writeFileSync(f.root + "/report.md", tick(f.raw + ":1") + ' "lexical-only"\n' + tick(f.raw + ":2") + "\n");
+  const r = run(f.root);
+  expect(r.status).toBe(1);
+  expect(r.stdout).toContain("quoted fragment missing");
+  expect(r.stdout).toContain("outside 1-1");
+  expect(lastLine(r)).toBe("FAIL evidence-lint 2 finding(s)");
+});
+
+for (const baseKind of ["repo", "skill"]) {
+  test(`R7 citation: preserves raw paths at the ${baseKind} fallback base`, () => {
+    const f = r7WrongFile();
+    const script = baseKind === "skill" ? f.root + "/scripts/evidence-lint.mjs" : lint;
+    if (baseKind === "skill") {
+      mkdirSync(f.root + "/scripts");
+      writeFileSync(script, readFileSync(lint));
+    }
+    const scan = makeRoot("evidence-lint-r7-fallback-");
+    for (const token of ["link/../secret.txt:1", "missing/../secret.txt"]) {
+      writeFileSync(scan + "/report.md", tick(token) + (token.startsWith("link") ? ' "physical-only"\n' : "\n"));
+      const r = spawnSync("node", [script, scan, "--repo", baseKind === "repo" ? f.root : gitRepo], { encoding: "utf8" });
+      expect(r.error).toBeUndefined();
+      expect(r.status).toBe(token.startsWith("link") ? 0 : 1);
+      if (!token.startsWith("link")) expect(r.stdout).toContain("FAIL cited-paths");
+    }
+  });
+}
+
+for (const mode of ["final-inside", "leave-parent", "target-expansion", "chain-exit"]) {
+  test(`R7 archive: remembers directories traversed by ${mode}`, () => {
+    const root = makeRoot("evidence-lint-r7-archive-");
+    const outside = makeRoot("evidence-lint-r7-outside-");
+    mkdirSync(root + "/archive/sub", { recursive: true });
+    writeFileSync(root + "/archive/secret.txt", "archived\n");
+    writeFileSync(root + "/secret.txt", "live\n");
+    writeFileSync(outside + "/secret.txt", "outside\n");
+    let raw;
+    if (mode === "final-inside") { symlink(root + "/archive/sub", root + "/link"); raw = root + "/link/../secret.txt"; }
+    if (mode === "leave-parent") raw = root + "/archive/sub/../../secret.txt";
+    if (mode === "target-expansion") { symlink("archive/sub/../../secret.txt", root + "/entry.txt"); raw = root + "/entry.txt"; }
+    if (mode === "chain-exit") {
+      symlink(outside, root + "/archive/exit");
+      symlink("archive/exit", root + "/hop");
+      symlink("hop", root + "/start");
+      raw = root + "/start/secret.txt";
+    }
+    expect(statSync(raw).isFile()).toBe(true);
+    writeFileSync(root + "/report.md", tick(raw) + "\n");
+    const r = run(root);
+    expect(r.status).toBe(1);
+    expect(r.stdout).toContain("FAIL archive-citations report.md:1");
+    expect(lastLine(r)).toBe("FAIL evidence-lint 1 finding(s)");
+  });
+}
+
+for (const arg of ["root", "evidence"]) for (const inside of [false, true]) {
+  test(`R7 containment: ${arg} symlink-parent uses physical ancestry, inside=${inside}`, () => {
+    const home = makeRoot("evidence-lint-r7-containment-");
+    const E = home + "/E", outside = home + "/outside";
+    mkdirSync(E + "/sub", { recursive: true });
+    mkdirSync(outside + "/sub", { recursive: true });
+    mkdirSync(E + "/run"); mkdirSync(outside + "/run");
+    writeFileSync(E + "/run/report.md", "# inside\n");
+    writeFileSync(outside + "/run/report.md", "# outside\n");
+    const owner = inside ? outside : E;
+    symlink((inside ? E : outside) + "/sub", owner + "/link");
+    const root = arg === "root" ? owner + "/link/../run" : E + "/run";
+    const evidence = arg === "evidence" ? owner + "/link/.." : E;
+    expect(statSync(root).isDirectory()).toBe(true);
+    expect(statSync(evidence).isDirectory()).toBe(true);
+    const r = runArgs([root, "--repo", gitRepo, "--evidence-root", evidence]);
+    expect(r.status).toBe(inside ? 0 : 1);
+    expect(r.stderr).toBe("");
+    if (!inside) expect(r.stdout).toContain("FAIL root outside evidence root:");
+  });
+}
+
+for (const mode of ["physical-defect", "lexical-defect", "physical-only", "inventory"]) {
+  test(`R7 scan: raw root selects physical files and inventory, ${mode}`, () => {
+    const home = makeRoot("evidence-lint-r7-scan-");
+    mkdirSync(home + "/E/run", { recursive: true });
+    mkdirSync(home + "/outside/sub", { recursive: true });
+    mkdirSync(home + "/outside/run");
+    symlink(home + "/outside/sub", home + "/E/link");
+    const physical = home + "/outside/run", lexical = home + "/E/run";
+    writeFileSync(physical + "/report.md", mode === "physical-defect" ? tick("missing/live.txt") + "\n" : "# physical\n");
+    if (mode !== "physical-only") writeFileSync(lexical + "/report.md", mode === "lexical-defect" ? tick("missing/live.txt") + "\n" : "# lexical\n");
+    if (mode === "inventory") {
+      mkdirSync(physical + "/archive"); mkdirSync(lexical + "/archive");
+      writeFileSync(physical + "/archive/physical.txt", "physical archive\n");
+      writeFileSync(lexical + "/archive/decoy.txt", "lexical archive\n");
+    }
+    const raw = home + "/E/link/../run";
+    expect(readFileSync(raw + "/report.md", "utf8")).toBe(readFileSync(physical + "/report.md", "utf8"));
+    const r = run(raw);
+    expect(r.status).toBe(mode === "physical-defect" ? 1 : 0);
+    expect(r.stderr).toBe("");
+    if (mode === "physical-defect") expect(r.stdout).toContain("FAIL cited-paths report.md:1");
+    if (mode === "inventory") {
+      expect(r.stdout).toContain("SKIP archive/physical.txt");
+      expect(r.stdout).not.toContain("archive/decoy.txt");
+    }
+  });
+}
+
+test("R7 comparator: reads the control sibling from the physical directory after link-parent", () => {
+  const f = r7WrongFile();
+  for (const dir of [f.root, f.outside]) writeFileSync(dir + "/qa-1.txt", "VERDICT: PASS\n");
+  writeFileSync(f.root + "/qa-1-control.txt", "VERDICT: PASS\n");
+  writeFileSync(f.outside + "/qa-1-control.txt", "VERDICT: FAIL\n");
+  const raw = f.root + "/link/../qa-1.txt";
+  expect(readFileSync(f.root + "/link/../qa-1-control.txt", "utf8")).toBe("VERDICT: FAIL\n");
+  writeFileSync(f.root + "/report.md", tick(raw) + "\n");
+  const r = run(f.root);
+  expect(r.status).toBe(0);
+  expect(lastLine(r)).toBe("PASS evidence-lint");
 });

@@ -3,8 +3,8 @@
 // Checks, in order: cited-paths, hex-commits, file-line-citations, comparator-controls, archive-citations.
 // Imports are limited to node:fs, node:path, node:url, node:child_process; it writes only stdout.
 
-import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
@@ -114,15 +114,47 @@ function isSymlink(path) {
 // The identity of two stats: the same directory entry, whatever spelling or link reached it.
 const sameFile = (a, b) => a.dev === b.dev && a.ino === b.ino;
 
-// Containment by filesystem identity, shared by the --evidence-root check and the
-// archive-citations check: every prefix of `path`, from the path itself up to the filesystem
-// root, is compared with `stat` by (dev, ino). A prefix IS the ancestor directory, so no spelling
-// ever decides the answer - a different case, a `./` or `../` segment, a duplicated separator,
-// or an aliasing symlink all reach the same directory entry. `path` is taken as given: the caller
-// chooses the lexical resolution (path.resolve, which normalizes the spelling textually and never
-// follows a symlink) or the physical one (realpathSync).
+// Validate the unnormalized path with the OS first: even native realpath can erase a
+// missing component before ".." on macOS. Expand links before consuming the remaining
+// components, so ".." applies to the physical directory reached, not the link's parent.
+// Keep traversal history separately from final ancestry: archive/../live.txt still
+// traverses the archive, while evidence-root containment concerns only the final root.
+function traversePath(path) {
+  const stat = statSync(path);
+  const pending = (isAbsolute(path) ? path : `${process.cwd()}/${path}`).split("/");
+  const components = [];
+  const directories = [statSync("/")];
+  let current = "/";
+  while (pending.length > 0) {
+    const component = pending.shift();
+    if (component === "" || component === ".") continue;
+    if (component === "..") {
+      components.pop();
+      current = `/${components.join("/")}`;
+      directories.push(statSync(current));
+      continue;
+    }
+    const candidate = `${current === "/" ? "" : current}/${component}`;
+    const entry = lstatSync(candidate);
+    if (entry.isSymbolicLink()) {
+      const target = readlinkSync(candidate);
+      if (isAbsolute(target)) {
+        components.length = 0;
+        current = "/";
+      }
+      pending.unshift(...target.split("/"));
+    } else {
+      components.push(component);
+      current = candidate;
+      if (entry.isDirectory()) directories.push(entry);
+    }
+  }
+  return { path: current, stat, directories };
+}
+
+// Only already physically resolved paths enter this ancestor walk.
 function hitsIdentity(stat, path) {
-  let current = resolve(path);
+  let current = path;
   for (;;) {
     if (sameFile(statSync(current), stat)) return true;
     const up = dirname(current);
@@ -131,24 +163,15 @@ function hitsIdentity(stat, path) {
   }
 }
 
-// The --evidence-root containment test: the scanned root is inside the evidence root when their
-// physical paths share a directory entry. realpath does not normalize case on a case-insensitive
-// volume, so a shared ancestor spelled with a different case would fail a literal string test
-// while being the very same directory; the inode identity does not care.
 function isWithin(parentPath, childPath) {
-  return hitsIdentity(statSync(realpathSync(parentPath)), realpathSync(childPath));
+  return hitsIdentity(traversePath(parentPath).stat, traversePath(childPath).path);
 }
 
-// The archived-copy test: a citation is an archived copy when the archive directory lies on its
-// lexical path or on its physical path, and no spelling is compared on either. The lexical walk
-// catches every spelling of a path that runs through the archive - a case alias of the scanned
-// root or of one of its ancestors, `./` and `../` segments, duplicated separators, or a
-// symlinked directory inside the archive that points outside it (the prefix naming the link is
-// the archived entry itself, while realpath leaves the archive). The physical walk catches a
-// path that reaches the archive through a link somewhere above it.
 function citesArchive(archivePath, childPath) {
   const archiveStat = statSync(archivePath);
-  return hitsIdentity(archiveStat, childPath) || hitsIdentity(archiveStat, realpathSync(childPath));
+  const traversed = traversePath(childPath);
+  return traversed.directories.some((directory) => sameFile(archiveStat, directory)) ||
+    hitsIdentity(archiveStat, traversed.path);
 }
 
 // The archive entry is the directory entry named exactly "archive" directly under the scanned
@@ -165,7 +188,7 @@ function rootArchiveEntry(rootPath) {
 
 const splitLines = (text) => text.split("\n").map((line) => (line.endsWith("\r") ? line.slice(0, -1) : line));
 
-function rootProblem(path, archiveEntry) {
+function rootProblem(path, archiveEntry, displayPath = path) {
   if (!existsSync(path)) return `missing: ${path}`;
   if (!statSync(path).isDirectory()) return `not a directory: ${path}`;
   // L2b: a symlinked archive entry hides its files from both the SKIP listing and the
@@ -173,17 +196,25 @@ function rootProblem(path, archiveEntry) {
   // only to the entry named exactly "archive"; a regular file of that name is not an archive
   // and stays ignored, as in base.
   if (archiveEntry !== null && isSymlink(join(path, archiveEntry.name))) {
-    return `archive is a symbolic link: ${join(path, archiveEntry.name)}`;
+    return `archive is a symbolic link: ${join(displayPath, archiveEntry.name)}`;
   }
-  if (walk(path, MARKDOWN_EXTENSIONS, { skipRootArchive: true }).length === 0) return `no markdown files under: ${path}`;
+  if (walk(path, MARKDOWN_EXTENSIONS, { skipRootArchive: true }).length === 0) return `no markdown files under: ${displayPath}`;
   return null;
 }
 
-const { root, repo, evidenceRoot } = parseArgs(process.argv.slice(2));
+const { root: rootArg, repo, evidenceRoot } = parseArgs(process.argv.slice(2));
+
+if (!isDirectory(rootArg)) {
+  console.log(`FAIL root ${existsSync(rootArg) ? "not a directory" : "missing"}: ${rootArg}`);
+  process.exit(1);
+}
+// All later joins start from the physically addressed directory, never the raw
+// argument whose link/.. sequence path.join would otherwise collapse.
+const root = traversePath(rootArg).path;
 
 const archiveEntry = rootArchiveEntry(root);
 
-const problem = rootProblem(root, archiveEntry);
+const problem = rootProblem(root, archiveEntry, rootArg);
 if (problem !== null) {
   console.log(`FAIL root ${problem}`);
   process.exit(1);
@@ -199,7 +230,7 @@ if (evidenceRoot !== null) {
     process.exit(1);
   }
   if (!isWithin(evidenceRoot, root)) {
-    console.log(`FAIL root outside evidence root: ${root}`);
+    console.log(`FAIL root outside evidence root: ${rootArg}`);
     process.exit(1);
   }
 }
@@ -243,17 +274,11 @@ function pathTokens(lineText) {
   return tokens;
 }
 
-// The token is resolved the same way for both spellings: path.resolve normalizes `.` and `..`
-// segments and duplicated separators textually, so the spelling of a citation never decides
-// whether it is seen at all (an absolute token used to be stat-ed as written, which made a `..`
-// segment after a component that does not exist unresolvable). Symlinks are not followed here.
+// Return the raw spelling so stat/read and archive traversal address the same object.
 function resolveToken(path) {
-  if (isAbsolute(path)) {
-    const target = resolve(path);
-    return isFile(target) ? target : null;
-  }
+  if (isAbsolute(path)) return isFile(path) ? path : null;
   for (const base of [root, repo, SKILL_DIR]) {
-    const candidate = resolve(base, path);
+    const candidate = `${base}/${path}`;
     if (isFile(candidate)) return candidate;
   }
   return null;
@@ -335,7 +360,7 @@ function checkComparatorControls() {
         if (!name.startsWith("qa-") || !name.endsWith(".txt") || name.includes("control")) continue;
         const resolved = resolveToken(token.path);
         if (resolved === null) continue;
-        const control = join(dirname(resolved), `${name.slice(0, -".txt".length)}-control.txt`);
+        const control = `${dirname(resolved)}/${name.slice(0, -".txt".length)}-control.txt`;
         if (!isFile(control)) {
           findings.push(`FAIL comparator-controls ${display(md)}:${n} missing control sibling: ${token.path}`);
           continue;
