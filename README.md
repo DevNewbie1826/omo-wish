@@ -61,6 +61,15 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 - `/wishful`, `/WISH` 같은 다른 명령은 wish 스킬을 부르지 않습니다. 평범한 요청에 `ulw`나 `ultrawork`를 쓰면 일반 ultrawork 모드는 켜질 수 있지만, wish 스킬이 선택되지는 않습니다. (자세한 건 아래 모드 동작을 보세요.)
 - 규칙의 의미를 바꾸지 않는 문서·프롬프트 수정(오타, 문장 다듬기, 미러 맞추기)에는 `/wish`를 부르지 않습니다. 저장소 검사(`bun test`, `bun scripts/verify.mjs .`)를 통과한 diff를 소유자가 직접 보고 병합하는 가벼운 경로를 씁니다. 규칙 문장을 새로 넣거나 의미를 바꾸는 수정은 wish 대상입니다.
 
+## wish2
+
+`/wish2`는 가벼운 13단계 흐름을 실행합니다. `/wish`는 그대로 둡니다.
+
+```
+/wish2 <작업 설명>
+```
+단계는 발견, 계획 하나, 아키텍트 계획 리뷰, 목표 등록, mass-ulw 실행, PR 전 두 갈래 검증, 코드 리뷰 한 번, PR, ultrabrain 최종 리뷰, 증거 문제는 수정 메모, 승인이면 병합하고 코드 문제면 발견으로, 병합 후 검증, 정리와 보고입니다.
+
 ## 동작 흐름
 
 `/wish`를 실행하면 이런 순서로 진행됩니다.
@@ -245,26 +254,34 @@ wish는 네이티브 기본값 일부를 일부러 바꿉니다. 전체 표는 S
 omo-wish/
 ├── package.json                  # pi manifest: pi.prompts, pi.extensions, pi.skills
 ├── prompts/
-│   └── wish.md                   # 슬래시 명령 템플릿 (description = 메뉴 설명)
+│   ├── wish.md                   # 슬래시 명령 템플릿 (description = 메뉴 설명)
+│   └── wish2.md                  # /wish2 슬래시 명령 템플릿
 ├── extensions/
 │   └── wish.js                   # ultrawork 키워드로 호스트 모드를 켜는 확장
 ├── skills/
-│   └── wish/
-│       ├── SKILL.md              # 핵심 규칙과 단계별 로딩 지점
-│       ├── references/
-│       │   ├── planning.md
-│       │   ├── execution.md
-│       │   └── verification.md
-│       └── scripts/
-│           └── evidence-lint.mjs # 런 증거 기록 검사
+│   ├── wish/
+│   │   ├── SKILL.md              # 핵심 규칙과 단계별 로딩 지점
+│   │   ├── references/
+│   │   │   ├── planning.md
+│   │   │   ├── execution.md
+│   │   │   └── verification.md
+│   │   └── scripts/
+│   │       └── evidence-lint.mjs # 런 증거 기록 검사
+│   └── wish2/
+│       ├── SKILL.md              # 13단계 가벼운 흐름
+│       └── references/
+│           ├── plan.md
+│           ├── run.md
+│           └── review.md
 ├── test/
 │   ├── wish.test.js              # 동작 테스트
+│   ├── wish2.test.js             # /wish2 동작 테스트
 │   └── evidence-lint.test.js     # 증거 린트 테스트
 └── scripts/
     └── verify.mjs                # 실제 호스트 로더로 확인하는 검증 스크립트
 ```
 
-`package.json`의 `pi.skills: ["skills/wish"]`로 스킬이 호스트에 등록됩니다.
+`package.json`의 `pi.skills: ["skills/wish", "skills/wish2"]`로 두 스킬이 호스트에 등록됩니다.
 
 ## 개발과 검증
 

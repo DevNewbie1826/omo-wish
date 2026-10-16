@@ -10,7 +10,7 @@
   "keywords": ["omo", "omo-plugin", "prompt-template", "skill"],
   "pi": {
     "prompts": ["prompts"],
-    "skills": ["skills/wish"],
+    "skills": ["skills/wish", "skills/wish2"],
     "extensions": ["extensions/wish.js"]
   }
 }

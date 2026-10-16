@@ -147,6 +147,20 @@ try {
     assert.deepEqual(unsupported, []);
     assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
   });
+
+  const wish2Path = join(root, "skills/wish2/SKILL.md");
+  const wish2Template = prompts.prompts.find((entry) => entry.name === "wish2");
+  check("resource loader discovers wish2 skill and command", () => {
+    assert.equal(skills.skills.find((skill) => skill.name === "wish2")?.filePath, wish2Path);
+    assert.equal(wish2Template?.description, "가볍게 소원을 빕니다");
+  });
+
+  const wish2Args = expandPromptTemplate('/wish2 "keep $1 literal"', prompts.prompts);
+  check("wish2 expansion keeps a literal argument and names the wish2 skill", () => {
+    assert.equal(wish2Args.split("\n")[0], "keep $1 literal");
+    assert.equal(wish2Args.includes("Read and follow the `wish2` skill"), true);
+  });
+
   console.log(`ALL PASS: ${root}`);
 } finally {
   if (previousArming) Object.defineProperty(globalThis, armingSymbol, previousArming);
