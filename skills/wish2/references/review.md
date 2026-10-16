@@ -4,7 +4,7 @@ Covers steps 6-13 of the flow (see SKILL.md, The 13 steps).
 
 ## Step 6: Pre-PR verification, two parallel branches
 
-Branch (a), one node: run the repository test suite, then the mutation check. Pick the 3-5 highest-risk changed behaviors (all of them if fewer changed). For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record killed (a test failed) or survived (none did). A survivor is a finding for the node that owns that behavior. Behaviors under a valid no-test row get no mutation.
+Branch (a), one node: run the repository test suite, then the mutation check. Pick the 3-5 highest-risk changed behaviors (all of them if fewer changed). For each, break the production code with one small edit in a throwaway copy of the worktree, run the tests that should guard it, and record killed (a test failed) or survived (none did). A survivor means a regression would pass unnoticed: add or strengthen that behavior's guard test in the same worktree, with the injection check of run.md, before the PR, or record a valid no-test reason in the plan's risk list. Branch (a) passes when the suite is green and every mutation is recorded as killed or resolved this way. Behaviors under a valid no-test row get no mutation.
 
 Branch (b), the agent `omo-native-qa-executor`: run the plan's QA scenarios on the real surface. Record per scenario the command, the observable, PASS or FAIL, the output capture, and the cleanup receipt for anything the scenario started. A comparator counts as evidence only when it can fail: run it once on a corrupted or missing input as a failing control, through the same comparison, and capture that failure beside the passing run. A scenario that fails is in scope by definition: fix it before the PR opens.
 
@@ -29,12 +29,12 @@ Evidence problems are never a REVISE reason. The verbatim rule, carried by every
 ## Step 11: APPROVED or REVISE
 
 - APPROVED: the working session merges the PR.
-- REVISE, code problems only: go back to Step 1 (plan.md) for the cited problems, re-run discovery with the variant sweep, fix in the SAME worktree and SAME PR with more commits, then run steps 6-9 again, with the step-7 review scoped to the delta diff.
+- REVISE, code problems only: go back to Step 1 (plan.md) for the cited problems: re-run discovery with the variant sweep; update the plan (Step 2: a COMPANION row for each in-scope variant, a risk row for each fix); run the fixes as a mass-ulw correction run under run.md, Step 5, in the SAME worktree and SAME PR with more commits; then run steps 6, 7 (delta diff), 8 (update the PR body), and 9 again. Steps 3 and 4 are not repeated: the plan review is one round and the goal already exists.
 - `omo-native-gate-reviewer` runs only when the loop's final checkpoint requires a quality-gate record. It is bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and it follows the evidence rule (SKILL.md, Delegation prompts).
 
 ## Step 12: Post-merge verification
 
-After the merge, one full verification pass on the merged result: `omo-native-qa-executor` runs every QA scenario, plus the repository test suite, typecheck, and build where the repository has them. A failing target is a defect of this change: fix and re-verify it, with evidence, before the final report.
+After the merge, one full verification pass on the merged result: `omo-native-qa-executor` runs every QA scenario, plus the repository test suite, typecheck, and build where the repository has them. A failing target is a defect of this change: fix and re-verify it, with evidence, before the final report. The fix goes through a new worktree off the merged base and its own PR under steps 5-11; never patch main directly. Step 13's cleanup runs after that PR merges and passes this step.
 
 ## Step 13: Cleanup and final report
 

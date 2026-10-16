@@ -11,6 +11,8 @@ A `/wish2` invocation is one authorized request plus authorization to plan, impl
 
 Resolve every reference path in this skill relative to the directory of this SKILL.md.
 
+`/wish2` arms ultrawork, so assume it is active and never re-arm, reset, or disarm it, and create no goal or notepad at its bootstrap: the plan file holds the notes until step 4 creates the one goal through ulw-loop (`references/plan.md`, Step 4).
+
 ## The 13 steps
 
 1. Discovery: survey the code, the git history of the paths to touch, memory, and earlier session evidence. When a REVISE sends work back (step 11), re-run discovery for the cited problem and sweep for variants of the same defect class, with no separate sweep or report-merging nodes. Details: `references/plan.md`.
@@ -23,7 +25,7 @@ Resolve every reference path in this skill relative to the directory of this SKI
 8. Open the PR: behavior delivered, tests and QA run, real limits. Details: `references/review.md`.
 9. One ultrabrain final review (`category: ultrabrain`): reports every CODE defect of the PR in one verdict. Details: `references/review.md`.
 10. Evidence problems are never a REVISE reason; every reviewer prompt carries the rule verbatim from Delegation prompts below, and each such problem becomes a correction memo the main session fixes with no re-review. Details: `references/review.md`.
-11. APPROVED: merge (the working session merges). REVISE (code problems only): go back to step 1 for the cited problems, in the same worktree and same PR with more commits. `omo-native-gate-reviewer` runs only when the loop final checkpoint requires a quality-gate record, bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and follows rule 10. Details: `references/review.md`.
+11. APPROVED: merge (the working session merges). REVISE (code problems only): go back to step 1 and run steps 2, 5-9 again for the cited problems, in the same worktree and same PR with more commits. `omo-native-gate-reviewer` runs only when the loop final checkpoint requires a quality-gate record, bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and follows rule 10. Details: `references/review.md`.
 12. After merge, one full verification on the merged result: `omo-native-qa-executor` runs all QA scenarios, plus the repository test suite, typecheck, and build where they exist. Details: `references/review.md`.
 13. Cleanup, complete the goal, final report: results, evidence locations, limits, and out-of-scope findings with their follow-up record paths. Details: `references/review.md`.
 
@@ -35,7 +37,7 @@ The original request and its companion items are the boundary for every step: di
 - A companion item is the same grain as the change and something the requester would naturally expect done together. It must pass: (a) one hop from a request IS row, never chained to another companion; (b) no new owner decision; (c) same task and PR; (d) recorded in the plan as `COMPANION: <item> <- <request IS row> : <why expected>`.
 - Same-pattern pre-existing bugs at sibling locations found while fixing are companion under these guards, not follow-ups.
 - A late-found item that passes the guards is added to the plan as a COMPANION row and fixed in the same task.
-- Everything else is out of scope: never fix it in this task. Record it in the follow-up file `<evidenceRoot>/follow-ups.md` (created only when a real finding exists) and name it in the final report.
+- Everything else is out of scope: never fix it in this task. Record it in the follow-up file `<evidenceRoot>/follow-ups.md` (`references/plan.md`, Step 4; created only when a real finding exists) and name it in the final report.
 
 ## Rules
 
