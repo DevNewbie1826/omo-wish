@@ -67,6 +67,8 @@ try {
     assert.equal(args.split("\n")[0], "keep $ARGUMENTS $1 literal x <literal> y");
     assert.equal(bare.includes("<!-- omo-wish:entry:v1 -->"), false);
     assert.equal(args.includes("<!-- omo-wish:entry:v1 -->"), false);
+    assert.equal(bare.includes("Read and follow the `wish` skill"), true);
+    assert.equal(args.includes("Read and follow the `wish` skill"), true);
   });
   check("before_agent_start is preview-safe", () => {
     assert.deepEqual(runner.getPreviewUnsafeBeforeAgentStartPaths(), []);

@@ -97,6 +97,7 @@ test("bare and quoted /wish arguments reach the expanded entry without recursive
   expect(bare.split("\n")[0]).toBe("");
   expect(withArgs.split("\n")[0]).toBe("keep $ARGUMENTS $1 literal x <literal> y");
   for (const text of [bare, withArgs]) {
+    expect(text).toContain("Read and follow the `wish` skill");
     expect(text).not.toContain("<!-- omo-wish:entry:v1 -->");
     expect(await messages(extensionRunner, text, { preview: true })).toEqual([]);
     expect(existsSync(join(repo, "skills/wish/SKILL.md"))).toBe(true);
