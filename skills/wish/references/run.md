@@ -4,7 +4,7 @@ Covers step 5 of the flow (see SKILL.md, The 13 steps).
 
 ## Step 5: Run the plan with mass-ulw
 
-Read the mass-ulw skill and its references/planning.md in full before defining any task DAG. Then run the plan's nodes under these rules:
+Read the mass-ulw skill and its references/planning.md in full before defining any task DAG. Its verification-wave, inter-wave review-node, and one-role-per-node defaults do not apply inside the step-5 run: verification is step 6, no verification, review, or synthesis node goes inside the run, and the node that makes a change runs its own proof (Injection check below). Then run the plan's nodes under these rules:
 
 ### Worktree and nodes
 

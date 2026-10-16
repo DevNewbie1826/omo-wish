@@ -11,7 +11,7 @@ A `/wish` invocation is one authorized request plus authorization to plan, imple
 
 Resolve every reference path in this skill relative to the directory of this SKILL.md.
 
-`/wish` arms ultrawork, so assume it is active and never re-arm, reset, or disarm it, and create no goal or notepad at its bootstrap: the plan file holds the notes until step 4 creates the one goal through ulw-loop (`references/plan.md`, Step 4).
+`/wish` arms ultrawork, so assume it is active and never re-arm, reset, or disarm it, and create no goal or notepad at its bootstrap: the plan file holds the notes until step 4 creates the one goal through ulw-loop (`references/plan.md`, Step 4). The authorized request already covers every phase here, so never ask the user to authorize the plan, the run, the PR, the review, the merge, or the cleanup again, and never pause for a native reviewer loop or a failed-attempt question; steps 7, 9, and 11 are the review schedule, and a REVISE round continues in this session. A genuine owner decision (irreversible, destructive, or a spend) is still asked through the question tool.
 
 ## The 13 steps
 
@@ -41,7 +41,7 @@ The original request and its companion items are the boundary for every step: di
 
 ## Rules
 
-- Tests: code first; no RED-first mandate. A test must break when the behavior changes, not only when the implementation changes. Add a test only when the repository keeps tests for that behavior and a regression would otherwise pass unnoticed; prose gets read-through QA, never wording tests. Every guard row gets the injection check (step 5).
+- Tests: code first; no RED-first mandate. A test must break when the behavior changes, not only when the implementation changes, and a fixture for a behavior that consumes more than one value supplies at least two, so a change that keeps only the first one breaks it. Add a test only when the repository keeps tests for that behavior and a regression would otherwise pass unnoticed; prose gets read-through QA, never wording tests. Every guard row gets the injection check (step 5).
 - Evidence capture: capture the command and its output; never retype a SHA or number by hand when a capture holds it; record only what you checked.
 - Test discipline: no sleeps; wait on the event or state change itself.
 - Gate order: never open the PR before step 6 passes and step 7 has run; never merge before the ultrabrain review returns APPROVED.
