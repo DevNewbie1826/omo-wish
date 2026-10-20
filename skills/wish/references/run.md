@@ -4,7 +4,7 @@ Covers step 5 of the flow (see SKILL.md, The 13 steps).
 
 ## Step 5: Run the plan with mass-ulw
 
-Read the mass-ulw skill and its references/planning.md in full before defining any task DAG. Its verification-wave, inter-wave review-node, and one-role-per-node defaults do not apply inside the step-5 run: verification is step 6, no verification, review, or synthesis node goes inside the run, and the node that makes a change runs its own proof (Injection check below). Then run the plan's nodes under these rules:
+Read the mass-ulw skill and its references/planning.md in full before defining any task DAG. Its verification-wave, inter-wave review-node, and one-role-per-node defaults do not apply inside the step-5 run: verification is step 6, no verification, review, or synthesis node goes inside the run, and the node that makes a change runs its own proof (Injection check below) and, for a high-risk row, its own adversarial review (below). Then run the plan's nodes under these rules:
 
 ### Worktree and nodes
 
@@ -24,6 +24,10 @@ For each guard row the node owns, prove its test can fail, inside the same node:
 3. Restore the file, run the test once more, and capture the passing output.
 
 The evidence set is the injection diff, the failing output, and the passing output after restore. A test that stays green under its injection guards nothing. Run inject, test, and restore as one command, so nothing ends mid-injection.
+
+### Adversarial review for high-risk rows
+
+A node that owns a row the plan flags `high-risk` runs one adversarial review of its change inside the node, after the injection check and before its commit. The reviewer comes from a model family other than the author's: pick a category or explicit model the host routes to another family, and record the reviewer's model with the evidence. It tries to break the change against the row's invariant, and its prompt follows SKILL.md, Delegation prompts, including the reviewer rule. The node fixes the blocking findings once, reruns the row's guard test or, for a no-test row, its QA scenario, and keeps the rest as notes; there is no second pass. Rows without the flag get no adversarial review, and step 9 still runs. If the host refuses a spawn from inside a node, the node says so in its report and you run that same one review yourself for the node's change before step 6.
 
 ### Commits
 
