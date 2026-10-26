@@ -10,15 +10,19 @@ Branch (a), one node: run the repository test suite, then the mutation check. Ma
 
 Branch (b), the agent `omo-native-qa-executor`: run each plan scenario's happy case and failure case on the real surface. Record per scenario the command, the observable, PASS or FAIL, the output capture, and the cleanup receipt for anything the scenario started. A failing scenario follows the rule above.
 
+Run the relevant first-use and resume path through the shipped composition, with the same input and event routes a user takes, and include process exit and owned-resource cleanup. A missing surface is a failure, not a reason to test only the surfaces already implemented. Mark external authentication or unavailable platforms unverified when only a local fixture was exercised.
+
 Both branches must pass before the PR (gate order: SKILL.md, Rules).
 
 ## Step 7: Code review round
 
-Run `omo-native-code-reviewer` once per round, before the PR. The reviewer must load and apply the `remove-ai-slops` skill and the `programming` skill, and state in its report whether that check ran. It reports findings by severity CRITICAL, HIGH, MEDIUM, LOW. Fix the CRITICAL and HIGH findings once, then continue; the round gets no second pass. MEDIUM and LOW are notes for the report. In a REVISE round the reviewer sees only the delta diff since the last reviewed commit. Its prompt follows SKILL.md, Delegation prompts.
+Run `omo-native-code-reviewer` once per round, before the PR. The reviewer must load and apply the `remove-ai-slops` skill and the `programming` skill, and state in its report whether that check ran. It reports findings by severity CRITICAL, HIGH, MEDIUM, LOW. Severity ranks a finding; it does not decide whether it blocks. Apply the same finite-contract blocker rule as Step 9. Fix every reproduced in-contract code blocker once, then continue without a second code-review pass. All other findings remain notes. In a REVISE round the reviewer sees only the delta diff since the last reviewed commit. Its prompt follows SKILL.md, Delegation prompts.
 
 ## Step 8: Open the PR
 
 One PR to the repository's main branch. The body states the behavior delivered, the tests and QA run with their capture paths, and the real limits. Claims stay within what the captures hold; never retype a number or SHA that a capture already holds.
+
+Generate head, command, exit, count and base-attribution claims from their receipts. Keep past-head history separate from final-head claims and keep source reports before cleanup.
 
 ## Step 9: Final review
 
@@ -31,7 +35,7 @@ Evidence problems are never a REVISE reason, and neither is a finding outside th
 ## Step 11: APPROVED or REVISE
 
 - APPROVED: merge the PR yourself.
-- REVISE, code problems only: go back to Step 1 (plan.md) for the cited problems: re-run discovery with the variant sweep; update the plan (Step 2: a COMPANION row for each in-scope variant, a risk row for each fix); run the fixes as a mass-ulw correction run under run.md, Step 5, in the SAME worktree and SAME PR with more commits; then run steps 6, 7 (delta diff), 8 (update the PR body), and 9 again, in that order: step 9 starts only after step 7's CRITICAL and HIGH fixes are committed and pushed, so the final review judges the final head. Steps 3 and 4 are not repeated: the plan review is one round and the goal already exists.
+- REVISE, code problems only: go back to Step 1 (plan.md) for the cited problems: re-run discovery with the variant sweep; update the plan (Step 2: a COMPANION row for each in-scope variant, a risk row for each fix); run the fixes as a mass-ulw correction run under run.md, Step 5, in the SAME worktree and SAME PR with more commits; then run steps 6, 7 (delta diff), 8 (update the PR body), and 9 again, in that order: step 9 starts only after step 7's reproduced in-contract code blockers are fixed, verified, committed and pushed, so the final review judges the final head. Steps 3 and 4 are not repeated: the plan review is one round and the goal already exists.
 - Two strikes: when the same component (the file or module a blocking finding cites) gets REVISE in two consecutive rounds, stop patching it. Before the next fix, write in the plan the one-sentence premise every failed fix assumed, run one architect review (`category: architect`, prompt per SKILL.md, Delegation prompts) of the cause and that premise, and fix from its answer. That review judges only the cause and the premise; it is not a second plan review.
 - Rebase-only head changes: a verdict covers a patch, not a commit. When the head moved after a verdict only by a rebase, compare `git diff <old-base>...<verdict-head> | git patch-id --verbatim` with `git diff <new-base>...<new-head> | git patch-id --verbatim` (verbatim, so a whitespace change still counts as a change). Equal ids keep the verdict, and the report states both heads, both ids, and the comparison. Different ids mean the patch changed: it gets the delta review (step 7 on the difference between those two base-to-head diffs, which also covers changes that live only in merge commits, then step 9), as in a REVISE round.
 - `omo-native-gate-reviewer` runs only when the loop's final checkpoint requires a quality-gate record. It is bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and it follows the evidence rule (SKILL.md, Delegation prompts).
