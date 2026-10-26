@@ -15,6 +15,8 @@ Stop when every open question is answered and two consecutive waves add nothing 
 
 When a review sends work back (step 11), re-run discovery for the cited problem and also sweep variants of the same defect class, ulw explore style: list the axes along which that class varies, probe representative inputs at the real entry point, and group failures by root cause. The sweep lives inside this step; never spawn separate nodes for the sweep or for merging its results.
 
+Before the first correction edit, keep the reviewer's reproduction as a guard test or QA scenario, write the failed premise in the plan, and list the relevant input and transition axes. Probe each axis at the production entry point, not only at the cited line. Keep regression tests for the original failure and for the neighbouring inputs that must still pass.
+
 ## Step 2: The plan file
 
 Write one plan file that holds:
@@ -25,8 +27,12 @@ Write one plan file that holds:
 - Gaps: per IS row, the current state, the user impact, and the cause; or "no gap" with the evidence the property already holds.
 - User-side QA scenarios: at least one per IS row, run on the real surface, each naming the exact command and one binary pass condition, with the happy case, the failure case, and the evidence path. A scenario that runs a command is a re-runnable script kept with its evidence.
 - The IS-row to QA-scenario pairing: which scenario proves which row, so no row is unproven and no scenario is unowned. Step 4 carries this pairing into the goal.
+- Wiring: per IS row, the production entry point, the consumer that observes the result, and the code that owns the state or representation it relies on. A helper-only test does not prove production wiring. When two sources could supply a value, tests give them distinct fixture values so the test shows which one was used.
+- Transitions: per state or lifetime row, the owner changes, generation changes, and terminal transitions that apply, such as success, rejection, abort before start, and abort while pending. Reuse the component's existing test table if it has one; never add an unrelated test matrix.
 - A risk list: one row per behavior the change touches, either `guard: <invariant> : <regression a user would hit> -> <node>` for behaviors that get a test, where the invariant is one of the listed INVARIANT rows or the IS row the test proves, or `no-test: <reason>` for prose or behavior this repository cannot test, naming the QA scenario that covers it. Step 6 makes one mutation per guard row. Flag a row `high-risk` when the behavior involves concurrency, persistence, or state and lifetimes; its node runs the adversarial review of run.md, Step 5.
 - The two pinned rules, stated once here and never relaxed: every command pins the task worktree, and commits are serialized.
+
+The Step 3 review challenges any duplicate source of authority: a second parser, a reconstructed path, a duplicate identity, or an enumeration of a domain the change does not own. For each, the plan records the authoritative source or a user-approved known limit.
 
 ## Step 3: Architect plan review
 
