@@ -35,16 +35,26 @@ export function buildReceipt({ opts, lane, head, tree, status, probes, ctx, star
   return receipt;
 }
 
-// A violation is a state mismatch (exit 3), never a silently broken artifact.
+// A path names a directory when it is an existing directory, ends with a
+// separator, or its basename has no dot; the file inside then takes the canonical
+// <stage>-<lane>-<head7>.json that M0 §4.2 requires. Any other path is written
+// exactly as given (a caller inspecting a run may want a scratch name), and its
+// body is validated either way; the filename agreement is checked whenever the
+// name parses.
 export function writeReceipt(pathArg, receipt) {
-  let path = resolve(pathArg);
-  if (existsSync(path) && statSync(path).isDirectory()) {
-    path = join(path, receiptFilename({ stage: "verify_lane", lane: receipt.lane, head: receipt.head }));
-  }
+  const resolved = resolve(pathArg);
+  const given = String(pathArg);
+  const name = basename(resolved);
+  const isDir = (existsSync(resolved) && statSync(resolved).isDirectory())
+    || given.endsWith("/")
+    || !name.includes(".");
+  const path = isDir
+    ? join(resolved, receiptFilename({ stage: "verify_lane", lane: receipt.lane, head: receipt.head }))
+    : resolved;
   receipt.artifacts = [path];
-  const name = basename(path);
   const body = validateReceipt(receipt);
-  const named = parseReceiptFilename(name).ok ? validateReceiptAgainstFilename(receipt, name) : { ok: true, errors: [] };
+  const finalName = basename(path);
+  const named = parseReceiptFilename(finalName).ok ? validateReceiptAgainstFilename(receipt, finalName) : { ok: true, errors: [] };
   const errors = [...body.errors, ...named.errors];
   if (errors.length > 0) {
     for (const error of errors) process.stderr.write(`sweep: receipt ${error.path}: ${error.message}\n`);

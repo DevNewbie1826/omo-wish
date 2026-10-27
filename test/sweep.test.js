@@ -383,7 +383,6 @@ test("a mixed run applies both dictionaries and names its primary and secondary"
 test("a receipt written into a directory takes the canonical filename", () => {
   const dir = stage("clean");
   const out = join(dir, "receipts");
-  mkdirSync(out);
   writeConfig(dir);
   const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   const expected = join(out, `verify_lane-sweep-${HEAD.slice(0, 7)}.json`);
@@ -391,6 +390,11 @@ test("a receipt written into a directory takes the canonical filename", () => {
   expect(existsSync(expected)).toBe(true);
   const receipt = JSON.parse(readFileSync(expected, "utf8"));
   expect(validateReceiptAgainstFilename(receipt, expected.slice(expected.lastIndexOf("/") + 1))).toEqual({ ok: true, errors: [] });
+
+  const canonical = join(dir, `verify_lane-sweep-${HEAD.slice(0, 7)}.json`);
+  const explicit = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", canonical, "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  expect(explicit.exit).toBe(0);
+  expect(existsSync(canonical)).toBe(true);
 });
 
 test("no derivable head is a state mismatch, not a usage error", () => {

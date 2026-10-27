@@ -211,10 +211,13 @@ A pattern is a triage prior, never a reason to skip a reproduction.
 | 2 | usage, unreadable config, unknown probe or lane, or an unknown type |
 | 3 | state mismatch: HEAD cannot be derived, `--head` is not the checkout's HEAD, or the receipt would violate `references/ledger.md` |
 
-`--receipt` writes one `kind: lane`, `stage: verify_lane` receipt named `verify_lane-<lane>-<head7>.json`
-inside a directory. It is validated against M0 before it is written, and a violation exits 3 instead of
-leaving a broken artifact. The runner writes no findings, no ledger event and no plan state: the session
-owns those files (M0 §1).
+`--receipt` writes one `kind: lane`, `stage: verify_lane` receipt. A path that is an existing directory, ends with
+`/`, or whose basename has no dot is a directory: it is created and the file inside takes the canonical
+`verify_lane-<lane>-<head7>.json` name M0 §4.2 requires. Any other path is written exactly as given (a scratch
+copy for inspection); its body is validated either way, and the filename agreement is checked whenever the name
+parses. A receipt is validated against M0 **before** it is written, and a violation exits 3 instead of leaving
+a broken artifact. The runner writes no findings, no ledger event and no plan state: the session owns those
+files (M0 §1).
 
 Known limits, accepted by the plan: probes see only declared entry points (LIM1); `mutation` covers at most
 12 production lines and reports the rest as one `WARN` (LIM2); `draft-guard` without a checker is `SKIP`
