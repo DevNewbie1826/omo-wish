@@ -1798,6 +1798,38 @@ test("nested evidence is protected at any depth", () => {
     }
   });
 
+test("a dangling output symlink is refused, not followed out of the root", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const outside = join(state.box.dir, "elsewhere.md");
+    const dangling = join(state.root, "body-link.md");
+    symlinkSync(outside, dangling);
+    const result = cli(["pr-body", "--root", state.root, "--out", dangling]);
+    expect(result.code).toBe(2);
+    expect(existsSync(outside)).toBe(false);
+  });
+
+  test("an evidence tree deeper than the guard walks refuses the write", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    let deep = join(state.root, "receipts");
+    for (let level = 0; level < 34; level += 1) deep = join(deep, "d" + level);
+    mkdirSync(deep, { recursive: true });
+    writeFileSync(join(deep, "evidence.txt"), "deep\n");
+    // A plain new file never needs the identity set; a hard link into the tree does.
+    expect(cli(["pr-body", "--root", state.root, "--out", join(state.root, "body-deep.md")]).code).toBe(0);
+    const hard = join(state.root, "innocent-deep.md");
+    linkSync(join(deep, "evidence.txt"), hard);
+    const result = cli(["pr-body", "--root", state.root, "--out", hard]);
+    expect(result.code).toBe(3);
+    expect(result.err).toContain("deeper than the guard walks");
+    expect(readFileSync(join(deep, "evidence.txt"), "utf8")).toBe("deep\n");
+  });
+
   test("an --out path that cannot be written is a usage error", () => {
     const state = scene();
     upToBuild(state);

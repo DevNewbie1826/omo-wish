@@ -52,7 +52,8 @@ import {
   writeFrontMatter,
 } from "./lib/store.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync,
+import { existsSync, lstatSync,
+  readFileSync,
   readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -844,7 +845,9 @@ function verbFreeze(parsed, root) {
 // followed (a cycle would hang the walk), and an unreadable evidence directory is a
 // state error rather than an empty set, so the guard never fails open.
 function walkEvidence(dir, depth = 0) {
-  if (depth > 8) return [];
+  // The guard needs the whole set, so an unreachable depth fails closed instead of
+  // handing back a partial set that a hard link could slip past.
+  if (depth > 32) throw stateMismatch(`the evidence tree under ${dir} is deeper than the guard walks`);
   let entries;
   try {
     entries = readdirSync(dir, { withFileTypes: true });
@@ -965,6 +968,17 @@ function verbPrBody(parsed, root) {
       paths.resume, paths.lock].map((entry) => join(rootReal, relative(paths.root, entry))).concat(planReal);
     const requested = resolve(out);
     const parentReal = existsSync(dirname(requested)) ? realpathSync(dirname(requested)) : dirname(requested);
+    // lstat sees a link that exists but points nowhere; existsSync does not, and a
+    // write through it would create the target outside the root.
+    let linkStat = null;
+    try {
+      linkStat = lstatSync(requested);
+    } catch {
+      linkStat = null;
+    }
+    if (linkStat?.isSymbolicLink() && !existsSync(requested)) {
+      throw usage(`--out is a dangling symlink: ${requested}`);
+    }
     // An existing target is resolved through its own links: a symlink that leaves
     // the root is the same write as naming a path outside it.
     const targetReal = existsSync(requested) ? realpathSync(requested) : join(parentReal, basename(requested));
