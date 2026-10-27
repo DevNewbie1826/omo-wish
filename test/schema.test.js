@@ -167,6 +167,11 @@ test("a third REVISE requires a switch and no round may follow APPROVED", () => 
   expect(codes(validateLedgerSequence(capped))).toContain("events[18].terminal");
 });
 
+test("round numbers are consecutive per unit", () => {
+  const skipped = ledgerEvents.map((entry) => entry.event === "round" && entry.round === 2 ? { ...entry, round: 3 } : entry);
+  expect(codes(validateLedgerSequence(skipped)).some((path) => path.startsWith("unit u1"))).toBe(true);
+});
+
 test("every event names its work type, unit and program, and its required extras", () => {
   expect(validateLedgerEvent(event()).ok).toBe(true);
   for (const key of ["type", "unit", "program_id"]) {
@@ -219,6 +224,7 @@ test("the PROGRESS line parses and formats both the register and n/a forms", () 
   expect(parseProgressLine(lines[0]).value.gaps_total).toBe(5);
   expect(parseProgressLine(lines[1]).value.gaps_total).toBe(null);
   expect(parseProgressLine("PROGRESS: run w-x · units 1/1").ok).toBe(false);
+  expect(parseProgressLine("PROGRESS: run w-x · units 2/1 · gaps n/a · prs 0 merged 0 open · wave 1/1 · round r0 on none · switch 0 · waiting none").ok).toBe(false);
   expect(PROGRESS_PATTERN_SOURCE.startsWith("^PROGRESS: run ")).toBe(true);
 });
 
