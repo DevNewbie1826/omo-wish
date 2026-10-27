@@ -227,13 +227,19 @@ function list(values) {
   return `${values.slice(0, MAX_LISTED).join(", ")} (+${values.length - MAX_LISTED} more)`;
 }
 
+// A mixed run takes its primary type's identity form (ledger §2): a research primary
+// carries the artifact sha256 in `head` and no git tree, even when the work is mixed.
+function identityType(receipt) {
+  return receipt.type === "mixed" ? receipt.primary : receipt.type;
+}
+
 // ------------------------------------------------------------------- decision
 
 export function decideReuse({ receipt, head, tree, changed = [], referrers, envSha }) {
   if (receipt.kind === "before") {
     return { verdict: "VALID", reason: "a before receipt is exempt: a pre-edit capture is deliberately old" };
   }
-  if (receipt.type === "research") {
+  if (identityType(receipt) === "research") {
     const same = String(receipt.head).toLowerCase() === String(head).toLowerCase();
     return same
       ? { verdict: "VALID", reason: `artifact sha256 ${short(head)} unchanged` }
@@ -447,7 +453,7 @@ function main(argv) {
     return EXIT_CODES.STATE_MISMATCH;
   }
 
-  const isResearch = receipt.value.type === "research";
+  const isResearch = identityType(receipt.value) === "research";
   if (isResearch && !HEAD64.test(options.head)) {
     console.error("FAIL a research receipt compares a 64-hex artifact sha256, not a commit SHA");
     return EXIT_CODES.USAGE;

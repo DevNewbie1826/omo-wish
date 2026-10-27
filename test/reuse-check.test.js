@@ -171,6 +171,42 @@ describe("reuse-check CLI", () => {
     expect(result.stdout).toContain("changed files inside scope: src/b.ts, src/z.ts");
   });
 
+  test("a mixed run takes its primary type's identity form", () => {
+    const researchHead = writeReceipt(evidence, `claim-gate-${ARTIFACT_A.slice(0, 7)}.json`, {
+      kind: "claim-gate",
+      type: "mixed",
+      primary: "research",
+      secondary: "code",
+      unit: "u9",
+      program_id: null,
+      lane: "claim-gate",
+      head: ARTIFACT_A,
+      tree: null,
+      scope: ["report.html"],
+      started_at: "2026-10-27T16:30:00Z",
+      ended_at: "2026-10-27T16:33:00Z",
+      status: "PASS",
+      rows: [],
+      artifacts: [],
+      cleanup: [],
+    });
+    const same = run([researchHead, "--head", ARTIFACT_A, "--repo", repo]);
+    expect(same.code).toBe(0);
+    expect(same.stdout).toContain("VALID artifact sha256");
+    const changed = run([researchHead, "--head", ARTIFACT_B, "--repo", repo]);
+    expect(changed.code).toBe(1);
+
+    const commitHead = writeReceipt(evidence, laneName("verify_lane", "mixed", c0), receipt({
+      type: "mixed",
+      primary: "code",
+      secondary: "design",
+      lane: "mixed",
+    }));
+    const tree = run([commitHead, "--head", c0, "--repo", repo]);
+    expect(tree.code).toBe(0);
+    expect(tree.stdout).toContain("VALID tree");
+  });
+
   test("a before receipt is exempt even when its head is gone", () => {
     const path = writeReceipt(evidence, `before-G1-${"8".repeat(40).slice(0, 7)}.json`, receipt({
       kind: "before",
