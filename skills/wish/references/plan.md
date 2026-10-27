@@ -44,11 +44,11 @@ Fix every line it prints and record the command and its output in the plan's rev
 
 The checker reads these row shapes; a row in another shape is a complaint, never a silent pass:
 
-- IS rows: one bullet or one IS-table row per property, `- IS-<id> ...`.
-- Wiring: `## Wiring` with `- IS-<id>: entry point ..., consumer ..., owner ...`, or IS-table columns headed entry point, consumer, and owner.
+- IS rows: one bullet or one IS-table row per property, `- IS-<id> ...`. A table is read as IS rows when its section is the IS rows or its header names the deliverable or requirement column.
+- Wiring: `## Wiring` with `- IS-<id>: entry point ..., consumer ..., owner ...`, or IS-table columns headed entry point, consumer, and owner; a path resolves from the repository root or, as plans often write it, under a skill directory.
 - QA scenarios: one bullet or table row per scenario, `- QA-<id> (...) <command> -> PASS iff <observable>`, plus one pairing line `IS-row to QA pairing: IS-<id>, IS-<id> -> QA-<id>; IS-<id> -> QA-<id>`.
 - Ranges: `IS-1-IS-4` covers every row between the two ids.
-- Invariants: `- INV-<id> <property> : <test or scenario>` or `- INVARIANT: <property> : <test or scenario>`; a risk row cites one of those ids, an IS row, or the invariant's property text: `- guard: <INVARIANT or IS row> : <regression a user would hit> -> <node>`.
+- Invariants: `- INV-<id> <property> : <test or scenario>` or `- INVARIANT: <property> : <test or scenario>`; a risk row cites one of those ids, an IS row, or the invariant's property text: `- guard: <INVARIANT or IS row> : <regression a user would hit> -> <node>`. `no-test:` rows are not checked.
 - Companions: `COMPANION: <item> <- <IS row> : <why expected>`, or `COMPANION: none.`
 - State or lifetime rows: mark them `high-risk (state/lifetime): <IS row>` and list their transitions under `## Transitions`.
 - Pinned rules: a `## Pinned rules` section that states the worktree pin and serialized commits.
