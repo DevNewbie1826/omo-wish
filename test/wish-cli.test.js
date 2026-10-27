@@ -992,6 +992,15 @@ describe("status derivation against the contract's own example", () => {
     expect(rows[0].status).toBe("fixed");
   });
 
+  test("a mixed run takes its primary type's identity form", () => {
+    const state = scene({ type: "mixed", initExtra: ["--primary", "research", "--secondary", "code"] });
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.type).toBe("mixed");
+    expect(reported.json.tree).toBe(null);
+    expect(validateStatusJson(reported.json).errors).toEqual([]);
+  });
+
   test("a worktree path with shell metacharacters is never interpolated", () => {
     const state = scene({ workName: "wo;rk $(touch pwned) `touch pwned2`" });
     upToBuild(state);

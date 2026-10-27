@@ -289,18 +289,33 @@ function appendLine(file, text) {
   }
 }
 
-// M0's own sequence validator demands that a third-or-later REVISE already has its
-// approach switch in the same array, while a switch in turn demands the REVISE
-// before it. Enforced incrementally that pair is circular: the round could never
-// be appended, so the switch could never follow. M1 therefore appends the round
-// first and treats the missing switch as a *pending obligation*: `next` becomes
-// "switch" and `blocking` names it until `switch record` lands. Every other
-// sequence rule stays a hard refusal.
+// M0 §2: a mixed run takes its primary type's identity form, so head/tree rules
+// (and the research artifact hash) follow the primary, not the label "mixed".
+export const identityType = (type, primary) => (type === "mixed" ? primary : type);
+
+// M0 §9.4: M0's own sequence validator demands that a third-or-later REVISE already
+// has its approach switch in the same array, while a switch in turn demands the
+// REVISE before it. Enforced incrementally that pair is circular: the round could
+// never be appended, so the switch could never follow. M1 therefore appends the
+// round first and treats the missing switch as a *pending obligation* until the
+// next round lands: `next` becomes "switch" and `blocking` names it. Once a later
+// round exists the rule bites again, exactly as M0 states it ("before the next
+// round").
 const PENDING_SWITCH = "requires an approach switch";
 
 export function pendingSwitchErrors(events) {
   const result = validateLedgerSequence(events);
-  return result.errors.filter((entry) => !String(entry.message).includes(PENDING_SWITCH));
+  const lastRoundOf = new Map();
+  for (const event of events) {
+    if (event?.event !== "round" || typeof event.unit !== "string") continue;
+    lastRoundOf.set(event.unit, Math.max(lastRoundOf.get(event.unit) ?? 0, Number(event.round) || 0));
+  }
+  return result.errors.filter((entry) => {
+    if (!String(entry.message).includes(PENDING_SWITCH)) return true;
+    const match = /^unit (.+) round (\d+)$/.exec(String(entry.path ?? ""));
+    if (!match) return true;
+    return Number(match[2]) !== (lastRoundOf.get(match[1]) ?? -1);
+  });
 }
 
 export function roundsOf(events, unit) {
@@ -857,7 +872,7 @@ export function deriveNext(stage, context) {
 }
 
 function laneState(context) {
-  const { receipts, requiredLanes, head, tree, reuseEvents, unit, type } = context;
+  const { receipts, requiredLanes, head, tree, reuseEvents, unit, identity } = context;
   const missing = [];
   const stale = [];
   const satisfied = [];
@@ -868,7 +883,7 @@ function laneState(context) {
       missing.push(lane);
       continue;
     }
-    const judged = candidates.map((receipt) => ({ receipt, verdict: judgeReceipt(receipt, { type, head, tree, reuseEvents }) }));
+    const judged = candidates.map((receipt) => ({ receipt, verdict: judgeReceipt(receipt, { type: identity, head, tree, reuseEvents }) }));
     const good = judged.find((entry) => entry.verdict.valid
       && RECEIPT_STATUSES.includes(entry.receipt.body.status)
       && entry.receipt.body.status !== "SKIP"
@@ -889,6 +904,7 @@ function buildContext({ root, plan, events, receipts, findings, gaps, gates, hea
     && typeof event.secondary === "string");
   const primary = mixedLabels?.primary;
   const secondary = mixedLabels?.secondary;
+  const identity = identityType(wish.type, primary);
   const adversarial = [...events].reverse().find((event) => Array.isArray(event.adversarial_classes));
   // design §2.3: an L unit always carries the adversarial lane; below L only a
   // plan-flagged high-risk row does, and the session records that as
@@ -897,7 +913,7 @@ function buildContext({ root, plan, events, receipts, findings, gaps, gates, hea
     || Boolean(adversarial && adversarial.adversarial_classes.some((entry) => entry?.applicable === true));
   const requiredLanes = requiredReceiptsFor(wish.type, { primary, secondary, highRisk });
   const context = {
-    root, type: wish.type, primary, secondary, head, tree, unit, events, receipts, findings, gaps, gates,
+    root, type: wish.type, identity, primary, secondary, head, tree, unit, events, receipts, findings, gaps, gates,
     requiredLanes, highRisk,
     reuseEvents: events.filter((event) => event.event === "reuse"),
     frozenHead: wish.frozen_head,
@@ -1041,7 +1057,7 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
   const stale = [];
   for (const receipt of receipts) {
     const verdict = judgeReceipt(receipt, {
-      type: plan.wish.type, head: observedHead, tree: observedTree, reuseEvents: current.reuseEvents,
+      type: current.identity, head: observedHead, tree: observedTree, reuseEvents: current.reuseEvents,
     });
     (verdict.valid ? valid : stale).push(receipt.name);
   }

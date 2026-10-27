@@ -28,6 +28,7 @@ import {
   checkFailed,
   computeStatus,
   ensureDir,
+  identityType,
   listReceipts,
   mergeFrontMatter,
   nowIso,
@@ -237,6 +238,15 @@ function unitContext(plan) {
   return { type: plan.wish.type, unit: plan.wish.unit ?? "u1", programId: plan.wish.program_id ?? null };
 }
 
+// M0 §2: for a mixed run the head/tree rules follow the primary type. The labels
+// travel on the events (the front matter has no primary/secondary key).
+function identityOf(plan, events) {
+  if (plan.wish.type !== "mixed") return plan.wish.type;
+  const labels = [...events].reverse().find((event) => typeof event.primary === "string");
+  if (!labels) throw stateMismatch("a mixed run needs --primary/--secondary on its intake event");
+  return identityType(plan.wish.type, labels.primary);
+}
+
 function planFor(root, parsed) {
   const events = readLedger(root);
   const planPath = resolvePlanPath(events, parsed.get("--plan"));
@@ -322,14 +332,15 @@ function verbInit(parsed, root) {
 }
 
 function verbStatus(parsed, root) {
-  const { plan, planPath } = planFor(root, parsed);
+  const { plan, planPath, events } = planFor(root, parsed);
+  const identity = identityOf(plan, events);
   const given = parsed.get("--head");
   if (given !== undefined && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(given)) {
     throw usage("--head takes a full 40-hex commit or a 64-hex artifact sha256");
   }
-  const observed = plan.wish.type === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
+  const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
   const head = given ?? observed.head;
-  const tree = plan.wish.type === "research" ? null : observed.tree;
+  const tree = identity === "research" ? null : observed.tree;
 
   // A frozen head that is no longer an ancestor of the observed head means the
   // reviewed patch is gone (rebase, force-push). That is "state unreadable", not
@@ -509,7 +520,7 @@ async function runDispatchGate(parsed, root) {
   if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 1800) {
     throw usage("--timeout takes 1..1800 seconds");
   }
-  const { plan, planPath } = planFor(root, parsed);
+  const { plan, planPath, events } = planFor(root, parsed);
   const context = unitContext(plan);
   const rows = readFindings(root, { type: plan.wish.type }) ?? [];
   const pending = rows.filter((row) => row.blocking === "1"
@@ -517,10 +528,11 @@ async function runDispatchGate(parsed, root) {
     && Number(row.round) < target);
   // One observation for head and tree: two calls could straddle a commit and bind
   // the receipt to a head from one state and a tree from another.
-  const observed = plan.wish.type === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
-  const head = parsed.get("--head") ?? (plan.wish.type === "research" ? plan.wish.frozen_head : observed.head);
+  const identity = identityOf(plan, events);
+  const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
+  const head = parsed.get("--head") ?? (identity === "research" ? plan.wish.frozen_head : observed.head);
   if (!head) throw stateMismatch("the gate needs a head: pass --head or freeze a worktree with a commit");
-  const tree = plan.wish.type === "research" ? null : observed.tree;
+  const tree = identity === "research" ? null : observed.tree;
 
   if (pending.length > 20) {
     throw stateMismatch("the gate table is capped at 20 rows; " + pending.length + " are pending, so split the round");
@@ -668,9 +680,10 @@ function killGroup(child) {
 }
 
 function verbFreeze(parsed, root) {
-  const { plan, planPath } = planFor(root, parsed);
+  const { plan, planPath, events } = planFor(root, parsed);
+  const identity = identityOf(plan, events);
   const check = parsed.has("--check");
-  const observed = plan.wish.type === "research" ? { head: null, tree: null, dirty: null } : observeWorktree(plan.wish.worktree);
+  const observed = identity === "research" ? { head: null, tree: null, dirty: null } : observeWorktree(plan.wish.worktree);
   const given = parsed.get("--head");
   // --check must compare the recorded head with the *observed* one; defaulting to
   // the recorded head would make the comparison vacuous.
@@ -680,7 +693,7 @@ function verbFreeze(parsed, root) {
     const frozen = plan.wish.frozen_head;
     if (!frozen) throw stateMismatch("nothing is frozen yet");
     if (frozen !== head) throw stateMismatch(`the head moved after the freeze: frozen ${frozen.slice(0, 7)}, now ${head.slice(0, 7)}`);
-    if (plan.wish.type !== "research" && plan.wish.frozen_head && observed.tree) {
+    if (identity !== "research" && plan.wish.frozen_head && observed.tree) {
       const frozenEvent = [...readLedger(root)].reverse().find((event) => event.event === "freeze");
       if (frozenEvent && frozenEvent.tree && frozenEvent.tree !== observed.tree) {
         throw stateMismatch(`the tree moved after the freeze: frozen ${frozenEvent.tree.slice(0, 7)}, now ${observed.tree.slice(0, 7)}`);
@@ -708,7 +721,7 @@ function verbFreeze(parsed, root) {
       session_id: sessionId(parsed),
       started_at: nowIso(),
       head,
-      tree: plan.wish.type === "research" ? null : observed.tree,
+      tree: identity === "research" ? null : observed.tree,
       pr: pr ?? plan.wish.pr ?? null,
     }, { plan: planPath, sessionId: sessionId(parsed) });
     process.stdout.write(`frozen ${head.slice(0, 7)}${observed.tree ? ` (tree ${observed.tree.slice(0, 7)})` : ""}\n`);
@@ -868,10 +881,11 @@ function verbSwitch(parsed, root) {
 function verbResumePlan(parsed, root) {
   const paths = rootPaths(root);
   if (!existsSync(paths.ledger)) throw stateMismatch(`no ledger at ${paths.ledger}`);
-  const { plan, planPath } = planFor(root, parsed);
-  const observed = plan.wish.type === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
+  const { plan, planPath, events } = planFor(root, parsed);
+  const identity = identityOf(plan, events);
+  const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
   const { status, contexts, unitStates } = computeStatus({
-    root, planPath, head: observed.head, tree: plan.wish.type === "research" ? null : observed.tree,
+    root, planPath, head: observed.head, tree: identity === "research" ? null : observed.tree,
   });
   const resume = resumePlan({ status, contexts, unitStates });
   const lines = [
