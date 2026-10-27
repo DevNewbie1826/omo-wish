@@ -35,8 +35,9 @@ Reading rules the linter applies to every line:
   is how a plan quotes an example row.
 - CRLF, a trailing newline and a UTF-8 BOM are accepted; they never change a verdict.
 - A bullet that starts with a declared marker but does not match that marker's grammar is a **complaint**,
-  never a silent skip (rule PL16). Prose that must start with such a word belongs in a fenced block or in
-  indented text.
+  never a silent skip (rule PL16). Marker words match case-insensitively, so a near miss such as `Device:` or
+  `limits:` is a complaint and not prose; prose that must open with one of these words belongs in a fenced
+  block or in indented text.
 
 ## 2. Front matter
 
@@ -79,6 +80,8 @@ Under `## Todos`, each implementation row is `- [ ] <N>. <title>` with a positiv
 `## Final verification wave`, each final-verifier row is `- [ ] F<n>. <title>`. A row may be checked `- [x]`.
 Both section names are exact, both sections are required, each needs at least one row, numbers are unique
 within their section, and a task row outside those two sections is a complaint: it would never run.
+ulw-plan's optional `Recommended task executor category:` line is not part of this grammar and is not linted;
+a playbook may still ask for it.
 
 ## 4. Contract rows
 
@@ -216,9 +219,12 @@ commits are serialized. The linter does not pin the wording; PLAN-REVIEW checks 
 ## 6. The machine-checked rules
 
 `scripts/check-plan.mjs <plan.md> [--register <gaps.tsv>] [--json] [--help]` exits `0` clean, `1` when any rule
-below fails, and `2` for a usage or read error (`ledger.md` §14). Every complaint is
-`<plan path>:<line>: <message>`, and a message quotes only an id, a node or one short value — never a whole row,
-because a plan can quote a command that carries a token.
+below fails, and `2` for a usage or read error (`ledger.md` §14); `--` ends the flags so a dashed path is still a
+plan, and `--json` prints the machine object instead of the summary. Every complaint is
+`<plan path>:<line>: <PL id>: <message>`, where the id is a row of the table below (`PL18` is a reading rule and
+carries no message), and a message quotes only an id, a node or one short value — never a whole row, because a
+plan can quote a command that carries a token. `RULE_IDS` in the script and the ids in this table are held equal
+by the test suite, so a rule cannot be added on one side only.
 
 | Rule | Check |
 | --- | --- |
@@ -258,8 +264,12 @@ These are deliberate, and each one is judged by a named role instead:
   authoritative owner, and the o3 arm checked that the paths existed. Path existence produced that arm's largest
   false-positive class (a path written relative to a skill directory, a file a later IS row creates), so the
   linter no longer guesses; PLAN-REVIEW reads the wiring and challenges duplicate sources of authority.
-- **Node existence.** A guard row's node is checked for shape, not for a matching `## Todos` title: v2 has no
-  node-id convention in task titles to match against, and inventing one would couple the plan to M6's playbooks.
+- **Node existence.** A guard or high-risk row's node is checked for shape, not for a matching `## Todos`
+  title: v2 fixes no node-id convention in task titles, so a title check would mean inventing one and coupling
+  this linter to M6's playbooks. PLAN-REVIEW reads the node graph and reports an ownerless mutation.
+- **Transitions.** v1 asked a state or lifetime row to list its transitions. That judgment stays with
+  PLAN-REVIEW: "state" and "lifetime" are semantic, and a keyword check would pass a row that lists none of the
+  transitions that matter.
 - **Whether the plan is any good.** The linter judges grammar only: whether an IS row is the right property,
   whether the invariants cover what must be kept, and whether a high-risk behavior was flagged are contract
   judgments (PLAN-REVIEW, then the final review).

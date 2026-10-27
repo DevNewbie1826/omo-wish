@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { lintPlan, parseArgs } from "../skills/wish/scripts/check-plan.mjs";
+import { RULE_IDS, lintPlan, parseArgs } from "../skills/wish/scripts/check-plan.mjs";
 
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const cli = join(repo, "skills/wish/scripts/check-plan.mjs");
@@ -76,7 +76,11 @@ test("front matter: a bad value lands on its key's line", () => {
 test("front matter: a missing block is a complaint", () => {
   expectProblem(mutate(CODE, "wish:\n", ""), "run_id:", "a key appears before the wish: block");
   const bare = CODE.slice(CODE.indexOf("---", 4) + 3);
-  expect(lintPlan(bare).problems[0]).toEqual({ line: 1, message: "no front matter: the file opens with --- and a wish: block" });
+  expect(lintPlan(bare).problems[0]).toEqual({ line: 1, message: "PL1: no front matter: the file opens with --- and a wish: block", rule: "PL1" });
+});
+
+test("front matter: a nested level is a complaint", () => {
+  expectProblem(mutate(CODE, "  unit: u1", "  unit: u1\n    nested: value"), "nested: value", "front matter accepts");
 });
 
 test("front matter: an unknown key is a complaint", () => {
@@ -165,6 +169,48 @@ test("contract rows: a malformed declared row is loud", () => {
   expectProblem(mutate(CODE, "- IS-2: the usage text", "- IS-2 the usage text"), "IS-2 the usage text", "malformed row");
 });
 
+test("contract rows: every complaint carries a rule id and the ids match the doc table", () => {
+  const doc = readFileSync(join(repo, "skills/wish/references/plan-format.md"), "utf8");
+  const documented = [...doc.matchAll(/\| (PL\d+) \|/g)].map((match) => match[1]);
+  expect([...new Set(documented)].sort()).toEqual([...RULE_IDS].sort());
+  const broken = [
+    mutate(CODE, "criterion: QA-2", "criterion: QA-7"),
+    mutate(CODE, "  tier: S", "  tier: X"),
+    mutate(CODE, "- guard: INV1 :", "- guard: INV9 :"),
+    mutate(CODE, " : the request covers whitespace-separated input only", ""),
+    mutate(CODE, "- IS-1 DEVICE: guard INV1 -> n-test\n", ""),
+    mutate(CODE, "## Risk list\n", "- [ ] 3. n-late: outside\n\n## Risk list\n"),
+    mutate(fixture("design-plan.md"), " ; left-out: a decorative badge", ""),
+    fixture("register-plan.md"),
+  ];
+  const seen = new Set();
+  for (const plan of broken) {
+    for (const problem of lintPlan(plan, { register: { path: "register.tsv", text: registerText() } }).problems) {
+      expect(problem.rule).not.toBe("PL0");
+      seen.add(problem.rule);
+    }
+  }
+  expect(seen.size).toBeGreaterThan(5);
+});
+
+test("contract rows: a complaint never echoes the row body", () => {
+  const canary = "sk-live-CANARY-9f2c";
+  const malformed = mutate(CODE, "- IS-2: the usage text names the empty-input behavior ; criterion: QA-2", "- IS-2 " + canary + " the usage text");
+  const inCommand = mutate(CODE, " ; run: tokenizer test/fixtures/tokens.txt", " ; run: tokenizer " + canary);
+  const malformedPath = tempPlan(malformed);
+  for (const args of [[malformedPath], ["--json", malformedPath]]) {
+    const result = runCli(args);
+    expect(result.code).toBe(1);
+    expect(result.err + result.out).toContain("PL16");
+    expect(result.err + result.out).not.toContain(canary);
+  }
+  const clean = runCli([tempPlan(inCommand)]);
+  expect(clean.err + clean.out).not.toContain(canary);
+});
+test("contract rows: a near-miss marker is loud", () => {
+  expectProblem(mutate(CODE, "## Risk list\n", "- Device: vqa B1 @ 390 light pair x-390-light\n\n## Risk list\n"), "Device:", "malformed row");
+});
+
 test("contract rows: complaints are ordered by line", () => {
   const plan = mutate(CODE, "criterion: QA-2", "criterion: QA-7");
   const broken = mutate(plan, " : the request covers whitespace-separated input only", "");
@@ -242,6 +288,13 @@ test("cli: -- ends the flags so a dashed path is a plan", () => {
   expect(() => parseArgs(["a.md", "b.md"])).toThrow("unexpected argument");
   expect(() => parseArgs(["--json", "--register", "--json"])).toThrow("--register needs");
   expect(() => parseArgs([])).toThrow("no plan file given");
+});
+
+test("cli: an empty plan exits 1", () => {
+  const path = tempPlan("");
+  const result = runCli([path]);
+  expect(result.code).toBe(1);
+  expect(result.err).toContain("PL1: no front matter");
 });
 
 test("cli: a usage mistake exits 2", () => {

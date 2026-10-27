@@ -107,11 +107,36 @@ const MARKERS = [
   ["highrisk", /^- HIGH-RISK: (.*)$/],
   ["typed", /^- (SCREEN|AXIS|CLAIM|RULE): (.*)$/],
 ];
-const DECLARED = /^- (?:IS-?\d|QA-?\d|INV\d|G\d+\s+DEVICE|COMPANION|INVARIANT|LIMIT|SWITCH|guard|no-test|HIGH-RISK|SCREEN|AXIS|CLAIM|RULE)\b/;
+// Case-insensitive on purpose: a near-miss marker (`- Device: ...`) must be loud, never prose.
+const DECLARED = /^- (?:IS-?\d|QA-?\d|INV\d|G\d+\s+DEVICE|DEVICE|COMPANION|INVARIANT|LIMIT|SWITCH|guard|no-test|HIGH-RISK|SCREEN|AXIS|CLAIM|RULE)\b/i;
 const KEEP_SECTIONS = ["Todos", "Final verification wave"];
 const TYPE_OF_KIND = { SCREEN: "design", AXIS: "research", CLAIM: "research", RULE: "audit" };
 const REQUIRED_KINDS = { code: [], design: ["SCREEN"], research: ["AXIS", "CLAIM"], audit: ["RULE"], mixed: [] };
 const HIGH_RISK_KINDS = ["concurrency", "persistence", "state", "lifetime"];
+
+// Every complaint carries the id of the rule it answers (plan-format.md §6); PL18 is a reading rule
+// with no message. The table is the code half of the doc table, and a test holds the two equal.
+const RULES = [
+  ["PL1", /^(no front matter|front matter never closes|a second wish: block|front matter accepts|a key appears before|duplicate front matter key|no wish: block|frontmatter\.)/],
+  ["PL2", /^(a task row outside|a (task|final) row belongs|no "## Todos"|"## Todos" holds|no "## Final verification wave"|"## Final verification wave" holds|duplicate (task|final) row number)/],
+  ["PL3", /^(no IS rows|duplicate IS row |IS-\d+ must read|IS-\d+ states no property)/],
+  ["PL4", /^(IS-\d+ criterion "|IS-\d+ names no QA|IS-\d+ names QA-|IS-\d+ gap "|duplicate QA scenario |QA-\d+ is owned by no IS row)/],
+  ["PL5", /^QA-\d+ (must read|has an empty)/],
+  ["PL6", /^(DEVICE row names |IS-\d+ has no DEVICE row)/],
+  ["PL7", /^(DEVICE body does not match|DEVICE cites claim )/],
+  ["PL8", /^(a [A-Z]+: row belongs|SCREEN |CLAIM |AXIS |RULE |duplicate claim |duplicate rule |a (code|design|research|audit|mixed) plan needs|[A-Za-z0-9._-]+ is not an audit rule id|[A-Z][A-Z]+ [^ ]+ states nothing)/],
+  ["PL9", /^guard /],
+  ["PL10", /^no-test /],
+  ["PL11", /^(HIGH-RISK |a [a-z]+ plan runs no adversarial lane)/],
+  ["PL12", /^(COMPANION |`COMPANION: none.` excludes)/],
+  ["PL13", /^(duplicate invariant |INV\d+ must read)/],
+  ["PL14", /^LIMIT /],
+  ["PL15", /^SWITCH /],
+  ["PL16", /^malformed row/],
+  ["PL17", /^(IS-\d+ must cite|IS-\d+ cites |DEVICE targets G|[^ ]*\.tsv: )/],
+];
+export const RULE_IDS = Object.freeze(["PL1", "PL2", "PL3", "PL4", "PL5", "PL6", "PL7", "PL8", "PL9",
+  "PL10", "PL11", "PL12", "PL13", "PL14", "PL15", "PL16", "PL17", "PL18"]);
 
 // Fixed field order: the last marker owns the rest of the row, so a command may hold `;`, `|` or `->`.
 function fieldsOf(body, markers) {
@@ -365,6 +390,11 @@ export function lintPlan(text, options = {}) {
     }
   }
 
+  for (const problem of problems) {
+    const rule = RULES.find(([, pattern]) => pattern.test(problem.message));
+    problem.rule = rule ? rule[0] : "PL0";
+    problem.message = `${problem.rule}: ${problem.message}`;
+  }
   problems.sort((a, b) => a.line - b.line);
   return {
     ok: problems.length === 0,
