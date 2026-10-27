@@ -1,4 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
+import { runCommand } from "../skills/wish/scripts/sweep.mjs";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -42,7 +43,10 @@ function configFor(dir, overrides = {}) {
         commands: [{ name: "send-fail", cmd: "bun cli.js send --fail" }],
       },
       boundary: {
-        cases: [{ name: "stdin", cmd: "bun cli.js stdin", stdin: "hello world", expectExit: [0, 1] }],
+        cases: [
+          { name: "stdin", cmd: "bun cli.js stdin", stdin: "hello world", expectExit: [0, 1] },
+          { name: "echo-markup", cmd: "bun cli.js echo", stdin: "<a href=\"x\">hello</a>", expectExit: [0], expectStdout: "<a href=\"x\">hello</a>" },
+        ],
       },
       race: { cmd: "bun check.js" },
       mutation: {
@@ -91,6 +95,7 @@ test("clean fixture: every probe passes and the receipt exits 0", async () => {
   expect(run.exit).toBe(0);
   expect(run.receipt.version).toBe("x1-sweep/1");
   expect(run.receipt.summary).toEqual({ PASS: 8, FAIL: 0, SKIP: 0, INVALID: 0, WARN: 0 });
+  expect(statusOf(run.receipt, "boundary", "boundary/echo-markup:declared")).toBe("PASS");
   for (const probe of run.receipt.probes) expect(probe.status).toBe("PASS");
   expect(statusOf(run.receipt, "boundary", "boundary/stdin:invalid-utf8")).toBe("PASS");
   expect(statusOf(run.receipt, "boundary", "boundary/stdin:boundary-4096")).toBe("PASS");
@@ -106,7 +111,7 @@ test("seeded fixture: each seeded defect class fails its own probe", async () =>
   expect(run.exit).toBe(1);
   const expected = {
     secrets: ["secrets/send-fail"],
-    boundary: ["boundary/stdin:boundary-4096"],
+    boundary: ["boundary/stdin:boundary-4096", "boundary/echo-markup:declared"],
     race: ["race"],
     mutation: [`mutation/cli.js:${guardLine(dir)}`],
     docs: ["docs/--dry-run"],
@@ -184,4 +189,58 @@ test("a mutation cap reports the lines it did not probe and docs without a help 
   const limit = checks(run.receipt, "mutation").find((entry) => entry.id === "mutation/limit");
   expect(limit.detail).toContain("1 of 3 added production lines probed");
   expect(base).toBeDefined();
+}, 120000);
+
+test("runCommand clamps every declared timeout to the 300 s cap", async () => {
+  const big = await runCommand({ cmd: "true", cwd: repo, timeoutMs: 999999 });
+  const small = await runCommand({ cmd: "true", cwd: repo, timeoutMs: 400 });
+  expect(big.budget).toBe(300000);
+  expect(small.budget).toBe(400);
+  expect(big.code).toBe(0);
+}, 60000);
+
+test("a timeout and an exit both take the process group, so a held pipe cannot outlive the cap", async () => {
+  const hanging = await runCommand({ cmd: "sleep 20", cwd: repo, timeoutMs: 300 });
+  expect(hanging.timedOut).toBe(true);
+  expect(hanging.ms).toBeLessThan(5000);
+
+  const orphan = await runCommand({ cmd: "sleep 20 & sleep 0.1", cwd: repo, timeoutMs: 5000 });
+  expect(orphan.timedOut).toBe(false);
+  expect(orphan.ms).toBeLessThan(5000);
+}, 60000);
+
+test("a WARN-only probe reports WARN and does not fail the run", async () => {
+  const dir = stage("seeded");
+  const run = sweep(dir, { probes: { errors: { strict: false, lines: [{ file: "cli.js", line: seededRewrapLine(dir) }] } } });
+  const probe = run.receipt.probes.find((entry) => entry.name === "errors");
+  expect(probe.status).toBe("WARN");
+  expect(run.receipt.summary.WARN).toBe(1);
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("the default mutation path reads the added lines out of the git diff", () => {
+  const dir = mkdtempSync(join(tmpdir(), "sweep-git-"));
+  staged.push(dir);
+  cpSync(join(fixtureRoot, "clean"), dir, { recursive: true });
+  const cliPath = join(dir, "cli.js");
+  const withGuard = readFileSync(cliPath, "utf8");
+  const guardBlock = '  if (rest.includes("--fail")) {\n    die("send failed: upstream rejected the request");\n  }\n';
+  writeFileSync(cliPath, withGuard.replace(guardBlock, ""));
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  writeFileSync(cliPath, withGuard);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "guard").exitCode).toBe(0);
+
+  const run = sweep(dir, {
+    probes: {
+      mutation: { testCmd: "bun check.js", base: "HEAD~1", failMarker: "CHECK FAILED" },
+    },
+  });
+  const mutation = run.receipt.probes.find((entry) => entry.name === "mutation");
+  expect(mutation.status).toBe("PASS");
+  expect(mutation.checks.some((entry) => /^mutation\/cli\.js:\d+$/.test(entry.id))).toBe(true);
+  expect(mutation.checks.some((entry) => entry.id === "mutation")).toBe(false);
 }, 120000);

@@ -52,6 +52,9 @@ if (command === "send") {
   const input = readFileSync(0);
   if (!isValidUtf8(input)) die("invalid utf-8 input");
   process.stdout.write(`pieces:${split(input).length}\n`);
+} else if (command === "echo") {
+  const input = readFileSync(0, "utf8");
+  process.stdout.write(split(Buffer.from(input)).join(""));
 } else if (command === "config") {
   const index = rest.indexOf("--file");
   if (index === -1) die("config: --file is required");

@@ -58,7 +58,7 @@ grep -cE '^\| *[A-Za-z0-9_-]+ *\| *(blocking|non-blocking)' pr8-agent-sense.md p
 | C5 가드 제거에 살아남는 테스트 (변이 생존, 공허한 단언, 등록 우회) | 8 | 1 | `mutation` |
 | C6 문서가 코드와 어긋남 | 5 | 0 | `docs`(존재) + `quick` 체크리스트(의미) |
 | C7 설정 키를 잘못 받아들임 (미지·오타 키 수용) | 1 | 1 | `config` |
-| C4-변형: 분할이 HTML 속성·엔티티를 잃음 | 1 | 1 | `boundary`(마크업 왕복) |
+| C4-변형(C4v): 분할이 HTML 속성·엔티티를 잃음 | 1 | 1 | `boundary`(`expectStdout` 왕복) |
 | **계** | **52** | **29** | |
 
 - **자동 탐침이 덮는 행: 47/52 (90.4%), blocking 29/29 (100%).** 남는 5행은 C6의 non-blocking이고, 그중 "문서에 적힌 플래그·키가 실제로 있는가"는 `docs` 탐침이 자동으로 보고, "문서가 약속한 행동이 실제와 같은가"만 quick 체크리스트가 읽습니다.
@@ -116,7 +116,7 @@ grep -cE '^\| *[A-Za-z0-9_-]+ *\| *(blocking|non-blocking)' pr8-agent-sense.md p
 | C5 | `mutation` | `git diff <base>...HEAD`의 **추가된 생산 코드 줄**을 임시 복사본에서 하나씩 지우고 선언한 테스트 명령 실행 | `SURVIVED` = 그 줄이 없어도 스위트가 초록 |
 | C6 | `docs` | 변경 문서의 `--flag` 토큰이 `--help` 출력 또는 선언한 known 목록에 있는지 | 문서가 약속한 플래그가 코드에 없음 |
 | C7 | `config` | 선언한 accept/reject 케이스(미지 키·오타 키 포함)를 실제 로더로 실행 | 닫힌 스키마가 미지 키를 받아들임 / 문서화된 키를 거부 |
-| C4-변형 | `boundary`(마크업 왕복) | 태그·속성·엔티티가 든 입력의 분할 결과를 다시 붙여 원문과 비교 | 분할이 의미를 잃음 |
+| C4-변형 | `boundary`(`expectStdout` 왕복) | 태그·속성이 든 입력을 프로그램에 넣고 돌아온 출력을 원문과 바이트 비교 | 분할이 의미를 잃음 |
 
 - 스크립트가 판단할 수 없는 나머지: **`category: quick` 체크리스트 1회**. 같은 클래스 목록으로 완성된 diff를 읽고 `CLASS | clean | finding | fixed` 한 줄씩 남깁니다. 산문이 약속한 행동(C6의 의미 부분), 와이어 스키마, 상태 전이의 주인은 여기서만 걸립니다.
 - 안전 한계(소유자 지시 준수): 명령은 각 1회, 재시도·대기 루프·sleep 없음, 병렬 ≤ 8, 명령 타임아웃 ≤ 300초. `INVALID`(컴파일 실패 변이 등)는 살상으로 세지 않고 고칠 대상이며, `SKIP`은 이유를 적어 체크리스트로 넘깁니다.
@@ -232,12 +232,11 @@ base = origin/main `cbbfbf8`, 줄 번호는 base 파일 기준입니다.
 이 브랜치에서 실행한 명령과 출력입니다. 실험 결과가 아니라 도구·문구 검증입니다.
 
 ```
-HEAD 7430e40c708f508211f7cab24c56d03c3110b5a8
 $ timeout 300 bun test
- 11 pass
+ 15 pass
  0 fail
- 108 expect() calls
- Ran 11 tests across 2 files. [7.33s]
+ 128 expect() calls
+ Ran 15 tests across 2 files. [9.20s]
 
 $ timeout 300 bun scripts/verify.mjs .
  (실제 senpi 로더로 스킬·프롬프트·확장 발견)
@@ -250,7 +249,7 @@ $ grep -rn "three references" skills README.md
  (출력 없음: 참조 4개 문구로 갱신됨)
 ```
 
-- `test/sweep.test.js` 5 케이스가 위 11개에 포함됩니다: clean 픽스처 8탐침 전부 PASS(오탐 0), seeded 픽스처 8클래스 각각 자기 탐침 FAIL, 상한 클램프(99→8, 999999→300000)와 없는 줄 변이 INVALID(살상 아님), 설정 없는 영수증 7 SKIP 및 설정 파일 부재 시 exit 2, 변이 상한이 남긴 미탐색 줄 수 보고와 help 명령이 없을 때 docs SKIP.
+- `test/sweep.test.js` 9 케이스가 위 15개에 포함됩니다: clean 픽스처 8탐침 전부 PASS(오탐 0), seeded 픽스처 8클래스 각각 자기 탐침 FAIL, 상한 클램프(99→8, 999999→300000)와 없는 줄 변이 INVALID(살상 아님), 설정 없는 영수증 8 SKIP 및 설정 파일 부재 시 exit 2, 변이 상한이 남긴 미탐색 줄 수 WARN과 help 명령이 없을 때 docs SKIP, 명령별 timeout 상한 클램프(`budget` 300000), 프로세스 그룹 킬(파이프를 쥔 자식이 상한을 넘기지 못함), WARN 전용 탐침이 SKIP이 아니라 WARN으로 집계, 실제 git 저장소에서 `git diff`로 변이 후보를 뽑는 기본 경로.
 - 클래스 표 재계산: 원자료 표에서 행을 기계적으로 파싱하고 아래 부록의 id→클래스 매핑을 적용해 **52행 / blocking 29 / 라운드당 2.64**를 다시 얻었습니다(불일치 0건). 매핑이 없거나 표에 없는 id가 있으면 스크립트가 문제로 보고하도록 했고, 그 검사에서 `pr21`의 `AS21-1 / residual AS8-1`(id 칸에 공백·슬래시가 있는 행)이 처음에 누락되어 51행으로 나왔으므로 파서를 고친 뒤 52행으로 확인했습니다.
 
 ## 부록: id → 클래스 매핑 (52행)
@@ -266,7 +265,22 @@ pr10-delta2-agent-sense.md  F09 C3     F10 C3     F11 C4     F12 C5     F13 C5
 pr12-agent-sense.md         R1 C1      R2 C2      R3 C4      R4 C4      R5 C4      R6 C4      R7 C6      R8 C5
 pr21-agent-sense.md         AS21-1 C1  AS21-2 C5
 pr21-delta2-agent-sense.md  (현재 결함 0: AS21-1·AS21-2는 해소로 표기)
-pr23-agent-sense.md         N1 C1      R1 C4      R3 OTHER   R4a C4     R4b C4     R7 C6
+pr23-agent-sense.md         N1 C1      R1 C4      R3 C4v     R4a C4     R4b C4     R7 C6
 pr23-round2-agent-sense.md  N1-legacy C4   R1-download C1   R4c C4   D1 C6   R4d C4
 pr81-genie.md               F1 C3      F2 C4
 ```
+
+## 10. 독립 코드 리뷰 기록 (2026-10-27)
+
+리뷰: `omo-native-code-reviewer`, 범위 `cbbfbf8...2e1ea0c`, 최종 판정 **REVISE**(codeQualityStatus BLOCK), 보고서 `/Volumes/storage/workspace/omo-wish/.omo/evidence/x1-code-review.md`.
+
+차단 2건은 재현이 있었고 둘 다 고쳤습니다.
+
+| 지적 | 재현 | 수정 | 고정한 시험 |
+| --- | --- | --- | --- |
+| **H-1** 명령별 `timeoutMs` override가 300초 상한을 우회 (sweep.mjs:215/255/273/297/333 vs sweep.md의 상한 주장) | 400ms override가 400ms에 킬됨 = 999999도 그대로 통과 | 상한을 `runCommand` 단일 관문에서 `Math.min(timeoutMs, COMMAND_CAP_MS)`로 클램프하고 유효 예산 `budget`을 결과에 남김. 문서에 override 키가 클램프된다고 명시 | `runCommand` 직접 시험: 999999 → `budget 300000`, 400 → `budget 400` |
+| **H-2** 타임아웃 킬이 셸만 죽여, 파이프를 쥔 자손이 상한을 넘겨 sweep을 붙잡음 (sweep.mjs:89-94) | 3000ms 상한 + `sleep 20 & sleep 20` → 20.08초 동안 반환 없음 | 모든 명령을 자체 프로세스 그룹으로 띄우고(`detached`) 타임아웃과 `exit` 양쪽에서 그룹을 SIGKILL. 파이프가 닫히며 `close`가 즉시 온다 | `sleep 20` + 300ms 상한 → timedOut, 5초 이내 반환 / `sleep 20 & sleep 0.1` → 5초 이내 반환(수정 전 20초) |
+
+비차단 지적도 고쳤습니다: **M-1** 기본 변이 후보 추출(git diff) 경로에 시험 추가(임시 git 저장소에서 base→head 커밋 후 `candidates` 없이 실행, 후보 검출 확인), **M-2** WARN을 1급 결과로 승격(WARN만 있는 탐침은 SKIP이 아니라 WARN, `summary.WARN`이 실제로 증가), **L-1** 죽은 단언 삭제, **L-2** 변이 상한 고지를 렌더되는 WARN으로 변경, **L-3** `**/` 글롭이 `(?:[^/]+/)*`로 컴파일되게 수정(`latest/x` 오탐 제거). 문서 정정 메모 3건도 반영했습니다: 부록의 `OTHER` → `C4v`(=본문 C4-변형) 통일, `sweep.md` 클래스 셀 8/7·18/11로 정정 및 C4v 행 추가, 끝줄 개행.
+
+**M-3(파일 546 pure LOC, 250 상한)은 고치지 않고 기록합니다.** 이 파일은 실행기·8개 탐침·diff 파서·영수증/CLI를 한 단위로 배포하는 실험 산출물이고, 분할은 이 팔의 변수(7b 단계 추가)와 무관한 구조 변경입니다. 형제 팔도 단일 스크립트를 씁니다(#44 `check-verdict.mjs`, #45 `review-route.mjs`). 소유자가 승자를 고른 뒤 결합 단계에서 분할하는 편이 안전합니다.

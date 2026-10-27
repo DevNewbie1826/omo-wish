@@ -37,10 +37,12 @@ function globToRegExp(glob) {
   for (let i = 0; i < glob.length; i += 1) {
     const ch = glob[i];
     if (ch === "*") {
-      if (glob[i + 1] === "*") {
+      if (glob[i + 1] === "*" && glob[i + 2] === "/") {
+        out += "(?:[^/]+/)*";
+        i += 2;
+      } else if (glob[i + 1] === "*") {
         out += ".*";
         i += 1;
-        if (glob[i + 1] === "/") i += 1;
       } else out += "[^/]*";
     } else if (ch === "?") out += "[^/]";
     else out += ch.replace(/[.+^${}()|[\]\\]/g, "\\$&");
@@ -74,12 +76,23 @@ function matchFiles(root, globs) {
 }
 
 // Runs one command to completion. Resolves; never throws for a non-zero exit.
-export function runCommand({ cmd, cwd, stdin, timeoutMs = 300000, env = {}, detached = false }) {
+export const COMMAND_CAP_MS = 300000;
+
+function killGroup(pid) {
+  try {
+    process.kill(-pid, "SIGKILL");
+  } catch {
+    /* the group is already gone */
+  }
+}
+
+export function runCommand({ cmd, cwd, stdin, timeoutMs = COMMAND_CAP_MS, env = {} }) {
   return new Promise((resolvePromise) => {
     const started = Date.now();
+    const budget = Math.max(1, Math.min(Number(timeoutMs) || COMMAND_CAP_MS, COMMAND_CAP_MS));
     const child = spawn("/bin/sh", ["-c", cmd], {
       cwd,
-      detached,
+      detached: true,
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -88,18 +101,16 @@ export function runCommand({ cmd, cwd, stdin, timeoutMs = 300000, env = {}, deta
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      try {
-        if (detached) process.kill(-child.pid, "SIGKILL");
-        else child.kill("SIGKILL");
-      } catch {
-        /* already gone */
-      }
-    }, timeoutMs);
+      killGroup(child.pid);
+    }, budget);
     child.stdout.on("data", (chunk) => out.push(chunk));
     child.stderr.on("data", (chunk) => err.push(chunk));
     child.on("error", (error) => {
       clearTimeout(timer);
-      resolvePromise({ code: -1, signal: null, stdout: "", stderr: String(error), timedOut, ms: Date.now() - started });
+      resolvePromise({ code: -1, signal: null, stdout: "", stderr: String(error), timedOut, ms: Date.now() - started, budget });
+    });
+    child.on("exit", () => {
+      killGroup(child.pid);
     });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
@@ -110,6 +121,7 @@ export function runCommand({ cmd, cwd, stdin, timeoutMs = 300000, env = {}, deta
         stderr: Buffer.concat(err).toString("utf8"),
         timedOut,
         ms: Date.now() - started,
+        budget,
       });
     });
     child.stdin.on("error", () => {});
@@ -145,6 +157,7 @@ function check(id, status, detail) {
 function summariseChecks(checks) {
   if (checks.some((entry) => entry.status === "FAIL")) return "FAIL";
   if (checks.some((entry) => entry.status === "PASS")) return "PASS";
+  if (checks.some((entry) => entry.status === "WARN")) return "WARN";
   if (checks.some((entry) => entry.status === "INVALID")) return "INVALID";
   return "SKIP";
 }
@@ -231,9 +244,6 @@ async function probeSecrets(config, ctx) {
     checks.push(check(`secrets/log:${rel}`, body.includes(config.canary) ? "FAIL" : "PASS", body.includes(config.canary) ? "canary written to a log file" : "log is clean"));
   }
   if (checks.length === 0) checks.push(check("secrets", "SKIP", "no commands or logs declared"));
-  for (const candidate of config.staticLines ?? []) {
-    checks.push(check(`secrets/static:${candidate.file}:${candidate.line}`, "WARN", "a secret-named value reaches a log or error call on this added line; read it"));
-  }
   return checks;
 }
 
@@ -255,12 +265,15 @@ async function probeBoundary(config, ctx) {
       const run = await runCommand({ cmd: testCase.cmd, cwd: ctx.root, stdin: variant.stdin, timeoutMs: testCase.timeoutMs ?? ctx.timeoutMs });
       const allowed = testCase.expectExit ?? [0];
       const crash = crashIn(`${run.stdout}\n${run.stderr}`);
-      const ok = !run.timedOut && !crash && allowed.includes(run.code);
+      const stdoutMatches = testCase.expectStdout === undefined || variant.id !== "declared" || run.stdout.trim() === testCase.expectStdout;
+      const ok = !run.timedOut && !crash && allowed.includes(run.code) && stdoutMatches;
       const detail = run.timedOut
         ? `timed out after ${run.ms} ms`
         : crash
           ? `crash marker ${crash.join(", ")}`
-          : `exit ${run.code}${allowed.includes(run.code) ? "" : ` not in [${allowed.join(",")}]`}`;
+          : !stdoutMatches
+            ? `stdout changed the input (got ${JSON.stringify(run.stdout.trim().slice(0, 120))})`
+            : `exit ${run.code}${allowed.includes(run.code) ? "" : ` not in [${allowed.join(",")}]`}`;
       checks.push(check(`boundary/${testCase.name}:${variant.id}`, ok ? "PASS" : "FAIL", detail));
     }
   }
@@ -304,7 +317,7 @@ async function probeMutation(config, ctx) {
   const candidates = selectCandidates(raw, { testGlobs: config.testGlobs, max: config.max ?? 12 });
   if (candidates.length === 0) return [...checks, check("mutation", "SKIP", "no candidate production lines in the diff")];
   if (raw.length > candidates.length) {
-    checks.push(check("mutation/limit", "PASS", `${candidates.length} of ${raw.length} added production lines probed; the rest are unprobed and belong to the checklist pass`));
+    checks.push(check("mutation/limit", "WARN", `${candidates.length} of ${raw.length} added production lines probed; the rest are unprobed and belong to the checklist pass`));
   }
 
   const failMarker = new RegExp(config.failMarker ?? "--- FAIL:|^FAIL\\b|✗|\\(fail\\)|AssertionError|not ok \\d+", "m");

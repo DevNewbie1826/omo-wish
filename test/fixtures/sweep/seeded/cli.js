@@ -44,6 +44,10 @@ if (command === "send") {
 } else if (command === "stdin") {
   const input = readFileSync(0);
   process.stdout.write(`pieces:${split(input).length}\n`);
+} else if (command === "echo") {
+  const input = readFileSync(0, "utf8");
+  const reopened = split(Buffer.from(input)).map((piece) => piece.replace(/<(\w+)[^>]*>/g, "<$1>"));
+  process.stdout.write(reopened.join(""));
 } else if (command === "config") {
   const index = rest.indexOf("--file");
   if (index === -1) die("config: --file is required");
