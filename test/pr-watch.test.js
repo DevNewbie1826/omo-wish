@@ -354,6 +354,20 @@ describe("CLI", () => {
     expect(emptyResult.stdout).toContain("malformed JSON");
   });
 
+  test("a usage error never echoes a token and a poll line redacts an observation field", async () => {
+    const canary = "canary-usage-4417";
+    const usage = await run(["--pr", "1", "--repo", "owner/name", "--bogus", canary], { GH_TOKEN: canary });
+    expect(usage.code).toBe(2);
+    expect(usage.stderr).not.toContain(canary);
+    expect(usage.stderr).toContain("[redacted]");
+    const dir = tempDir();
+    const gh = fakeGh(dir, "gh-token-head.sh", `printf '%s\\n' '{"number":1,"state":"OPEN","isDraft":false,"mergeable":"MERGEABLE","mergeStateStatus":"CLEAN","reviewDecision":"","statusCheckRollup":[],"headRefOid":"ghp_${"a".repeat(24)}"}'`);
+    const observed = await run(["--pr", "1", "--repo", "owner/name", "--gh", gh, "--once"]);
+    expect(observed.code).toBe(0);
+    expect(observed.stdout).toContain("[redacted]");
+    expect(observed.stdout).not.toContain("ghp_");
+  });
+
   test("a shell-looking repo value exits 2 and creates nothing", async () => {
     const dir = tempDir();
     const marker = join(dir, "pwned");

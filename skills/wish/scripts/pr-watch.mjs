@@ -308,10 +308,22 @@ export function parseArgs(argv = []) {
   return { ok: errors.length === 0, options, errors, usage: USAGE };
 }
 
+function tokenEnvFromArgv(argv) {
+  for (let index = 0; index < argv.length; index += 1) {
+    if (argv[index] === "--token-env" && argv[index + 1] !== undefined) return argv[index + 1];
+  }
+  return DEFAULTS.tokenEnv;
+}
+
 export async function main(argv = process.argv.slice(2), deps = {}) {
+  const env = deps.env ?? process.env;
+  // The token names are read from argv before parsing, so a usage error cannot
+  // echo a value that the parsed options would have redacted.
+  const earlySecrets = tokenValues(env, tokenEnvFromArgv(argv));
+  const earlySanitize = (text) => redactSecrets(text, earlySecrets);
   const parsed = parseArgs(argv);
   if (!parsed.ok) {
-    process.stderr.write(`pr-watch: ${parsed.errors.join("; ")}\n${USAGE}`);
+    process.stderr.write(earlySanitize(`pr-watch: ${parsed.errors.join("; ")}\n${USAGE}`));
     return 2;
   }
   if (parsed.options.help) {
@@ -319,7 +331,6 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
     return 0;
   }
   const options = parsed.options;
-  const env = deps.env ?? process.env;
   const secrets = tokenValues(env, options.tokenEnv);
   const sanitize = (text) => redactSecrets(text, secrets);
   const controller = new AbortController();
@@ -331,7 +342,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   try {
     return await chrome({
       query: () => (deps.query ? deps.query() : runGh({ gh: options.gh, args, signal: controller.signal, timeoutMs: options.timeoutMs, sanitize })),
-      emit: (record) => process.stdout.write(formatLine(record)),
+      emit: (record) => process.stdout.write(sanitize(formatLine(record))),
       now: deps.now,
       sleep: deps.sleep,
       sanitize,

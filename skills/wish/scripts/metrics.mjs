@@ -66,14 +66,27 @@ export function parseCsv(text) {
   let row = [];
   let field = "";
   let quoted = false;
+  let afterQuote = false;
   let index = 0;
   while (index < source.length) {
     const char = source[index];
     if (quoted) {
       if (char === '"') {
         if (source[index + 1] === '"') { field += '"'; index += 2; continue; }
-        quoted = false; index += 1; continue;
+        quoted = false; afterQuote = true; index += 1; continue;
       }
+      field += char; index += 1; continue;
+    }
+    if (afterQuote) {
+      if (char === ",") { row.push(field); field = ""; afterQuote = false; index += 1; continue; }
+      if (char === "\n") { row.push(field); rows.push(row); row = []; field = ""; afterQuote = false; index += 1; continue; }
+      if (char === "\r") {
+        row.push(field); rows.push(row); row = []; field = ""; afterQuote = false;
+        index += source[index + 1] === "\n" ? 2 : 1;
+        continue;
+      }
+      errors.push({ path: `row[${rows.length}]`, message: "unexpected character after a closing quote" });
+      afterQuote = false;
       field += char; index += 1; continue;
     }
     if (char === '"') {
@@ -293,7 +306,7 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
     lens_rules: lens ? String(lens.rules_total) : "",
     gaps_total: registerSupplied ? String(defectGaps.length) : "",
     gaps_fixed: registerSupplied ? String(defectGaps.filter((row) => row.status === "fixed").length) : "",
-    before_receipts: registerSupplied ? String(beforeEvents.length) : "",
+    before_receipts: String(beforeEvents.length),
   };
   applyExtra(measurementsValues, extra.measurements, MEASUREMENTS_HEADER, errors, "extra.measurements");
 
@@ -301,8 +314,15 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
     const roundNumber = event.round;
     const roundFindings = findings.filter((row) => String(row.round) === String(roundNumber));
     const priorFindings = roundNumber > 1 ? findings.filter((row) => String(row.round) === String(roundNumber - 1)) : [];
-    const gateBefore = scoped.some((other) => other.event === "gate" && other.gate_status === "open"
-      && Date.parse(other.started_at) <= Date.parse(event.started_at));
+    // A round is gate-blocked only while a gate that was opened before it is still
+    // open: a later resolved event for the same id closes it.
+    const gateBefore = scoped.some((other) => {
+      if (other.event !== "gate" || other.gate_status !== "open") return false;
+      if (Date.parse(other.started_at) > Date.parse(event.started_at)) return false;
+      const resolved = scoped.some((later) => later.event === "gate" && later.gate_id === other.gate_id
+        && later.gate_status === "resolved" && Date.parse(later.started_at) <= Date.parse(event.started_at));
+      return !resolved;
+    });
     const cumulativeSwitches = switches.filter((item) => item.round <= roundNumber);
     const values = {
       pr: String(pr), round_index: String(roundNumber),
@@ -358,7 +378,9 @@ export function parseGitLog(text) {
     if (!/^[0-9a-f]{40}$/.test(sha) || !Number.isFinite(Date.parse(committedAt))) continue;
     const lines = fields.slice(2).join("\x1f").split("\n");
     const subject = lines.shift() ?? "";
-    commits.push({ sha, committed_at: committedAt, subject, files: lines.map((line) => line.trim()).filter(Boolean) });
+    // Git's paths are the original names: `core.quotePath=false` keeps Unicode raw,
+    // and a leading space is part of the name, so nothing is trimmed away.
+    commits.push({ sha, committed_at: committedAt, subject, files: lines.filter((line) => line !== "") });
   }
   return commits;
 }
@@ -432,6 +454,9 @@ export function parseArgs(argv = []) {
   if (verb === "export" && !options.values.ledger) return usageError("export requires --ledger");
   if (verb === "validate" && !options.values.file && !options.values.dir) return usageError("validate requires --file or --dir");
   if (verb === "validate" && options.values.file && options.values.dir) return usageError("validate takes --file or --dir, not both");
+  if (verb === "validate" && options.values.name !== undefined && !["measurements", "rounds"].includes(options.values.name)) {
+    return usageError("--name must be measurements or rounds");
+  }
   if (verb === "post-merge") {
     if (!options.values["merged-at"]) return usageError("post-merge requires --merged-at");
     if (!options.values.files && !options.values["merge-sha"] && !options.values["from-json"]) {
@@ -477,7 +502,17 @@ function exportVerb(options) {
   if (findingsRead && !findingsRead.ok) return { code: 3, body: { ok: false, errors: [{ path: "findings", message: findingsRead.error }] } };
   if (gapsRead && !gapsRead.ok) return { code: 3, body: { ok: false, errors: [{ path: "gaps", message: gapsRead.error }] } };
   const type = values.type ?? events[0]?.type;
-  const findings = findingsRead ? parseFindingsTsv(findingsRead.text, { type }) : { ok: true, rows: [], errors: [] };
+  // The findings' class set belongs to the unit being measured, not to whichever
+  // event happens to be first in the ledger.
+  const units = [...new Set(events.map((event) => event.unit))];
+  const scopeUnit = values.unit ?? (units.length === 1 ? units[0] : null);
+  const scopeEvents = scopeUnit === null ? events : events.filter((event) => event.unit === scopeUnit);
+  const scopeType = values.type ?? scopeEvents[0]?.type ?? type;
+  const findings = findingsRead
+    ? parseFindingsTsv(findingsRead.text, {
+      type: scopeType, primary: scopeEvents[0]?.primary, secondary: scopeEvents[0]?.secondary,
+    })
+    : { ok: true, rows: [], errors: [] };
   const gaps = gapsRead ? parseGapsTsv(gapsRead.text) : { ok: true, rows: [], errors: [] };
   const inputErrors = [...findings.errors.map((entry) => ({ ...entry, path: `findings.${entry.path}` })),
     ...gaps.errors.map((entry) => ({ ...entry, path: `gaps.${entry.path}` }))];
@@ -496,6 +531,13 @@ function exportVerb(options) {
     },
   });
   if (!derived.ok) return { code: 1, body: { ok: false, errors: derived.errors } };
+  // An override may not put a value outside its column's domain: the exported file
+  // must pass the same validation a reader runs.
+  const rowProblems = [
+    ...rowErrors("measurements", Object.fromEntries(MEASUREMENTS_HEADER.map((column, index) => [column, derived.measurements[index]])), "measurements"),
+    ...derived.rounds.flatMap((cells, index) => rowErrors("rounds", Object.fromEntries(ROUNDS_HEADER.map((column, columnIndex) => [column, cells[columnIndex]])), `rounds[${index + 1}]`)),
+  ];
+  if (rowProblems.length > 0) return { code: 1, body: { ok: false, errors: rowProblems } };
   const outDir = values.out ?? join(dirname(resolve(values.ledger)), "metrics");
   const measurementsPath = join(outDir, "measurements.csv");
   const roundsPath = join(outDir, "rounds.csv");
@@ -539,16 +581,22 @@ function validateVerb(options) {
 async function postMergeVerb(options) {
   const values = options.values;
   const days = values.days === undefined ? 7 : Number(values.days);
-  const maxCommits = values["max-commits"] === undefined ? 200 : Number(values["max-commits"]);
+  // 0 means no cap: a cap is an explicit choice, and a truncated scan is reported.
+  const maxCommits = values["max-commits"] === undefined ? 0 : Number(values["max-commits"]);
   if (!Number.isInteger(days) || days < 1) return { code: 2, body: { ok: false, errors: [{ path: "days", message: "expected an integer >= 1" }] } };
-  if (!Number.isInteger(maxCommits) || maxCommits < 1) return { code: 2, body: { ok: false, errors: [{ path: "max-commits", message: "expected an integer >= 1" }] } };
+  if (!Number.isInteger(maxCommits) || maxCommits < 0) return { code: 2, body: { ok: false, errors: [{ path: "max-commits", message: "expected an integer >= 0 (0 = no cap)" }] } };
   const mergedAt = values["merged-at"];
   if (!Number.isFinite(Date.parse(mergedAt))) return { code: 3, body: { ok: false, errors: [{ path: "merged_at", message: "not an ISO timestamp" }] } };
   if (values["from-json"]) {
     const read = readText(values["from-json"]);
     if (!read.ok) return { code: 3, body: { ok: false, errors: [{ path: "from-json", message: read.error }] } };
     let fixture;
-    try { fixture = JSON.parse(read.text); } catch { return { code: 1, body: { ok: false, errors: [{ path: "from-json", message: "not JSON" }] } }; }
+    try { fixture = JSON.parse(read.text); } catch {
+      return { code: 3, body: { ok: false, errors: [{ path: "from-json", message: "not JSON" }] } };
+    }
+    if (!fixture || typeof fixture !== "object" || Array.isArray(fixture)) {
+      return { code: 3, body: { ok: false, errors: [{ path: "from-json", message: "expected a JSON object" }] } };
+    }
     const result = postMergeRefixes({
       mergedAt: fixture.merged_at ?? mergedAt, files: fixture.files ?? [], commits: fixture.commits ?? [],
       days, mergeSha: fixture.merge_sha ?? null,
@@ -557,23 +605,35 @@ async function postMergeVerb(options) {
   }
   const repoDir = resolve(values["repo-dir"] ?? ".");
   const ref = values.ref ?? "HEAD";
-  if (!/^[A-Za-z0-9._/@{}~^-]+$/.test(ref) || ref.startsWith("-")) {
+  // Git's ref rules without the revision-syntax characters: a real branch such as
+  // `release+qa` is valid, while whitespace, NUL and `~^:?*[\` are not.
+  if (ref.startsWith("-") || ref.includes("..") || ref.includes("@{") || /[\s\x00~^:?*\[\\]/.test(ref)) {
     return { code: 2, body: { ok: false, errors: [{ path: "ref", message: "invalid ref name" }] } };
   }
   let files = values.files ? values.files.split(",").map((file) => file.trim()).filter(Boolean) : [];
   const mergeSha = values["merge-sha"] ?? null;
   if (mergeSha !== null) {
     if (!/^[0-9a-f]{40}$/.test(mergeSha)) return { code: 2, body: { ok: false, errors: [{ path: "merge-sha", message: "expected a full 40-hex commit SHA" }] } };
-    const listed = await runGit(["-C", repoDir, "diff-tree", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", mergeSha, "--"]);
+    const listed = await runGit(["-C", repoDir, "-c", "core.quotePath=false", "diff-tree", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", mergeSha, "--"]);
     if (!listed.ok) return { code: 3, body: { ok: false, errors: [{ path: "merge-sha", message: listed.error }] } };
-    files = [...new Set(listed.stdout.split("\n").map((line) => line.trim()).filter(Boolean))];
+    files = [...new Set(listed.stdout.split("\n").filter((line) => line !== ""))];
   }
   if (files.length === 0) return { code: 3, body: { ok: false, errors: [{ path: "files", message: "no merged files to check" }] } };
-  const end = new Date(Date.parse(mergedAt) + days * 86400000).toISOString();
-  const log = await runGit(["-C", repoDir, "log", `--since=${mergedAt}`, `--until=${end}`, `--max-count=${maxCommits}`,
-    "--name-only", "--pretty=format:%x1e%H%x1f%cI%x1f%s", ref, "--"]);
+  // No --since/--until: git prunes traversal on committer dates, so a backdated
+  // descendant can hide an eligible commit. The window is applied in code instead,
+  // and --diff-merges=first-parent makes a merge show what it introduced.
+  const cap = maxCommits > 0 ? [`--max-count=${maxCommits}`] : [];
+  const log = await runGit(["-C", repoDir, "-c", "core.quotePath=false", "log", ...cap,
+    "--diff-merges=first-parent", "--name-only", "--pretty=format:%x1e%H%x1f%cI%x1f%s", ref, "--"]);
   if (!log.ok) return { code: 3, body: { ok: false, errors: [{ path: "git", message: log.error }] } };
-  const result = postMergeRefixes({ mergedAt, files, commits: parseGitLog(log.stdout), days, mergeSha });
+  const commits = parseGitLog(log.stdout);
+  if (maxCommits > 0 && commits.length >= maxCommits) {
+    return {
+      code: 3,
+      body: { ok: false, errors: [{ path: "max-commits", message: `the scan stopped at the cap of ${maxCommits} commits; raise --max-commits or drop it` }], truncated: true },
+    };
+  }
+  const result = postMergeRefixes({ mergedAt, files, commits, days, mergeSha });
   return {
     code: result.ok ? (result.count > 0 ? 1 : 0) : 3,
     body: { ok: result.ok, pr: values.pr === undefined ? null : Number(values.pr), files, ...result, errors: result.errors ?? [] },

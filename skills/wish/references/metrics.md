@@ -25,7 +25,17 @@ The header of a file is the ported shared columns first, then the v2 suffix, nev
 `--merge-sha` exists because M1 cannot derive a file list from the ledger: the `merge` event
 carries `sha`, `merged_at`, `pr` and `head`, nothing else. One module owns the git logic, and
 it is this one; `metrics.mjs` derives the list with
-`git diff-tree -r --no-commit-id --name-only -m --first-parent <sha>`.
+`git diff-tree -r --no-commit-id --name-only -m --first-parent <sha>` (with
+`core.quotePath=false`, so a Unicode name is not escaped).
+
+The window is applied in code, not with `git log --since`: git prunes traversal on committer
+dates, so a backdated descendant can hide an eligible commit. The scan uses
+`--diff-merges=first-parent` (a merge shows what it introduced against its first parent) and
+`core.quotePath=false`, and it reads paths verbatim — a leading space is part of the name.
+`--max-commits` is off by default; when it is set and the scan reaches it, the command
+reports `truncated: true` and exits 3 instead of claiming a clean result. A ref is any name
+Git accepts without revision syntax (`release+qa` is valid; `~ ^ : ? * [ \` and whitespace
+are not).
 
 ## 2. Column contract
 
@@ -55,14 +65,14 @@ measurement"; it is never 0, and a zero appears only when the input shows a real
 | `rounds_after_switch` | `round` events | count of rounds whose `round` is greater than the **first** `switch.round`; empty when `switch_count` is 0 |
 | `lens_rules` | last `lens.rules_total` | empty when no lens ran |
 | `gaps_total`, `gaps_fixed` | `gaps.tsv` | **defect** rows only (`kind = defect`; fixed = `status = fixed`), identical to the `progress` values of `status --json` |
-| `before_receipts` | `before` events | filled when a register exists, so a real 0 is visible |
+| `before_receipts` | `before` events | the count of pre-edit captures in the ledger; independent of whether a register was supplied |
 
 ### 2.2 `rounds.csv` — one row per round
 
 | Column | Source | Rule |
 | --- | --- | --- |
 | `pr`, `round_index` | the ledger | `round_index` is the round number, unique per PR |
-| `round_kind` | `first`, `revise`, `delta`, `gate-blocked` | round 1 is `first`; a `gate` event left `open` before the round makes it `gate-blocked`; `delta` is passed in `--extra` (the ledger does not record review scope) |
+| `round_kind` | `first`, `revise`, `delta`, `gate-blocked` | round 1 is `first`; a round is `gate-blocked` only while a gate opened before it is still open (a later `resolved` event for the same id closes it); `delta` is passed in `--extra` (the ledger does not record review scope) |
 | `verdict_head` | `round.head` | validated with `headErrors(row.type, cell)`: 40 hex for a commit, 64 hex for a `research` artifact; a `mixed` row accepts its primary's identity form (the contract's §2 rule), so either length validates |
 | `dispatch_at`, `verdict_at`, `minutes` | `round.started_at`, `round.ended_at`, `duration_s` | `started_at` is the dispatch and `ended_at` the verdict receipt; minutes come from `duration_s` or the timestamps, never estimated |
 | `reviewer`, `reviewer_family` | `round.category` / `round.agent`, `round.model_family` | the role and the model family that produced the verdict |
@@ -131,7 +141,7 @@ needs.
 | ≥3 commits after open | 37/104, REVISE rate 75.7%, median 252.0 min |
 | tail (REVISE ≥4) | 8/104 |
 | rounds at the final review / all rounds | 70/92 |
-| test-only REVISE rounds | 10/74 merged (13.5%) |
+| test-only REVISE rounds | 10/74 review rounds (13.5%) |
 
 ## 5. v2 targets and the round rule
 

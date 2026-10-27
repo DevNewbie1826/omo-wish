@@ -225,6 +225,52 @@ describe("deriveRows", () => {
     expect(derived.rounds.map((cells) => cells[index])).toEqual(["1", "2", "3", "4"]);
   });
 
+  test("a before event is counted even when no register is supplied", () => {
+    const derived = deriveRows({ events: ledgerFixture(), options: {} });
+    expect(derived.ok).toBe(true);
+    const row = Object.fromEntries(MEASUREMENTS_HEADER.map((column, index) => [column, derived.measurements[index]]));
+    expect(row.before_receipts).toBe("1");
+    expect(row.gaps_total).toBe("");
+    expect(row.gaps_fixed).toBe("");
+  });
+
+  test("findings of a mixed unit accept both class sets", () => {
+    const events = ledgerFixture().map((entry) => ({ ...entry, type: "mixed", primary: "code", secondary: "design" }));
+    const findings = [
+      { round: "1", class: "S", file_line: "src/a.mjs:1", repro_cmd: "bun test", status: "open" },
+      { round: "1", class: "A1", file_line: "ui/page.tsx:2", repro_cmd: "no command", status: "open" },
+    ];
+    const derived = deriveRows({ events, findings, options: {} });
+    expect(derived.errors).toEqual([]);
+    const index = ROUNDS_HEADER.indexOf("defect_axes");
+    expect(derived.rounds[0][index]).toBe("A1;S");
+  });
+
+  test("findings use the selected unit's type, not the first event's", async () => {
+    const dir = tempDir();
+    const codeUnit = ledgerFixture().map((entry) => ({ ...entry, unit: "u1", type: "code" }));
+    const designUnit = ledgerFixture().map((entry) => ({ ...entry, unit: "u2", type: "design" }));
+    const ledger = join(dir, "ledger.jsonl");
+    writeFileSync(ledger, `${[...codeUnit, ...designUnit].map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const findings = join(dir, "findings.tsv");
+    writeFileSync(findings, `id\tround\tsource\tclass\tseverity\tfile_line\tblocking\trepro_cmd\thead_found\tstatus\tfixed_head\nF1\t1\tqa\tA1\tHIGH\tui/page.tsx:3\t1\tbun test\t${HEAD}\topen\t-\n`);
+    const out = join(dir, "metrics");
+    const result = await run(["export", "--ledger", ledger, "--findings", findings, "--unit", "u2", "--out", out, "--json"]);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.stdout).type).toBe("design");
+  });
+
+  test("an extra override outside its column's domain is refused at export", async () => {
+    const dir = tempDir();
+    const ledger = join(dir, "ledger.jsonl");
+    writeFileSync(ledger, `${ledgerFixture().map((entry) => JSON.stringify(entry)).join("\n")}\n`);
+    const extra = join(dir, "extra.json");
+    writeFileSync(extra, JSON.stringify({ measurements: { invalid_flag: "bad" } }));
+    const result = await run(["export", "--ledger", ledger, "--extra", extra, "--out", join(dir, "metrics"), "--json"]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).errors.some((entry) => entry.path.includes("invalid_flag"))).toBe(true);
+  });
+
   test("a metric the input does not contain is empty, never 0", () => {
     const minimal = [
       event("intake", { tier: "S", facts: ["one fact"], started_at: "2026-10-27T16:00:00Z" }),
@@ -234,9 +280,10 @@ describe("deriveRows", () => {
     const derived = deriveRows({ events: minimal, options: {} });
     expect(derived.ok).toBe(true);
     const row = Object.fromEntries(MEASUREMENTS_HEADER.map((column, index) => [column, derived.measurements[index]]));
-    for (const column of ["lens_rules", "gaps_total", "gaps_fixed", "before_receipts", "content_commits_after_approval", "blind_rereview", "invalid_flag", "notes"]) {
+    for (const column of ["lens_rules", "gaps_total", "gaps_fixed", "content_commits_after_approval", "blind_rereview", "invalid_flag", "notes"]) {
       expect(row[column]).toBe("");
     }
+    expect(row.before_receipts).toBe("0");
     expect(row.rounds_total).toBe("0");
     expect(row.switch_count).toBe("0");
     expect(row.rounds_after_switch).toBe("");
@@ -379,7 +426,7 @@ describe("CLI", () => {
     expect(result.code).toBe(0);
     const measurements = parseCsv(readFileSync(join(out, "measurements.csv"), "utf8"));
     const row = Object.fromEntries(measurements.header.map((column, index) => [column, measurements.rows[0][index]]));
-    expect(row).toMatchObject({ pr: "51", gaps_total: "", gaps_fixed: "", before_receipts: "", notes: "" });
+    expect(row).toMatchObject({ pr: "51", gaps_total: "", gaps_fixed: "", before_receipts: "1", notes: "" });
     const rounds = parseCsv(readFileSync(join(out, "rounds.csv"), "utf8"));
     const first = Object.fromEntries(rounds.header.map((column, index) => [column, rounds.rows[0][index]]));
     expect(first).toMatchObject({ round_index: "1", defect_count: "", finding_scope: "" });
@@ -414,6 +461,34 @@ describe("CLI", () => {
     for (const column of [...V2_MEASUREMENTS_SUFFIX, ...V2_ROUNDS_SUFFIX]) expect(doc).toContain(column);
     for (const term of ["rounds_after_switch", "diff-tree", "RFC 4180", "diagnostic"]) expect(doc).toContain(term);
     expect(doc.includes("[~]")).toBe(false);
+  });
+
+  test("a malformed CSV cell is rejected: junk after a closing quote", () => {
+    const line = `${ROUNDS_HEADER.join(",")}\n51,1,first,${HEAD},,,,,,,,,,,,,,,,,,,,,,code,u1,,0,"note"junk\n`;
+    const parsed = validateFile("rounds", line);
+    expect(parsed.ok).toBe(false);
+    expect(parsed.errors.some((entry) => entry.message.includes("closing quote"))).toBe(true);
+  });
+
+  test("validate --name only accepts the two file names", async () => {
+    const dir = tempDir();
+    const file = join(dir, "rounds.csv");
+    writeFileSync(file, `${ROUNDS_HEADER.join(",")}\n51,1,first,${HEAD},,,,,,,,,,,,,,,,,,,,,,code,u1,,0,\n`);
+    expect((await run(["validate", "--file", file, "--name", "bogus"])).code).toBe(2);
+  });
+
+  test("unusable merge fixtures exit 3, never a clean 0", async () => {
+    const dir = tempDir();
+    const nullFile = join(dir, "null.json");
+    writeFileSync(nullFile, "null");
+    const nullResult = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--from-json", nullFile]);
+    expect(nullResult.code).toBe(3);
+    expect(JSON.parse(nullResult.stdout).ok).toBe(false);
+    const badFile = join(dir, "bad.json");
+    writeFileSync(badFile, "{not json");
+    const badResult = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--from-json", badFile]);
+    expect(badResult.code).toBe(3);
+    expect(badResult.stdout.trim().startsWith("{")).toBe(true);
   });
 
   test("post-merge reads a real git history, excludes the merge commit and exits 1 on a refix", async () => {
@@ -452,5 +527,91 @@ describe("CLI", () => {
     expect(JSON.parse(clean.stdout).count).toBe(0);
     const usable = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--merge-sha", "not-a-sha", "--repo-dir", dir, "--json"]);
     expect(usable.code).toBe(2);
+  });
+});
+describe("git history edges", () => {
+  async function gitFixture() {
+    const dir = tempDir();
+    const git = (args, env = {}) => new Promise((resolvePromise) => {
+      const child = spawn("git", args, { cwd: dir, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.on("close", (code) => resolvePromise({ code, stdout, stderr }));
+    });
+    expect((await git(["init", "-q"])).code).toBe(0);
+    await git(["config", "user.email", "test@example.invalid"]);
+    await git(["config", "user.name", "test"]);
+    const write = (name, text) => Bun.write(join(dir, name), text);
+    const commit = async (message, date, files) => {
+      for (const [name, text] of Object.entries(files)) await write(name, text);
+      await git(["add", "-A"]);
+      const done = await git(["commit", "-qm", message], { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+      expect(done.code).toBe(0);
+      return (await git(["rev-parse", "HEAD"])).stdout.trim();
+    };
+    return { dir, git, write, commit };
+  }
+
+  test("a cap that stops the scan is reported, never a silent clean result", async () => {
+    const repo = await gitFixture();
+    await repo.commit("base", "2026-09-30T00:00:00Z", { "a.txt": "a\n" });
+    await repo.commit("fix(a)", "2026-10-02T00:00:00Z", { "a.txt": "a2\n" });
+    await repo.commit("unrelated", "2026-10-03T00:00:00Z", { "b.txt": "b\n" });
+    const capped = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir, "--max-commits", "1"]);
+    expect(capped.code).toBe(3);
+    expect(JSON.parse(capped.stdout)).toMatchObject({ ok: false, truncated: true });
+    const full = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir]);
+    expect(full.code).toBe(1);
+    expect(JSON.parse(full.stdout).count).toBe(1);
+  });
+
+  test("a backdated descendant does not hide an eligible commit", async () => {
+    const repo = await gitFixture();
+    await repo.commit("base", "2026-09-01T00:00:00Z", { "a.txt": "a\n" });
+    await repo.commit("fix(a)", "2026-10-05T00:00:00Z", { "a.txt": "a2\n" });
+    await repo.commit("backdated", "2026-08-01T00:00:00Z", { "z.txt": "z\n" });
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir, "--days", "7"]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).count).toBe(1);
+  });
+
+  test("a merge shows what it introduced against its first parent", async () => {
+    const repo = await gitFixture();
+    await repo.commit("base", "2026-09-30T00:00:00Z", { "a.txt": "a\n" });
+    await repo.git(["checkout", "-q", "-b", "side"]);
+    await repo.commit("side work", "2026-09-20T00:00:00Z", { "b.txt": "b\n" });
+    await repo.git(["checkout", "-q", "master"]).then(async (done) => {
+      if (done.code !== 0) await repo.git(["checkout", "-q", "main"]);
+    });
+    await repo.git(["merge", "--no-ff", "-q", "-m", "merge side", "side"], {
+      GIT_AUTHOR_DATE: "2026-10-02T00:00:00Z", GIT_COMMITTER_DATE: "2026-10-02T00:00:00Z",
+    });
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "b.txt", "--repo-dir", repo.dir, "--days", "7"]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).refixes[0].subject).toBe("merge side");
+  });
+
+  test("git paths keep their exact names: Unicode is not quoted and a leading space is preserved", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-09-20T00:00:00Z", { "root.txt": "r\n" });
+    const base = await repo.commit("base", "2026-09-30T00:00:00Z", { "café.txt": "c\n", " a.txt": "s\n" });
+    await repo.commit("touch both", "2026-10-03T00:00:00Z", { "café.txt": "c2\n", " a.txt": "s2\n" });
+    const viaSha = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--merge-sha", base, "--repo-dir", repo.dir]);
+    expect(viaSha.code).toBe(1);
+    const body = JSON.parse(viaSha.stdout);
+    expect(body.files.sort()).toEqual([" a.txt", "café.txt"]);
+    expect(body.refixes.length).toBe(1);
+    // The refix matched both names, so the commit scan kept the Unicode name raw too.
+    expect([...body.refixes[0].files].sort()).toEqual([" a.txt", "café.txt"]);
+  });
+
+  test("a real ref such as release+qa is accepted", async () => {
+    const repo = await gitFixture();
+    await repo.commit("base", "2026-09-30T00:00:00Z", { "a.txt": "a\n" });
+    await repo.git(["branch", "release+qa"]);
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir, "--ref", "release+qa"]);
+    expect(result.code).not.toBe(2);
   });
 });
