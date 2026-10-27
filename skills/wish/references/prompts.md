@@ -42,6 +42,10 @@ reordering it:
 
 > Evidence problems are never a REVISE reason. Typos, number errors, and wording or format problems in evidence or reports do not cause REVISE. Write each one as a correction memo in your report; do not fix the evidence yourself and do not request a re-review for it. Only a problem in CODE can cause REVISE, and only inside the plan's finite contract: a listed invariant violated, shown by a failing test (or, for a behavior the plan marks no-test, by its failing QA scenario), or an IS or COMPANION row not delivered. Report every other finding as a note or a follow-up, never as a blocker; a known limit listed in the plan is not a finding. The plan review of step 3 judges the contract itself and keeps the blocker definition of references/plan.md, Step 3.
 
+The sentence names `references/plan.md`, Step 3, because it is quoted from the contract that wrote it. In v2
+that blocker definition lives in `references/contract.md`, and the `plan-review` template below restates it;
+only the pointer moves. The sentence itself is never reworded, shortened or reordered.
+
 For the `design` and `research` types, "a problem in CODE" reads as "a problem in the delivered artifact
 manufactured or edited by this task" — a design defect in rendered output, a research claim the evidence
 does not support. The blocker boundary never widens: the plan's rows and listed invariants.
