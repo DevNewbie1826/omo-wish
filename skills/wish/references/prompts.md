@@ -78,8 +78,8 @@ Rules that make a frame obeyed:
   unexamined item by name. An unexamined area is never a PASS.
 - **FORBIDDEN always names**: edits outside `SCOPE`; `git commit --amend`, `rebase`, `push --force`, or
   `--no-verify`; deleting, skipping or `.only`-ing a test; adding a dependency the plan does not list;
-  writing another lane's receipt; writing `<ER>/ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `gates.md` or the
-  plan (the session alone writes those); asking the requester a question.
+  writing another lane's receipt; writing `<ER>/ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `gates.md`,
+  `lens.md`, `ideal.md` or the plan (the session alone writes those); asking the requester a question.
 
 ### 1.3 The five shared fields
 
@@ -187,7 +187,8 @@ DELIVERABLE: the changed files for <node-id>; for every guard row the node owns,
   artifact `<ER>/build/<node-id>-<head7>.json` with one row per guard row (a build node is not a verify
   lane, so it writes no `kind: lane` receipt); the result of the literal VERIFY below.
 SCOPE: read <worktree> and <ER>; write only <paths this node owns>. OUT OF SCOPE: <paths other nodes own>,
-  the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md. Never edit a file another node is writing.
+  the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md, lens.md, ideal.md. Never edit a file another
+  node is writing.
 VERIFY: `cd <worktree> && <the repository test command>` for the touched area, then, per guard row,
   `cd <worktree> && <guard test command>` unmutated (must pass).
 STOP WHEN: every guard row the node owns has a captured failing output under its injection and a captured
@@ -277,10 +278,11 @@ Scope: change the approach for <component>, not the patch.
 
 TASK: write the failed premise, record one switch kind not yet used, and rebuild <component> under the new
   approach until every open finding is fixed and the component's guard rows pass.
-DELIVERABLE: a plan row `SWITCH: <failed premise> -> <new approach>`; a `switch` ledger event
-  (`round`, `kind`, `premise`, `new_approach`); the rebuilt component; the reproduce/pass captures; the new
-  head; the list of kinds already used.
-SCOPE: <component paths> plus the plan row. OUT OF SCOPE: the contract rows, other components.
+DELIVERABLE: the proposed plan row `SWITCH: <failed premise> -> <new approach>`, the `switch` event values
+  (`round`, `kind`, `premise`, `new_approach`) for the session to record, the rebuilt component, the
+  reproduce/pass captures, the new head, and the list of kinds already used.
+SCOPE: <component paths>. OUT OF SCOPE: the plan itself (propose the row; the session writes the plan row and
+  the ledger event), the contract rows, other components.
 VERIFY: every open finding's `repro_cmd` passes at the new head; the component's guard rows pass; the class
   sweep at the production entry point reports `none`.
 STOP WHEN: the new approach is in place and every open finding has a pass capture, or the approach is proven
@@ -336,7 +338,8 @@ STOP WHEN: every guard row is killed or resolved (a strengthened guard test is i
 TIMEBOX: 300 seconds per mutation; cap mutations at 3 for tier S, one per guard row for M, and 12 for L.
   Run at most 8 processes at once.
 FORBIDDEN: mutating <worktree> itself; counting a run that fails for any reason other than the mutation as a
-  kill; editing a guard test without recording the plan row; leaving a mutant directory behind.
+  kill; editing a guard test without reporting the stronger assertion the session records in the plan row;
+  leaving a mutant directory behind.
 REPORT: the suite command, exit code and tail; then `<row> | mutation: <one-line diff> | guard: <command> |
   killed|survived | <artifact>`; then the cleanup receipt for every mutant directory.
 ```
@@ -794,18 +797,20 @@ REPORT: kept count, dropped count with reasons, and the file path.
 Purpose: produce the lens the plan's rules and the reviews are judged against.
 Scope: all extract files for this run.
 
-TASK: reduce the extracts into `<ER>/lens.md` in the `ledger.md` §7 grammar, one row per rule, ids `L<n>`.
-DELIVERABLE: the lens file, the run artifact `<ER>/lens/reduce-<run>.json` (`rules_total`, slices, clusters,
-  dropped — a run artifact, not a lane receipt), and the ledger values the session needs (`artifact`,
-  `rules_total`).
-SCOPE: the extract files; write the lens file and its receipt only. OUT OF SCOPE: the project, the plan,
-  other receipts.
+TASK: reduce the extracts into the candidate lens file `<ER>/lens/reduce-<run>.md` in the `ledger.md` §7
+  grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/lens.md`.
+DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (`rules_total`, slices,
+  clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the `artifact` and
+  `rules_total` values of the `lens` event.
+SCOPE: the extract files; write the candidate lens file and its run artifact only. OUT OF SCOPE: the project,
+  the plan, `<ER>/lens.md` itself (the session publishes it), other receipts.
 VERIFY: every row has six non-empty fields, ids are unique, scope is `universal` or `platform`; the first
   rows are the omo-distilled rules named in the plan.
-STOP WHEN: the file parses as the §7 grammar and the receipt is written.
+STOP WHEN: the candidate parses as the §7 grammar and the run artifact is written.
 TIMEBOX: 20 minutes.
-FORBIDDEN: a rule without an anchor; two ids with the same string; dropping an anchor to shorten a row.
-REPORT: `rules_total`, the dropped list size, and the file path.
+FORBIDDEN: a rule without an anchor; two ids with the same string; dropping an anchor to shorten a row;
+  writing `<ER>/lens.md` or the ledger.
+REPORT: `rules_total`, the dropped list size, and the candidate path.
 ```
 
 ### 5.4 `lens-explore` — discovery steered by the lens
@@ -818,9 +823,11 @@ Scope: explore lane <N> of the discovery wave.
 
 TASK: apply rules <L ids> to <surfaces> and report every place they are violated.
 DELIVERABLE: one row per observation: `<L id> | <surface> | <current state> | <evidence path or file:line> |
-  <severity guess> | <defect|taste>`; and an `axes covered` line.
-SCOPE: read the repository/surface; write only `<ER>/receipts/discover-explore-<lane>.md`. OUT OF SCOPE:
-  fixing, writing gaps.tsv or lens.md, judging rules you were not given.
+  <severity guess> | <defect|taste>`; an `axes covered` line; and the lane receipt
+  `<ER>/receipts/discover-explore-<lane>-<head7>.md` (`kind: lane`, `stage: discover`, `lane: explore-<lane>`,
+  `head`/`tree` at <head>).
+SCOPE: read the repository/surface; write only that receipt. OUT OF SCOPE: fixing, writing gaps.tsv, lens.md
+  or ideal.md, judging rules you were not given.
 VERIFY: every row's evidence is a path or line a reader can open; a rule with no instance is `N/A`, never
   an observation.
 STOP WHEN: every assigned rule × surface pair has a verdict (violation, holds, N/A).
@@ -907,10 +914,11 @@ Purpose: list every AI-generated slop pattern in scope, so the plan can decide w
 Scope: the branch diff or the explicit file list; report only.
 
 TASK: apply the `remove-ai-slops` categories to <scope> and report every instance without fixing it.
-DELIVERABLE: one row per instance: `<category> | file:line | what | why it is slop | suggested fix`; and the
-  `remove-ai-slops: ran` line.
-SCOPE: the named diff/files; write only `<ER>/receipts/discover-slop-<lane>.md`. OUT OF SCOPE: edits, test
-  changes, reclassifying a behavior-preserving pattern as slop.
+DELIVERABLE: one row per instance: `<category> | file:line | what | why it is slop | suggested fix`; the
+  `remove-ai-slops: ran` line; and the lane receipt `<ER>/receipts/discover-slop-<lane>-<head7>.md`
+  (`kind: lane`, `stage: discover`, `lane: slop-<lane>`, `head`/`tree` at <head>).
+SCOPE: the named diff/files; write only that receipt. OUT OF SCOPE: edits, test changes, reclassifying a
+  behavior-preserving pattern as slop.
 VERIFY: every row names a category from the skill's list and a file:line.
 STOP WHEN: every changed file has a pass over all categories.
 TIMEBOX: 15 minutes.
@@ -1295,8 +1303,12 @@ REPORT: the gate table, the repair decision, and the residual defects.
 ```
 Deliver <the requested outcome> in <worktree> on branch <branch> as one unit. Success is <IS row 1, with its
 scenario and expected evidence>, <IS row 2, ...>, and <COMPANION rows by name>; the contract keeps
-<INVARIANT rows> and accepts <LIMIT rows>. Tier <S|M|L>, type <type>. Evidence lives under <ER>; the final
-state is a merged PR whose post-merge verification passes at <tree>.
+<INVARIANT rows> and accepts <LIMIT rows>. Tier <S|M|L>, type <type> (for a mixed unit also its primary type).
+Evidence lives under <ER>. The end state is <the primary type's end: for code and design, a merged PR whose
+post-merge verification passes at <tree>; for audit, every defect row in the register fixed, accepted-limit or
+out-of-scope with its report delivered; for research, every delivery gate passed with the artifact delivered
+at <artifact_sha256>>. A mixed unit ends on its primary type's end; its secondary type adds lanes, never a
+second end condition.
 ```
 
 `ulw-loop` builds goals from the brief: line breaks split the brief into separate goals, so a single unit is
