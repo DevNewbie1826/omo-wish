@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  compileScope,
   decideReuse,
   globToRegExp,
   parseFrontMatter,
@@ -200,6 +201,20 @@ describe("reuse-check CLI", () => {
     const result = run([path, "--head", c4, "--repo", repo]);
     expect(result.code).toBe(1);
     expect(result.stdout).toContain("src/b.ts");
+  });
+
+  test("a scope that only parses before normalization exits 3 without a stack trace", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "normalized", c0), receipt({
+      lane: "normalized",
+      scope: ["[A-\\]*"],
+    }));
+    const result = run([path, "--head", c0, "--repo", repo]);
+    expect(result.code).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toStartWith("FAIL ");
+    expect(result.stderr).not.toContain("SyntaxError");
+    expect(result.stderr).not.toContain("    at ");
+    expect(() => compileScope(["[A-\\]*"])).toThrow();
   });
 
   test("an unterminated bracket class in a scope is a state failure", () => {
@@ -415,7 +430,7 @@ describe("reuse-check helpers", () => {
     expect(scopeMatches("skills/wish/scripts/readme.mjs", "skills/wish/scripts/[cp]*.mjs")).toBe(false);
     expect(globToRegExp("a[!b]c").test("adc")).toBe(true);
     expect(globToRegExp("a[!b]c").test("abc")).toBe(false);
-    expect(scopeHits(["b", "a", "a"], ["**"])).toEqual(["a", "b"]);
+    expect(scopeHits(["b", "a", "a"], compileScope(["**"]))).toEqual(["a", "b"]);
   });
 
   test("the decision order is before, research, surface hash, tree, changed paths, referrers", () => {

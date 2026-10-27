@@ -214,23 +214,41 @@ export function normalizePath(value) {
   return String(value ?? "").replace(/\\/g, "/").replace(/^\.\//, "");
 }
 
+// A scope entry is parsed once, at the input boundary, into a matcher; the decision
+// then consumes only matchers, so a parse error can surface only where exit 3 is decided.
+export function compileScope(entries) {
+  return entries.map((entry, index) => {
+    const source = normalizePath(entry).replace(/\/+$/, "");
+    if (source === "" || source === ".") {
+      return { source: entry, test: (candidate) => candidate !== "" };
+    }
+    if (!/[*?[]/.test(source)) {
+      return {
+        source: entry,
+        test: (candidate) => candidate !== "" && (candidate === source || candidate.startsWith(`${source}/`)),
+      };
+    }
+    let pattern;
+    try {
+      pattern = globToRegExp(source);
+    } catch (error) {
+      throw new Error(`scope entry ${index} (${entry}) cannot be parsed: ${error.message}`);
+    }
+    return { source: entry, test: (candidate) => candidate !== "" && pattern.test(candidate) };
+  });
+}
+
 // A scope entry is a path or a glob (§4). A plain path also covers everything under
 // it, so `src/foo` covers `src/foo/bar.ts` but never `src/foobar.ts`.
 export function scopeMatches(path, entry) {
-  const candidate = normalizePath(path);
-  const scope = normalizePath(entry).replace(/\/+$/, "");
-  if (candidate === "") return false;
-  if (scope === "" || scope === ".") return true;
-  if (!/[*?[]/.test(scope)) {
-    return candidate === scope || candidate.startsWith(`${scope}/`);
-  }
-  return globToRegExp(scope).test(candidate);
+  return compileScope([entry])[0].test(normalizePath(path));
 }
 
-export function scopeHits(paths, scope) {
+export function scopeHits(paths, matchers) {
   const hits = new Set();
   for (const path of paths) {
-    if (scope.some((entry) => scopeMatches(path, entry))) hits.add(normalizePath(path));
+    const candidate = normalizePath(path);
+    if (matchers.some((matcher) => matcher.test(candidate))) hits.add(candidate);
   }
   return [...hits].sort();
 }
@@ -248,7 +266,8 @@ function identityType(receipt) {
 
 // ------------------------------------------------------------------- decision
 
-export function decideReuse({ receipt, head, tree, changed = [], referrers, envSha }) {
+export function decideReuse({ receipt, head, tree, changed = [], referrers, envSha, scope }) {
+  const matchers = scope ?? compileScope(receipt.scope);
   if (receipt.kind === "before") {
     return { verdict: "VALID", reason: "a before receipt is exempt: a pre-edit capture is deliberately old" };
   }
@@ -281,11 +300,11 @@ export function decideReuse({ receipt, head, tree, changed = [], referrers, envS
   if (receipt.tree === tree) {
     return { verdict: "VALID", reason: `tree ${short(tree)} unchanged` };
   }
-  const changedHits = scopeHits(changed, receipt.scope);
+  const changedHits = scopeHits(changed, matchers);
   if (changedHits.length > 0) {
     return { verdict: "STALE", reason: `changed files inside scope: ${list(changedHits)}` };
   }
-  const referrerHits = scopeHits(referrers ?? [], receipt.scope);
+  const referrerHits = scopeHits(referrers ?? [], matchers);
   if (referrerHits.length > 0) {
     return {
       verdict: "STALE",
@@ -471,14 +490,12 @@ function main(argv) {
     console.error(`FAIL the receipt filename disagrees with its body: ${first.path} ${first.message}`);
     return EXIT_CODES.STATE_MISMATCH;
   }
-  for (const entry of receipt.value.scope) {
-    if (!/[*?[]/.test(entry)) continue;
-    try {
-      globToRegExp(entry);
-    } catch {
-      console.error("FAIL the receipt has an unterminated bracket class in its scope");
-      return EXIT_CODES.STATE_MISMATCH;
-    }
+  let scope;
+  try {
+    scope = compileScope(receipt.value.scope);
+  } catch (error) {
+    console.error(`FAIL ${error.message}`);
+    return EXIT_CODES.STATE_MISMATCH;
   }
 
   const isResearch = identityType(receipt.value) === "research";
@@ -556,6 +573,7 @@ function main(argv) {
     changed,
     referrers,
     envSha: options.envSha,
+    scope,
   });
   if (decision.verdict === "VALID") {
     console.log(`VALID ${decision.reason}`);
