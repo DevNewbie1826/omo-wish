@@ -55,4 +55,4 @@ running. A gate open longer than 15 minutes is recorded so `status` reports the 
 The number of findings a reviewer may block on is unchanged — the same finite contract, the same
 class dictionary, the same axes. What changes is that repeated failure of the *same* approach can no
 longer consume unbounded rounds: at the third round the approach must change, which is the only rule
-that both respects the owner's "keep going until it is right" and keeps a tail from becoming a week.
+that both keeps review running until the work is right and stops a tail from becoming a week.

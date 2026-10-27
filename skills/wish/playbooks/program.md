@@ -12,9 +12,10 @@ PROGRAM=p-<slug>     BASE=wish-v2
 
 ## Unit and wave
 
-- A **unit** is one PR: `wish init --program $PROGRAM --unit u<N> --type <type> --tier <S|M|L> --plan
+- A **unit** is one PR: `wish init --run-id w-<slug>-u<N>-<yyyymmdd-hhmm> --program $PROGRAM --unit u<N> --type <type> --tier <S|M|L> --plan
   .omo/plans/wish-<slug>-u<N>.md --worktree <abs> --branch <branch> --fact "<each fact>"` (init creates
-  the plan when it does not exist; never pre-create an empty file). Its contract
+  the plan when it does not exist; never pre-create an empty file; the run id is required and unique per
+  unit). Its contract
   is its own `IS` rows only — never another unit's gap (`../references/contract.md` §2).
 - A **wave** holds the units whose write scopes do not overlap. Wave size is `min(host model slots,
   non-overlapping units)`; never more. Capacity is shared: at most two `mass-ulw` runs and one wish
