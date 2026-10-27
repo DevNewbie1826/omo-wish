@@ -27,6 +27,8 @@ test("test-only diffs route to the code reviewer", () => {
     "src/__snapshots__/a.snap",
     "test_helpers.py",
     "WidgetTest.java",
+    "WidgetTest.cs",
+    "WidgetTest.scala",
   ]) {
     expect(route([path])).toBe("code-reviewer");
   }
@@ -52,10 +54,14 @@ test("CI-only diffs route to the code reviewer", () => {
     ".github/workflows/ci.yml",
     ".circleci/config.yml",
     "Jenkinsfile",
+    "build/Jenkinsfile",
     ".gitlab-ci.yml",
+    ".travis.yaml",
     "ci/build.sh",
     ".github/dependabot.yml",
+    ".github/renovate.json",
     "renovate.json",
+    "renovate.json5",
   ]) {
     expect(route([path])).toBe("code-reviewer");
   }
@@ -81,6 +87,29 @@ test("a docs-extension file outside the allowlist is production", () => {
     ".github/ISSUE_TEMPLATE/bug.md",
     "skills/wish/SKILL.md",
     "prompts/wish.md",
+    "app/docs/page.tsx",
+    "pkg/doc/doc.go",
+    "src/doc/engine.ts",
+    "src/documentation/render.ts",
+    "README.js",
+    "README_JA.md",
+    "LICENSE.ts",
+    "LICENSE-MIT",
+    "readme.md",
+    "api.spec.json",
+    "openapi_spec.yaml",
+  ]) {
+    expect(route([path])).toBe("ultrabrain");
+  }
+});
+
+test("case-sensitive test basenames do not catch production class names", () => {
+  for (const path of [
+    "src/main/java/app/Contest.java",
+    "src/main/kotlin/Latest.kt",
+    "src/Protest.scala",
+    "Models/Latest.cs",
+    "Controllers/Contests.cs",
   ]) {
     expect(route([path])).toBe("ultrabrain");
   }
@@ -95,7 +124,10 @@ test("a declared product root wins over test, CI, and docs", () => {
   const options = { productRoots: ["docs/runtime", "skills"] };
   expect(route(["docs/runtime/template.md"], options)).toBe("ultrabrain");
   expect(route(["skills/wish/SKILL.md"], options)).toBe("ultrabrain");
+  expect(route(["skills/test/a.test.ts"], options)).toBe("ultrabrain");
+  expect(route(["skills/.github/workflows/ci.yml"], options)).toBe("ultrabrain");
   expect(route(["docs/guide.md"], options)).toBe("code-reviewer");
+  expect(route(["test/a.ts"], { productRoots: ["."] })).toBe("ultrabrain");
 });
 
 test("renames and deletions classify every path", () => {
@@ -149,7 +181,10 @@ test("the CLI classifies a real base...head diff", () => {
 
 test("a usage error exits 2", () => {
   const cli = join(import.meta.dir, "..", "skills", "wish", "scripts", "review-route.mjs");
-  const result = Bun.spawnSync([process.execPath, cli], { stdout: "pipe", stderr: "pipe" });
-  expect(result.exitCode).toBe(2);
-  expect(result.stderr.toString()).toContain("usage: review-route.mjs");
+  const missing = Bun.spawnSync([process.execPath, cli], { stdout: "pipe", stderr: "pipe" });
+  expect(missing.exitCode).toBe(2);
+  expect(missing.stderr.toString()).toContain("usage: review-route.mjs");
+  const optionLike = Bun.spawnSync([process.execPath, cli, "--base", "--output=/tmp/route-stray"], { stdout: "pipe", stderr: "pipe" });
+  expect(optionLike.exitCode).toBe(2);
+  expect(optionLike.stderr.toString()).toContain("a revision must not start with '-'");
 });
