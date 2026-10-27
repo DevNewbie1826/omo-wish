@@ -32,6 +32,16 @@ wish 스킬의 최종 리뷰(step 9, `category: ultrabrain`) 단계를 겨냥한
 
 `invalid_flag`가 붙은 PR은 시간 지표의 중앙값에서만 빼고, 비율(k/N)의 분모에서는 빼지 않는다(분모가 바뀌면 25%/40% 경계가 흔들린다) — 단 세션 정지로 지표 자체가 없는 PR은 분모에서도 빼고 그 사실을 기록한다.
 
+### 테스트 코드 전용 라운드 (별도 집계)
+
+REVISE 라운드 중 블로킹 파인딩이 전부 테스트 산출물에 떨어지는 라운드는 따로 센다. 규칙(측정 보고서와 동일): 파인딩이 요구하는 수정이 `test/`, `*.test.ts`, `*_test.go`, `test/qa/`, 변이·가드·QA 픽스처에 떨어지거나, 가드가 절대 실패하지 않는(vacuous) 결함·커버리지 누락·“cannot fail” 테스트를 고치라고 요구하면 **TEST**; 시험이 생산 코드 결함을 관찰만 하면 TEST가 아니고 **PROD**; 계획·계약·문서·증거 문제는 **PLAN**; 섞이면 **MIXED**. 비차단 LOW/메모는 라운드를 REVISE로 만든 항목이 아니므로 세지 않는다.
+
+기준선(측정 보고서, 2026-10-27): genie 병합 104 PR  74라운드 중 TEST 10 (13.5%), 파인딩 13/68 (19.1%); genie 열린 9 PR은 16/43 (37.2%, 그 중 #63 한 건이 15연속 TEST 라운드·20시간); agent-sense 22라운드 중 7 (31.8%). #63 제외 시 열린 PR은 1/13 (7.7%).
+
+규칙: 각 팔의 결과 보고에는 (a) TEST 전용 라운드 수/전체 라운드와 시간 축 위치, (b) 그 팔이 TEST 꼬리를 줄였는지(기준선 대밸)를 따로 적는다. **이 항목은 사전등록된 취소 기준을 바꾸지 않는다** — 판정은 위 실험 목록의 각 행이 그대로 하고, TEST 꼬리는 결과 보고의 별도 열이다. `rounds.csv`의 `finding_scope` 열(prod|test|plan|mixed|none)이 그 기록이다.
+
+C1의 예상: 게이트가 결함의 재현을 새 헤드에서 다시 돌리므로, “가드가 vacuous하다”는 TEST 결함은 변이가 다시 살아나는지로 증명된다. 따라서 C1은 생산 코드 결함 축보다 TEST 꼬리를 더 직접적으로 줄일 수 있다 — 이는 예측이며, 판정은 위 기준으로 한다.
+
 ## 공유 장부 (5팔 공통)
 
 이 디렉터리가 다섯 팔(C2 #41, E2+C3 #42, C1 #43, E6+E9 #44, C6 #45)의 **단일 기록 장소**입니다. 세 파일이 역할을 나누고, 다른 경로에 사본을 두지 않습니다.
@@ -44,7 +54,7 @@ wish 스킬의 최종 리뷰(step 9, `category: ultrabrain`) 단계를 겨냥한
 
 `measurements.csv` 열: `pr, repo, arm, common_arms, route_class, size_bucket, stacked_on, opened_at, merged_at, open_to_merge_min, rounds_total, ultrabrain_calls, code_reviewer_calls, architect_calls, content_commits_after_approval, step12_result, post_merge_refix, blind_rereview, invalid_flag, notes`
 
-`rounds.csv` 열: `pr, round_index, round_kind, verdict_head, dispatch_at, verdict_at, minutes, reviewer, reviewer_family, defect_count, defect_axes, counterexample_present, gate_rows_fixed, gate_rows_not_fixed, gate_rows_no_command, c2_split, axis_lines_present, verdict_line_present, verdict_head_match`
+`rounds.csv` 열: `pr, round_index, round_kind, verdict_head, dispatch_at, verdict_at, minutes, reviewer, reviewer_family, defect_count, defect_axes, finding_scope, counterexample_present, gate_rows_fixed, gate_rows_not_fixed, gate_rows_no_command, c2_split, axis_lines_present, verdict_line_present, verdict_head_match`
 
 - `round_kind`은 `first`, `revise`, `delta`, `gate-blocked` 중 하나입니다. 게이트가 막은 회차는 `dispatch_at`에 `not dispatched`를 적습니다.
 - `common_arms`에는 그 PR에 같이 적용된 공통 기반(예: `E6+E9`)을 적습니다. 리뷰어·게이트 팔은 PR당 하나만 적습니다.
