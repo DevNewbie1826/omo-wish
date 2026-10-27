@@ -79,7 +79,8 @@ concrete type. The linter therefore accepts any concrete device form on a mixed 
 Under `## Todos`, each implementation row is `- [ ] <N>. <title>` with a positive decimal `N`. Under
 `## Final verification wave`, each final-verifier row is `- [ ] F<n>. <title>`. A row may be checked `- [x]`.
 Both section names are exact, both sections are required, each needs at least one row, numbers are unique
-within their section, and a task row outside those two sections is a complaint: it would never run.
+within their section, and a task row outside those two sections is a complaint: it would never run. Only a
+top-level `##` heading opens a section, so a `### Wave 1` group inside `## Todos` stays in Todos.
 ulw-plan's optional `Recommended task executor category:` line is not part of this grammar and is not linted;
 a playbook may still ask for it.
 

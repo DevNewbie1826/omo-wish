@@ -180,8 +180,15 @@ export function lintPlan(text, options = {}) {
     }
     const open = /^ {0,3}(`{3,}|~{3,})/.exec(raw);
     if (open) { fence = open[1]; continue; }
-    const heading = /^#{1,6} (.+)$/.exec(raw);
-    if (heading) { section = heading[1].trim(); if (!sections.has(section)) sections.set(section, n); continue; }
+    const heading = /^(#{1,6}) (.+)$/.exec(raw);
+    if (heading) {
+      // Only a top-level heading opens a section: a `### Wave 1` inside `## Todos` stays in Todos.
+      if (heading[1].length <= 2) {
+        section = heading[2].trim();
+        if (!sections.has(section)) sections.set(section, n);
+      }
+      continue;
+    }
     if (!raw.startsWith("- ") && !raw.startsWith("- [")) continue;
     const hit = MARKERS.map(([kind, pattern]) => ({ kind, match: pattern.exec(raw) })).find((entry) => entry.match);
     if (!hit) {

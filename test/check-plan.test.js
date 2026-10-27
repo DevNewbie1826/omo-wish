@@ -97,6 +97,11 @@ test("task rows: the final verification wave needs an F row", () => {
   expectProblem(plan, "## Final verification wave", "holds no \"- [ ] F<n>. <title>\" row");
 });
 
+test("task rows: a sub-heading inside ## Todos stays in Todos", () => {
+  const plan = mutate(CODE, "## Todos\n", "## Todos\n\n### Wave 1\n");
+  expectClean(plan);
+});
+
 test("task rows: duplicate numbers are complaints", () => {
   const plan = mutate(CODE, "- [ ] 2. n-test:", "- [ ] 1. n-test:");
   expectProblem(plan, "1. n-test:", "duplicate task row number 1");
