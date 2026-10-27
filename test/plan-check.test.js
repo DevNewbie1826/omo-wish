@@ -93,6 +93,13 @@ test("an IS row that no QA scenario names is a complaint on that row", () => {
 	expect(result.err).toContain(`fixture.md:${lineOf(plan, "**IS-2**")}: IS-2 is not named by any QA scenario`);
 });
 
+test("one direction of the pairing is enough: an IS row naming its scenarios passes", () => {
+	const plan = mutate("- **QA-1** (IS-1) run the checker", "- **QA-1** run the checker").replace("- **QA-2** (IS-2) run the test", "- **QA-2** run the test");
+	const result = run(plan);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+});
+
 test("a QA scenario that no IS row owns is a complaint on that scenario", () => {
 	const plan = mutate(
 		"- **QA-2** (IS-2) run the test -> PASS iff exit 0.",
@@ -198,6 +205,92 @@ test("a plan without IS rows fails instead of passing silently", () => {
 	const result = run("# Plan\n\n## Pinned rules\n- Worktree pinned for every command.\n- Commits serialized.\n");
 	expect(result.code).toBe(1);
 	expect(result.err).toContain("no IS rows found");
+});
+
+const TABLE_PLAN = `# Plan: table fixture
+
+## IS rows
+
+| ID | Deliverable | Production entry point | Consumer | Authoritative owner |
+| --- | --- | --- | --- | --- |
+| IS1 | the checker | \`skills/wish/scripts/check-plan.mjs\` | the plan author | the plan file |
+| IS2 | the test | \`test/plan-check.test.js\` | \`bun test\` | the test file |
+
+## QA scenarios
+
+| ID | Pairing | Command | PASS observable |
+| --- | --- | --- | --- |
+| QA1 | IS1 happy path | run the CLI | exit 0 |
+| QA2 | IS2 regression | run bun test | exit 0 |
+
+## Risk list
+- guard: INV1 : the CLI rejects a complete plan -> node n1
+- no-test: the prose rows -> QA1
+
+## Invariants (finite contract)
+- INV1 A complete plan passes. : QA1
+
+## Pinned rules
+- Every command pins the worktree.
+- Commits are serialized.
+`;
+
+const RANGE_PLAN = `# Plan: range fixture
+
+## IS rows
+- IS1 first property.
+- IS2 second property.
+- IS3 third property.
+
+## Wiring
+- IS1-IS2: entry point \`skills/wish/scripts/check-plan.mjs\`, consumer the author, owner \`skills/wish/references/plan.md\`.
+- IS3: entry point \`test/plan-check.test.js\`, consumer \`bun test\`, owner \`skills/wish/references/plan.md\`.
+
+## QA scenarios
+- QA1 (IS1) run one -> PASS iff exit 0.
+- QA2 (IS2) run two -> PASS iff exit 0.
+
+IS-row to QA pairing: IS1-IS2 -> QA1, QA2; IS3 -> QA3.
+
+- QA3 (IS3) run three -> PASS iff exit 0.
+
+## Pinned rules
+- Every command pins the task worktree.
+- Commits are serialized.
+`;
+
+test("table-based IS and QA rows are read with their wiring columns", () => {
+	const result = run(TABLE_PLAN);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+	expect(result.out).toContain("2 IS rows, 2 QA scenarios, 1 guard rows");
+});
+
+test("range ids cover every row they span, in wiring and in the pairing line", () => {
+	const result = run(RANGE_PLAN);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+});
+
+test("COMPANION: none is a sentinel, and a slash list of targets is read", () => {
+	const none = run(mutate("- COMPANION: the README mirror <- IS-1 : the README copies the same step.", "- COMPANION: none."));
+	expect(none.err).toBe("");
+	expect(none.code).toBe(0);
+	const list = run(
+		mutate(
+			"- COMPANION: the README mirror <- IS-1 : the README copies the same step.",
+			"- COMPANION: both mirrors <- IS-1/IS-2 : both copies change.",
+		),
+	);
+	expect(list.err).toBe("");
+	expect(list.code).toBe(0);
+});
+
+test("pairing segments split only when a part holds several arrows", () => {
+	const plan = RANGE_PLAN.replace("IS-row to QA pairing: IS1-IS2 -> QA1, QA2; IS3 -> QA3.", "IS-row to QA pairing: IS1-IS2 -> QA1; IS3 -> QA2, QA3.");
+	const result = run(plan);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
 });
 
 test("missing arguments and unreadable plans exit 2", () => {
