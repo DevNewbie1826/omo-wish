@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -17,13 +17,17 @@ afterAll(() => {
   rmSync(fixture, { recursive: true, force: true });
 });
 
-function run(args) {
-  const result = spawnSync(process.execPath, [script, ...args], { encoding: "utf8" });
+function runWith(bin, scriptPath, args) {
+  const result = spawnSync(bin, [scriptPath, ...args], { encoding: "utf8" });
   return {
     code: result.status,
     stdout: result.stdout ?? "",
     stderr: result.stderr ?? "",
   };
+}
+
+function run(args) {
+  return runWith(process.execPath, script, args);
 }
 
 function bodyFile(name, body) {
@@ -114,4 +118,21 @@ test("CLI rejects missing or unknown arguments with a usage failure", () => {
   expect(run([]).stderr).toContain("usage:");
   expect(run(["--body", "x"]).stderr).toContain("usage:");
   expect(run(["--pr", "1"]).stderr).toContain("unknown argument");
+});
+
+test("CLI still runs through a symlinked skill directory under node", () => {
+  const linkRoot = join(fixture, "link-root");
+  mkdirSync(linkRoot, { recursive: true });
+  const link = join(linkRoot, "wish-skill");
+  symlinkSync(join(repo, "skills/wish"), link, "dir");
+  const linkedScript = join(link, "scripts/check-verdict.mjs");
+  const path = bodyFile("symlink-body.md", `VERDICT: APPROVED round 1 head ${HEAD}\n`);
+
+  const match = runWith("node", linkedScript, ["--body", path, "--head", HEAD]);
+  expect(match.code).toBe(0);
+  expect(match.stdout.trim().startsWith("PASS")).toBe(true);
+
+  const drift = runWith("node", linkedScript, ["--body", path, "--head", OTHER]);
+  expect(drift.code).toBe(1);
+  expect(drift.stderr).toContain("does not cover");
 });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { readFileSync, realpathSync } from "node:fs";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const VERDICT_PATTERN = /^VERDICT: (APPROVED|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$/;
 const SHA_PATTERN = /^[0-9a-fA-F]{40}$/;
@@ -115,6 +115,13 @@ function main() {
   process.exitCode = 1;
 }
 
-const isMain = process.argv[1] !== undefined
-  && import.meta.url === pathToFileURL(process.argv[1]).href;
-if (isMain) main();
+function invokedDirectly() {
+  if (process.argv[1] === undefined) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) main();
