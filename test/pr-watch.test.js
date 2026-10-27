@@ -140,10 +140,12 @@ describe("redactSecrets", () => {
     expect(text).toContain("[redacted]");
   });
 
-  test("an empty token value is never redacted into the text", () => {
+  test("an empty token value is never redacted, a short one still is", () => {
     const secrets = tokenValues({ GH_TOKEN: "" }, "GH_TOKEN");
     expect(secrets).toEqual([]);
     expect(redactSecrets("nothing secret here", secrets)).toBe("nothing secret here");
+    const short = tokenValues({ GH_TOKEN: "abc" }, "GH_TOKEN");
+    expect(redactSecrets("token=abc", short)).toBe("token=[redacted]");
   });
 });
 

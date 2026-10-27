@@ -76,7 +76,8 @@ measurement"; it is never 0, and a zero appears only when the input shows a real
 ### 2.3 CSV dialect and value sets
 
 The files are RFC 4180: a cell containing `,`, `"`, CR or LF is double-quoted and `"` is
-doubled. Multi-valued cells join with `;`. The value sets live in `metrics.mjs`
+doubled, and a CR inside a quoted cell is preserved verbatim (only an unquoted CR or CRLF
+ends a record). Multi-valued cells join with `;`. The value sets live in `metrics.mjs`
 (`ROUND_KINDS`, `FINDING_SCOPES`, `INT_COLUMNS`, `SWITCH_KINDS` from the contract) and this
 table mirrors them; `test/metrics.test.js` checks the v2 column names and the terms below
 against this file, so the doc and the code fail together.
@@ -109,7 +110,9 @@ Exit codes: `0` for the requested terminal state, `1` for a different terminal s
 not-found failure (reported once, never retried). No caller value reaches a shell: every argv
 is an array and `--repo`/`--pr` are validated before `gh` is spawned. Values of `GH_TOKEN`
 and `GITHUB_TOKEN` (or the names given by `--token-env`) and any `ghp_…`/`github_pat_…`
-pattern are replaced by `[redacted]` in output; an empty value is never "redacted".
+pattern are replaced by `[redacted]` in output; an empty value is never "redacted", and any
+non-empty value is redacted however short it is (a short value mangles the line rather than
+leaking it).
 
 ## 4. Baseline (ported from the shared ledger, 2026-10-27)
 

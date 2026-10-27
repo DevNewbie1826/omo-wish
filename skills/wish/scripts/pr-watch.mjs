@@ -65,12 +65,13 @@ export function backoffSeconds(interval, attempt = 1, maxInterval = 300) {
 
 export function tokenValues(env = {}, names = DEFAULTS.tokenEnv) {
   return String(names ?? "").split(",").map((name) => name.trim()).filter(Boolean)
-    .map((name) => env[name]).filter((value) => typeof value === "string" && value.trim().length >= 4);
+    .map((name) => env[name])
+    .filter((value) => typeof value === "string" && value.trim() !== "");
 }
 
 export function redactSecrets(text, secrets = []) {
   let out = String(text ?? "");
-  const values = [...new Set(secrets.filter((value) => typeof value === "string" && value.trim().length >= 4))]
+  const values = [...new Set(secrets.filter((value) => typeof value === "string" && value !== ""))]
     .sort((left, right) => right.length - left.length);
   for (const value of values) out = out.split(value).join("[redacted]");
   return out

@@ -61,7 +61,7 @@ Exit: 0 ok · 1 check failed (invalid file, refix found) · 2 usage · 3 unusabl
 
 export function parseCsv(text) {
   const errors = [];
-  const source = String(text ?? "").replace(/\r\n?/g, "\n");
+  const source = String(text ?? "");
   const rows = [];
   let row = [];
   let field = "";
@@ -82,6 +82,11 @@ export function parseCsv(text) {
     }
     if (char === ",") { row.push(field); field = ""; index += 1; continue; }
     if (char === "\n") { row.push(field); rows.push(row); row = []; field = ""; index += 1; continue; }
+    if (char === "\r") {
+      row.push(field); rows.push(row); row = []; field = "";
+      index += source[index + 1] === "\n" ? 2 : 1;
+      continue;
+    }
     field += char; index += 1;
   }
   if (quoted) errors.push({ path: "csv", message: "unterminated quoted cell" });

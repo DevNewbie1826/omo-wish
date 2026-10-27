@@ -98,7 +98,7 @@ describe("headers and CSV dialect", () => {
 
   test("a cell with a comma, a quote or a newline survives a round trip", () => {
     const header = ["a", "b", "c", "d"];
-    const rows = [["1", "x,y", 'he said "no"', "line1\nline2"]];
+    const rows = [["1", "x,y", 'he said "no"', "line1\nline2"], ["2", "cr\rhere", "win\r\nline", "tail"]];
     const text = formatCsv(header, rows);
     const parsed = parseCsv(text);
     expect(parsed.ok).toBe(true);
