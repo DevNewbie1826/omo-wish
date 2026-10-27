@@ -210,16 +210,16 @@ describe("watch", () => {
 
   test("grows the wait while nothing changes and stops at the cap", async () => {
     const waiting = view({ statusCheckRollup: [{ status: "IN_PROGRESS" }] });
-    const { emitted, waits } = harness([waiting, waiting, waiting, waiting, view({ state: "MERGED" })], { options: { all: true } });
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+    const { emitted, waits, code } = harness([waiting, waiting, waiting, waiting, view({ state: "MERGED" })], { options: { all: true } });
+    await code;
     expect(emitted.map((record) => record.next_poll_s)).toEqual([60, 120, 240, 300, null]);
     expect(waits).toEqual([60000, 120000, 240000, 300000]);
   });
 
   test("--all prints every poll and dedupes nothing", async () => {
     const waiting = view({ statusCheckRollup: [{ status: "IN_PROGRESS" }] });
-    const { emitted } = harness([waiting, waiting, view({ state: "MERGED" })], { options: { all: true } });
-    await new Promise((resolvePromise) => setTimeout(resolvePromise, 20));
+    const { emitted, code } = harness([waiting, waiting, view({ state: "MERGED" })], { options: { all: true } });
+    await code;
     expect(emitted.map((record) => record.state)).toEqual(["WAITING", "WAITING", "MERGED"]);
   });
 
@@ -238,6 +238,14 @@ describe("watch", () => {
     expect(failing.emitted.length).toBe(2);
     expect(failing.emitted[0]).toMatchObject({ state: "BLOCKED", reasons: ["query-failed"], error: "boom", next_poll_s: 60 });
     expect(failing.emitted[1]).toMatchObject({ state: "BLOCKED", error: "boom", next_poll_s: null });
+  });
+
+  test("--once reports a failed poll once and exits 1 without retrying", async () => {
+    const once = harness([], { failing: ["boom"], options: { once: true } });
+    expect(await once.code).toBe(1);
+    expect(once.emitted.length).toBe(1);
+    expect(once.emitted[0]).toMatchObject({ state: "BLOCKED", reasons: ["query-failed"], next_poll_s: null, error: "boom" });
+    expect(once.waits).toEqual([]);
   });
 
   test("a fatal query failure stops at once with exit 3", async () => {

@@ -35,7 +35,8 @@ Options:
   --until ready|merged  stop at this state (default merged)
   --once                one poll, then exit
   --all                 print every poll, not only when the state changes
-  --interval <s>        base poll interval, at least 60 (default 60)
+  --interval <s>        base poll interval in seconds; values below 60 are
+                        raised to 60 (default 60)
   --max-interval <s>    backoff cap, at least 60 (default 300)
   --max-failures <n>    consecutive poll failures before exit 1 (default 5)
   --gh <path>           gh executable (default gh)
@@ -48,6 +49,7 @@ States: ${STATES.join(" ")}
 Reasons: ${REASONS.join(" ")}
 Exit: 0 ok or the requested terminal state · 1 check failed (CLOSED, failures,
       a different terminal state) · 2 usage · 3 state mismatch (auth, missing PR)
+      130 interrupted (SIGINT/SIGTERM; no line is printed for the abort)
 `;
 
 const FAILED_CONCLUSIONS = new Set(["FAILURE", "TIMED_OUT", "CANCELLED", "ACTION_REQUIRED", "STARTUP_FAILURE", "ERROR"]);
@@ -194,7 +196,7 @@ export async function runGh({ gh = "gh", args = [], signal, timeoutMs = DEFAULTS
       const combined = `${stdout}\n${stderr}`;
       if (code !== 0) {
         const error = sanitize(stderr.trim() || stdout.trim() || `gh exited with ${code}`);
-        finish({ ok: false, code, error, fatal: AUTH_TEXT.test(combined), output: sanitize(combined) });
+        finish({ ok: false, code, error, fatal: AUTH_TEXT.test(combined) });
         return;
       }
       try {
@@ -229,7 +231,8 @@ export async function watch({ query, emit, now = () => new Date().toISOString(),
     if (signal?.aborted) throw abortError();
     if (!result || result.ok !== true) {
       failures += 1;
-      const exhausted = result?.fatal === true || failures >= maxFailures;
+      // `--once` is one poll: a failed poll reports and exits instead of retrying.
+      const exhausted = result?.fatal === true || failures >= maxFailures || once;
       const classification = { state: "BLOCKED", reasons: ["query-failed"], checks: { total: 0, failing: 0, pending: 0 }, head: null };
       const nextPollS = exhausted ? null : backoffSeconds(interval, failures, maxInterval);
       seq += 1;

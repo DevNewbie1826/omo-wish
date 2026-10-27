@@ -486,8 +486,8 @@ function exportVerb(options) {
   const derived = deriveRows({
     events, findings: findings.rows, gaps: gaps.rows, extra,
     options: {
-      unit: values.unit, pr: values.pr === undefined ? undefined : Number(values.pr),
-      repo: values.repo, arm: values.arm, type: values.type, program_id: values["program-id"],
+      unit: values.unit, repo: values.repo, arm: values.arm, type: values.type,
+      program_id: values["program-id"],
     },
   });
   if (!derived.ok) return { code: 1, body: { ok: false, errors: derived.errors } };
