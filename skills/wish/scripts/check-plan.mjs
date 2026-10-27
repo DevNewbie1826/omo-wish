@@ -2,7 +2,7 @@
 // Mechanical checks for a wish v2 plan. Grammar and the rule list: references/plan-format.md §6.
 // Usage: check-plan.mjs <plan.md> [--register <gaps.tsv>] [--json] [--help]
 // Exit: 0 clean, 1 a rule failed, 2 usage or read error (references/ledger.md §14).
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -411,6 +411,12 @@ export function lintPlan(text, options = {}) {
   };
 }
 
+// A FIFO or a device would block readFileSync forever; a linter must always reach an exit.
+function readText(path) {
+  if (!statSync(path).isFile()) throw Object.assign(new Error("not a regular file"), { path, code: "ENOTFILE" });
+  return readFileSync(path, "utf8");
+}
+
 function main(argv) {
   let options;
   try {
@@ -426,8 +432,8 @@ function main(argv) {
   let text;
   let register;
   try {
-    text = readFileSync(options.plan, "utf8");
-    if (options.register) register = { path: options.register, text: readFileSync(options.register, "utf8") };
+    text = readText(options.plan);
+    if (options.register) register = { path: options.register, text: readText(options.register) };
   } catch (error) {
     console.error(`cannot read ${error.path ?? "the plan"}: ${error.code ?? error.message}\n${USAGE}`);
     return 2;

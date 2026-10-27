@@ -303,6 +303,7 @@ test("cli: a usage mistake exits 2", () => {
   expect(runCli(["--register"]).code).toBe(2);
   expect(runCli(["a.md", "b.md"]).code).toBe(2);
   expect(runCli(["/no/such/plan.md"]).code).toBe(2);
+  expect(runCli([join(repo, "test/fixtures/plans")]).code).toBe(2);
 });
 
 test("cli: a clean plan exits 0 with the summary", () => {
