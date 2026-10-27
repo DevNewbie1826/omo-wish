@@ -63,7 +63,7 @@ measurement"; it is never 0, and a zero appears only when the input shows a real
 | --- | --- | --- |
 | `pr`, `round_index` | the ledger | `round_index` is the round number, unique per PR |
 | `round_kind` | `first`, `revise`, `delta`, `gate-blocked` | round 1 is `first`; a `gate` event left `open` before the round makes it `gate-blocked`; `delta` is passed in `--extra` (the ledger does not record review scope) |
-| `verdict_head` | `round.head` | validated with `headErrors(row.type, cell)`: 40 hex for a commit, 64 hex for a `research` artifact |
+| `verdict_head` | `round.head` | validated with `headErrors(row.type, cell)`: 40 hex for a commit, 64 hex for a `research` artifact; a `mixed` row accepts its primary's identity form (the contract's §2 rule), so either length validates |
 | `dispatch_at`, `verdict_at`, `minutes` | `round.started_at`, `round.ended_at`, `duration_s` | `started_at` is the dispatch and `ended_at` the verdict receipt; minutes come from `duration_s` or the timestamps, never estimated |
 | `reviewer`, `reviewer_family` | `round.category` / `round.agent`, `round.model_family` | the role and the model family that produced the verdict |
 | `defect_count`, `defect_axes` | `findings.tsv` rows of that round | count and the sorted unique `class` values joined with `;` |

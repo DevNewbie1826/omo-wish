@@ -137,8 +137,10 @@ function rowErrors(name, row, path) {
   }
   if ("verdict_head" in row && row.verdict_head !== "") {
     const type = row.type === "" || row.type === undefined ? "code" : row.type;
-    const headCheck = headErrors(type === "mixed" ? "code" : type, row.verdict_head);
-    headCheck.forEach((entry) => fail("verdict_head", entry.message));
+    const accepted = type === "mixed"
+      ? headErrors("code", row.verdict_head).length === 0 || headErrors("research", row.verdict_head).length === 0
+      : headErrors(type, row.verdict_head).length === 0;
+    if (!accepted) fail("verdict_head", "expected the row type's head form (40 hex; 64 for research; either for mixed)");
   }
   if ("gaps_total" in row && "gaps_fixed" in row && row.gaps_total !== "" && row.gaps_fixed !== ""
       && Number(row.gaps_fixed) > Number(row.gaps_total)) {

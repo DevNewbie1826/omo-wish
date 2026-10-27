@@ -160,6 +160,10 @@ describe("validateFile", () => {
     expect(validateFile("rounds", roundsLine({ verdict_head: HEAD.slice(0, 39) })).ok).toBe(false);
     expect(validateFile("rounds", roundsLine({ verdict_head: `${HEAD}${OTHER.slice(0, 24)}`, type: "research" })).ok).toBe(true);
     expect(validateFile("rounds", roundsLine({ verdict_head: HEAD, type: "research" })).ok).toBe(false);
+    // a mixed run takes its primary type's identity form (§2); the CSV has no primary column, so either length validates
+    expect(validateFile("rounds", roundsLine({ verdict_head: `${HEAD}${OTHER.slice(0, 24)}`, type: "mixed" })).ok).toBe(true);
+    expect(validateFile("rounds", roundsLine({ verdict_head: HEAD, type: "mixed" })).ok).toBe(true);
+    expect(validateFile("rounds", roundsLine({ verdict_head: HEAD.slice(0, 39), type: "mixed" })).ok).toBe(false);
   });
 
   test("switch kinds must be known and unique, and gaps_fixed cannot exceed gaps_total", () => {
