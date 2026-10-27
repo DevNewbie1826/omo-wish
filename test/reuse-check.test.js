@@ -24,6 +24,7 @@ let c1;
 let c2;
 let c3;
 let c4;
+let c5;
 let tree0;
 
 const ARTIFACT_A = "a1".repeat(32);
@@ -92,6 +93,7 @@ beforeAll(() => {
     ["src/z.ts", "export const z = 1;\n"],
     ["test/a.test.ts", "import { a } from '../src/a';\n"],
     ["docs/readme.md", "intro\n"],
+    ["src/한글.ts", "export const k = 1;\n"],
   ]) {
     mkdirSync(dirname(join(repo, path)), { recursive: true });
     writeFileSync(join(repo, path), text);
@@ -110,6 +112,9 @@ beforeAll(() => {
 
   writeFileSync(join(repo, "src/b.ts"), "export const b = 2;\n");
   c4 = commit("change b");
+
+  writeFileSync(join(repo, "src/한글.ts"), "export const k = 2;\n");
+  c5 = commit("change a non-ascii path");
 });
 
 afterAll(() => {
@@ -150,6 +155,13 @@ describe("reuse-check CLI", () => {
     const valid = run([path, "--head", c3, "--repo", repo, "--referrers", empty]);
     expect(valid.code).toBe(0);
     expect(valid.stdout).toContain("0 referrers checked");
+  });
+
+  test("a changed non-ASCII path inside the scope is still a hit", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "unicode", c4), receipt({ head: c4, tree: git("rev-parse", `${c4}^{tree}`), lane: "unicode" }));
+    const result = run([path, "--head", c5, "--repo", repo]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("src/한글.ts");
   });
 
   test("the changed files are listed in a stable order", () => {

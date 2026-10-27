@@ -402,11 +402,13 @@ function treeOf(repo, head) {
 }
 
 function changedFiles(repo, from, to) {
-  const result = runGit(repo, ["diff", "--name-only", "--no-renames", `${from}..${to}`]);
+  // `-z` keeps git from quoting a path (a non-ASCII name would otherwise arrive as
+  // "src-\355\225..." and never match a scope entry).
+  const result = runGit(repo, ["diff", "--name-only", "-z", "--no-renames", `${from}..${to}`]);
   if (!result.ok) {
     return { ok: false, reason: `cannot diff ${short(from)}..${short(to)}: ${firstLine(redact(result.stderr, [from, to]))}` };
   }
-  const files = result.stdout.split("\n").map((entry) => entry.trim()).filter((entry) => entry !== "");
+  const files = result.stdout.split("\x00").filter((entry) => entry !== "");
   return { ok: true, files };
 }
 
