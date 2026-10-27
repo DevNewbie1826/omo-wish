@@ -28,6 +28,8 @@ Take the head SHA, commands, exit codes, counts, and the base each result is att
 
 One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Its prompt follows SKILL.md, Delegation prompts.
 
+TIMEBOX: reach a verdict on the plan's finite contract within 45 minutes of dispatch, judged from the evidence provided (the diff, the test and QA captures, the mutation records). Do not expand the scope by re-deriving the whole PR: build no new probe and run no repository check beyond the plan's axes. At expiry, return the verdict held so far, APPROVED or REVISE, and list every open item it leaves unexamined as an explicit note in that same verdict; the obligation to report every CODE defect the evidence shows in one verdict does not change.
+
 ## Step 10: Evidence problems
 
 Evidence problems are never a REVISE reason, and neither is a finding outside the plan's finite contract (invariants, known limits, IS and COMPANION rows): such a finding is a note for the report or a follow-up record. Copy the reviewer sentences from SKILL.md, Delegation prompts, into every reviewer prompt without restating them; the memos are handled as SKILL.md step 10 says.
