@@ -52,8 +52,8 @@ import {
   writeFrontMatter,
 } from "./lib/store.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -930,12 +930,13 @@ function verbPrBody(parsed, root) {
     // typo there used to overwrite the append-only ledger (or the findings table)
     // with a PR body, outside the lock.
     const paths = rootPaths(root);
-    const reserved = [paths.ledger, paths.findings, paths.gaps, paths.gates, paths.lens, paths.ideal,
-      paths.resume, paths.lock, planPath];
     // The body may be written inside the evidence root and nowhere else: a path
-    // outside it is a product file, and this module writes no product file. The
-    // check resolves both sides, so a symlink cannot walk out of the root either.
+    // outside it is a product file, and this module writes no product file. Both
+    // sides are resolved, so a symlinked alias of the root cannot walk out of it.
     const rootReal = realpathSync(paths.root);
+    const planReal = existsSync(planPath) ? realpathSync(planPath) : planPath;
+    const reserved = [paths.ledger, paths.findings, paths.gaps, paths.gates, paths.lens, paths.ideal,
+      paths.resume, paths.lock].map((entry) => join(rootReal, relative(paths.root, entry))).concat(planReal);
     const requested = resolve(out);
     const parentReal = existsSync(dirname(requested)) ? realpathSync(dirname(requested)) : dirname(requested);
     // An existing target is resolved through its own links: a symlink that leaves
@@ -947,7 +948,26 @@ function verbPrBody(parsed, root) {
     if (reserved.includes(targetReal) || evidenceDirs.some((dir) => targetReal === dir || targetReal.startsWith(dir + sep))) {
       throw usage(`--out may not overwrite run state or evidence: ${targetReal}`);
     }
-    writeFileSync(targetReal, body);
+    // A hard link inside the root points at the same inode as a path that is not
+    // guarded here, so identity is compared too, not just the name.
+    if (existsSync(targetReal)) {
+      const targetStat = statSync(targetReal);
+      for (const guard of reserved) {
+        if (!existsSync(guard)) continue;
+        const guardStat = statSync(guard);
+        if (guardStat.dev === targetStat.dev && guardStat.ino === targetStat.ino) {
+          throw usage(`--out may not overwrite run state or evidence: ${targetReal} is ${guard}`);
+        }
+      }
+    }
+    try {
+      writeFileSync(targetReal, body);
+    } catch (error) {
+      if (error?.code === "ENOENT" || error?.code === "EISDIR" || error?.code === "ENOTDIR") {
+        throw usage(`--out is not a writable path: ${targetReal} (${error.code})`);
+      }
+      throw error;
+    }
     process.stdout.write(`${resolve(out)}\n`);
   } else process.stdout.write(body);
   return null;

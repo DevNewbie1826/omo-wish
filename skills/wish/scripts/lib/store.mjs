@@ -37,7 +37,6 @@ import {
 import {
   closeSync,
   existsSync,
-  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -135,22 +134,6 @@ export function rootPaths(root) {
 
 // ----------------------------------------------------------------------- lock
 
-function lockHolder(file) {
-  let raw;
-  try {
-    raw = readFileSync(file, "utf8");
-  } catch (error) {
-    if (error?.code === "ENOENT") return undefined; // released between calls
-    return null; // unreadable: treat as a stale lock
-  }
-  try {
-    const pid = Number(JSON.parse(raw).pid);
-    return Number.isInteger(pid) && pid > 0 ? pid : null;
-  } catch {
-    return null;
-  }
-}
-
 function pidAlive(pid) {
   try {
     process.kill(pid, 0);
@@ -167,16 +150,6 @@ function sleepSync(ms) {
   Atomics.wait(cell, 0, 0, ms);
 }
 
-// ledger.md §1 write authority: one mutating verb at a time, with the dead-pid
-// takeover poteto's store.ts needs.
-//
-// Both lock names are created with `link(2)`, which fails with EEXIST instead of
-// returning a second handle, and the bytes are complete *before* the link exists.
-// Writing the pid into a file that `open(..., "wx")` just created leaves a window
-// where a second process reads an empty file, calls the lock stale, and takes it -
-// two writers then hold the same lock and one silently loses the other's rows.
-// Stale-lock reclamation is serialized by a second link-lock so that two takers
-// cannot both reclaim and both win.
 // ledger.md §1 write authority: one mutating verb at a time across processes.
 //
 // A pid file plus takeover has a window that no amount of care closes: two
@@ -212,6 +185,9 @@ class FileLock {
     const choosing = `${this.queueDir}/${this.id}.choosing`;
     writeFileSync(choosing, JSON.stringify({ pid: process.pid, started_at: nowIso() }));
     try {
+      // Publish at once: waiting here would let two choosers wait on each other.
+      // A chooser that is still outstanding is handled at entry time instead, which
+      // is the rule that keeps a descheduled contender from being leapfrogged.
       const open = this.list();
       const max = open.reduce((top, entry) => (entry.ticket > top ? entry.ticket : top), 0);
       this.ticket = max + 1;
@@ -223,13 +199,13 @@ class FileLock {
     const mine = { ticket: this.ticket, id: this.id };
     for (;;) {
       this.sweep();
-      const ahead = this.list().some((entry) => entry.ticket < mine.ticket
+      const ahead = this.choosers().length > 0 || this.list().some((entry) => entry.ticket < mine.ticket
         || (entry.ticket === mine.ticket && entry.id < mine.id));
       if (!ahead) {
         // A contender that started reading while we were writing our ticket could
         // hold the same number; one settle read orders the two before we enter.
         sleepSync(2);
-        const again = this.list().some((entry) => entry.ticket < mine.ticket
+        const again = this.choosers().length > 0 || this.list().some((entry) => entry.ticket < mine.ticket
           || (entry.ticket === mine.ticket && entry.id < mine.id));
         if (!again) {
           this.held = true;
@@ -248,8 +224,11 @@ class FileLock {
     let names;
     try {
       names = readdirSync(this.queueDir);
-    } catch {
-      return [];
+    } catch (error) {
+      if (error?.code === "ENOENT") return [];
+      // An unreadable queue is not an empty one: guessing here would let two
+      // contenders both believe they are alone.
+      throw stateMismatch(`cannot read ${this.queueDir}: ${error?.code ?? error}`);
     }
     const entries = [];
     for (const name of names) {
@@ -258,6 +237,26 @@ class FileLock {
       entries.push({ ticket: Number(match[1]), id: match[2], name });
     }
     return entries.sort((left, right) => left.ticket - right.ticket || (left.id < right.id ? -1 : 1));
+  }
+
+  choosers() {
+    let names;
+    try {
+      names = readdirSync(this.queueDir);
+    } catch (error) {
+      if (error?.code === "ENOENT") return [];
+      throw stateMismatch(`cannot read ${this.queueDir}: ${error?.code ?? error}`);
+    }
+    const live = [];
+    for (const name of names) {
+      const match = /^([0-9]+)-[a-z0-9]+\.choosing$/.exec(name);
+      if (!match) continue;
+      if (name === `${this.id}.choosing`) continue;
+      const pid = Number(match[1]);
+      if (!Number.isInteger(pid) || pid <= 0 || pid === process.pid) continue;
+      if (pidAlive(pid)) live.push(name);
+    }
+    return live;
   }
 
   // Only a dead contender's files are removed, so a live holder's ticket can never

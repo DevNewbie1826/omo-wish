@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
+  linkSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -1716,5 +1717,61 @@ describe("final review round 2 (second pass)", () => {
     if (result.code !== 0) throw new Error("init: " + result.err);
     expect(result.code).toBe(0);
     expect(ledgerEvents({ root: box.root }).at(0).program_id).toBe(odd);
+  });
+});
+
+describe("final review round 3", () => {
+  test("a live chooser holds the queue closed", () => {
+    const state = scene();
+    const queue = join(state.root, "lock.queue");
+    mkdirSync(queue, { recursive: true });
+    // A peer that announced a choice and has not published yet: entering now could
+    // be leapfrogged by the smaller number it is about to write.
+    const choosing = join(queue, `${process.pid + 0}-peer.choosing`);
+    writeFileSync(choosing, JSON.stringify({ pid: process.pid }));
+    const blocked = append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") });
+    expect(blocked.code).toBe(3);
+    expect(blocked.err).toMatch(/chooser|still queued/);
+    expect(existsSync(choosing)).toBe(true);
+    rmSync(choosing);
+    expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
+  });
+
+  test("a symlinked alias of the root cannot reach the ledger", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const before = readFileSync(join(state.root, "ledger.jsonl"), "utf8");
+    const alias = join(state.box.dir, "alias");
+    symlinkSync(state.root, alias);
+    const direct = cli(["pr-body", "--root", alias, "--out", join(alias, "ledger.jsonl")]);
+    expect(direct.code).toBe(2);
+    expect(readFileSync(join(state.root, "ledger.jsonl"), "utf8")).toBe(before);
+  });
+});
+
+describe("final review round 3 (hard links)", () => {
+  test("a hard link inside the root cannot reach the ledger", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const before = readFileSync(join(state.root, "ledger.jsonl"), "utf8");
+    const hard = join(state.root, "innocent.md");
+    linkSync(join(state.root, "ledger.jsonl"), hard);
+    const result = cli(["pr-body", "--root", state.root, "--out", hard]);
+    expect(result.code).toBe(2);
+    expect(readFileSync(join(state.root, "ledger.jsonl"), "utf8")).toBe(before);
+  });
+
+  test("an --out path that cannot be written is a usage error", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const result = cli(["pr-body", "--root", state.root, "--out", join(state.root, "missing", "body.md")]);
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("not a writable path");
   });
 });
