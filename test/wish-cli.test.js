@@ -1001,6 +1001,30 @@ describe("status derivation against the contract's own example", () => {
     expect(validateStatusJson(reported.json).errors).toEqual([]);
   });
 
+  test("a research run freezes the artifact sha256 and judges receipts by head", () => {
+    const sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const state = scene({ type: "research" });
+    const dir = join(state.root, "receipts");
+    mkdirSync(dir, { recursive: true });
+    const body = {
+      kind: "claim-gate", type: "research", unit: state.unit, program_id: null, lane: "claim-gate",
+      head: sha, tree: null, scope: ["report.html"], started_at: "2026-10-27T19:00:00Z",
+      ended_at: "2026-10-27T19:01:00Z", status: "PASS",
+      rows: [{ id: "C1", command: "node report-tools.mjs check", observable: "claim C1 is sourced", verdict: "PASS", artifact: null }],
+      artifacts: [], cleanup: [],
+    };
+    expect(validateReceipt(body).errors).toEqual([]);
+    const name = `claim-gate-${sha.slice(0, 7)}.json`;
+    writeFileSync(join(dir, name), JSON.stringify(body, null, 2));
+    const reported = status(state, ["--head", sha]);
+    expect(reported.code).toBe(0);
+    expect(reported.json.tree).toBe(null);
+    expect(reported.json.valid_receipts).toContain(name);
+    expect(cli(["freeze", "--head", sha, "--root", state.root]).code).toBe(0);
+    expect(readFileSync(state.plan, "utf8")).toContain(`  frozen_head: ${sha}`);
+    expect(cli(["freeze", "--check", "--head", sha, "--root", state.root]).code).toBe(0);
+  });
+
   test("a worktree path with shell metacharacters is never interpolated", () => {
     const state = scene({ workName: "wo;rk $(touch pwned) `touch pwned2`" });
     upToBuild(state);
