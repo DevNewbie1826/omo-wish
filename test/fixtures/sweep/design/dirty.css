@@ -1,0 +1,8 @@
+.hero {
+  border-left: 3px solid var(--accent);
+  padding: 24px;
+}
+
+.hero__lede {
+  content: "Supercharge your workflow";
+}
