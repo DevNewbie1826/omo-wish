@@ -25,8 +25,8 @@ The header of a file is the ported shared columns first, then the v2 suffix, nev
 `--merge-sha` exists because M1 cannot derive a file list from the ledger: the `merge` event
 carries `sha`, `merged_at`, `pr` and `head`, nothing else. One module owns the git logic, and
 it is this one; `metrics.mjs` derives the list with
-`git diff-tree -r --no-commit-id --name-only -m --first-parent <sha>` (with
-`core.quotePath=false`, so a Unicode name is not escaped).
+`git diff-tree -z -r --no-commit-id --name-only -m --first-parent <sha>` (the `-z` form, so
+every name is exactly the bytes Git stored).
 
 The window is applied in code, not with `git log --since`: git prunes traversal on committer
 dates, so a backdated descendant can hide an eligible commit. The scan uses
