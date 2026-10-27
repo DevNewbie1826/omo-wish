@@ -261,6 +261,15 @@ const RECEIPT_SPEC = {
 const RECEIPT_KEYS = [
   ...Object.keys(RECEIPT_SPEC), "stage", "gap", "name", "pass", "note", "primary", "secondary",
 ];
+const RECEIPT_OPTIONAL_SPEC = {
+  note: T.opt(T.str),
+  gap: T.opt(T.gap),
+  name: T.opt(T.kebab),
+  pass: T.opt(T.enumOf(["passA", "passB", "capture"])),
+  stage: T.opt(T.enumOf(LEDGER_EVENTS)),
+  primary: T.opt(T.enumOf(PRIMARY_TYPES)),
+  secondary: T.opt(T.enumOf(PRIMARY_TYPES)),
+};
 
 const UNIT_SPEC = { id: T.str, stage: T.str, pr: T.nullable(T.int(1)), round: T.int(0), switches: T.int(0) };
 const PROGRESS_VALUES_SPEC = {
@@ -326,6 +335,21 @@ const LEDGER_OPTIONAL = [
   "new_approach", "rules_total", "lane", "task",
 ];
 const LEDGER_KEYS = [...new Set([...Object.keys(LEDGER_COMMON_SPEC), ...LEDGER_OPTIONAL])];
+const ADVERSARIAL_SPEC = { name: T.str, applicable: T.bool, observable: T.str };
+const LEDGER_OPTIONAL_SPEC = {
+  commands: T.arr(T.str), artifact: T.nullable(T.str), cleanup: T.arr(T.str), attempt: T.int(1),
+  checkpoint_opened_at: T.iso, category: T.str, agent: T.str, model_family: T.str,
+  verdict: T.enumOf([...ROUND_VERDICTS, ...RECEIPT_STATUSES, "OKAY", "BLOCKERS"]), round: T.int(1),
+  reuse: T.obj({ receipt: T.str, verdict: T.enumOf(["VALID", "STALE"]), reason: T.str }),
+  tier: T.enumOf(TIERS), gate_id: T.str, gate_status: T.enumOf(["open", "resolved"]),
+  checkpoint_op: T.enumOf(["open", "complete", "blocked"]), pr: T.nullable(T.int(1)),
+  sha: T.hex40, merged_at: T.iso, note: T.str, primary: T.str, secondary: T.str,
+  facts: T.arr(T.str), progress: T.obj(PROGRESS_VALUES_SPEC), gap_id: T.gap,
+  gap_status: T.enumOf(GAP_STATUSES), kind: T.enumOf(SWITCH_KINDS), premise: T.str,
+  new_approach: T.str, rules_total: T.int(0), lane: T.kebab, task: T.str,
+  adversarial_classes: T.arr(T.obj(ADVERSARIAL_SPEC)),
+  duration_s: (v, p, e) => { if (!(typeof v === "number" && v >= 0)) fail(e, p, "expected a number >= 0"); },
+};
 const HEAD_REQUIRED = ["build", "verify_lane", "fix", "reuse", "freeze", "pr_open", "round", "verdict", "merge", "post_merge"];
 
 // --------------------------------------------------------------- functions
@@ -373,6 +397,9 @@ export function validateReceipt(value) {
   T.obj(RECEIPT_SPEC)(value, "receipt", errors);
   if (!isObj(value)) return { ok: false, errors };
   rejectUnknown(value, RECEIPT_KEYS, "receipt", errors);
+  Object.entries(RECEIPT_OPTIONAL_SPEC).forEach(([key, fn]) => {
+    if (key in value && value[key] !== undefined) fn(value[key], `receipt.${key}`, errors);
+  });
   if (isStr(value.head)) errors.push(...headErrors(value.type, value.head));
   if (value.tree !== null && isStr(value.tree) && !HEX.test(value.tree)) {
     fail(errors, "receipt.tree", "expected null or a 40/64-hex git tree id");
@@ -459,6 +486,9 @@ export function validateLedgerEvent(value) {
   T.obj(LEDGER_COMMON_SPEC)(value, "event", errors);
   if (!isObj(value)) return { ok: false, errors };
   rejectUnknown(value, LEDGER_KEYS, "event", errors);
+  Object.entries(LEDGER_OPTIONAL_SPEC).forEach(([key, fn]) => {
+    if (key in value && value[key] !== undefined) fn(value[key], `event.${key}`, errors);
+  });
   if (!SESSION.test(String(value.session_id ?? ""))) fail(errors, "event.session_id", "expected senpi:<id>");
   if (value.stage !== undefined && value.stage !== value.event) {
     fail(errors, "event.stage", "equals event; the alias may not drift");
@@ -479,9 +509,6 @@ export function validateLedgerEvent(value) {
   }
   if (value.tree !== undefined && value.tree !== null && isStr(value.tree) && !HEX.test(value.tree)) {
     fail(errors, "event.tree", "expected null or a 40/64-hex git tree id");
-  }
-  if (value.duration_s !== undefined && !(typeof value.duration_s === "number" && value.duration_s >= 0)) {
-    fail(errors, "event.duration_s", "expected a number >= 0");
   }
   if (value.event === "round" && ("terminal" in value || JSON.stringify(value).includes('"[~]"'))) {
     fail(errors, "event.terminal", "a round has no terminal state: a cap triggers a switch, and review runs until APPROVED");

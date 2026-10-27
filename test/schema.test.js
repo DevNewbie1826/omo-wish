@@ -180,6 +180,10 @@ test("every event names its work type, unit and program, and its required extras
   expect(LEDGER_EVENTS).toContain("lens");
   expect(LEDGER_EVENTS).toContain("progress");
   expect(LEDGER_EVENTS).toContain("switch");
+  expect(validateLedgerEvent(event({ attempt: 0 })).ok).toBe(false);
+  expect(validateLedgerEvent(event({ adversarial_classes: [{ name: "x", applicable: "yes", observable: "y" }] })).ok).toBe(false);
+  expect(validateLedgerEvent(event({ artifact: 7 })).ok).toBe(false);
+  expect(validateReceipt(receipt({ pass: "nope" })).ok).toBe(false);
 });
 
 test("status --json carries type, units, wave and progress", () => {
