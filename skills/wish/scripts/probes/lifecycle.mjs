@@ -5,7 +5,7 @@
 // within its budget, or does a handler keep it (and any child) alive?
 
 import { spawn } from "node:child_process";
-import { killSession, mapPool, row, sessionMembers, isMain, probeCli } from "./lib.mjs";
+import { clampMs, killSession, mapPool, row, sessionMembers, isMain, probeCli } from "./lib.mjs";
 
 export const name = "lifecycle";
 export const types = ["code"];
@@ -19,23 +19,18 @@ export const usage = `config:
 
 A case takes "argv", not a shell string, so the signal reaches the program
 itself. The probe waits for "ready" on stdout or stderr, sends "signal"
-(SIGTERM), and requires the whole process group **and session** to be gone
-within "budgetMs"; a failure tears the whole session down, so a child that moved
-into its own group cannot be left behind. FAIL means no readiness line, a
-survivor after the child exited, or an exit past the budget.`;
+(SIGTERM), and requires the whole session to be gone within "budgetMs"; a failure
+tears the whole session down, so a child that moved into its own group cannot be
+left behind. "budgetMs" and "readyTimeoutMs" are clamped to the 300 s ceiling.
+FAIL means no readiness line, a living survivor after the child exited, or an exit
+past the budget.`;
 
-// The group is the primary signal; the session read-back also catches a child that
-// moved itself into another group while staying in the same session.
+// The session read-back is the living-child test: our direct child is already
+// reaped when `close` fires, so any remaining non-zombie member is a survivor —
+// including one that moved into its own process group. A zombie-only group under a
+// subreaper is not a survivor, which is why the group probe is not consulted here.
 function survivors(pid) {
-  const alive = [];
-  try {
-    process.kill(-pid, 0);
-    alive.push(`group ${pid}`);
-  } catch {
-    /* the group is gone */
-  }
-  for (const member of sessionMembers(pid)) alive.push(`pid ${member}`);
-  return alive;
+  return sessionMembers(pid).map((member) => `pid ${member}`);
 }
 
 function runCase(testCase, ctx) {
@@ -51,7 +46,8 @@ function runCase(testCase, ctx) {
       return;
     }
     const ready = new RegExp(testCase.ready ?? ".", "m");
-    const budgetMs = testCase.budgetMs ?? 5000;
+    const budgetMs = clampMs(testCase.budgetMs, 5000);
+    const readyMs = clampMs(testCase.readyTimeoutMs, 10000);
     const signal = testCase.signal ?? "SIGTERM";
     const [file, ...argv] = testCase.argv;
     const child = spawn(file, argv, { cwd: ctx.root, detached: true, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
@@ -89,8 +85,8 @@ function runCase(testCase, ctx) {
       budgetTimer = setTimeout(() => finish("FAIL", `still alive ${budgetMs} ms after ${signal}`), budgetMs);
     };
     const readyTimer = setTimeout(
-      () => finish("FAIL", `no readiness signal within ${testCase.readyTimeoutMs ?? 10000} ms`),
-      testCase.readyTimeoutMs ?? 10000,
+      () => finish("FAIL", `no readiness signal within ${readyMs} ms`),
+      readyMs,
     );
     child.stdout.on("data", onData);
     child.stderr.on("data", onData);

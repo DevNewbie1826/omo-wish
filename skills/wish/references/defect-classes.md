@@ -65,11 +65,11 @@ Which probes a run may use is fixed by the work type (M0 §3, §5.1):
 | Probe | Classes | What a `FAIL` means | What it does **not** decide |
 | --- | --- | --- | --- |
 | `secrets` | `SEC` | the canary reached a command's stdout/stderr or a log the run wrote | a secret that is only ever read from a file and never printed (no canary path) |
-| `boundary` | `PANIC`, `C` | a crash marker, an exit outside the declared set, or a round trip that changed the input | whether the declared exit set is the *right* contract |
+| `boundary` | `PANIC`, `C` | a crash marker, an exit outside the declared set, or a round trip that changed the input (one trailing newline is forgiven, other whitespace is significant) | whether the declared exit set is the *right* contract |
 | `race` | `S` | the project's own race detector or the crash scan reported something | a race the detector cannot see |
-| `lifecycle` | `S` | no readiness line, a group alive after the child exited, or an exit past the budget | a handler leak that no signal reaches |
+| `lifecycle` | `S` | no readiness line, a living session survivor after the child exited (including one that moved into its own group), or an exit past the budget; `budgetMs` and `readyTimeoutMs` are clamped to 300 s | a survivor that left the session too |
 | `errors` | `C` | a wrap site hides its cause (`%v`/`%s` instead of `%w`, `new Error(err.message)`, an empty catch); `strict: false` reports `WARN` | whether the message text is useful |
-| `mutation` | `T` | `SURVIVED`: the suite stayed green with one added production line removed | a test that asserts the wrong thing but still fails on removal |
+| `mutation` | `T` | `SURVIVED`: the suite stayed green with one added production line removed. A mutant that does not parse is `INVALID`, never a kill | a test that asserts the wrong thing but still fails on removal |
 | `docs` | `DOC` | a documented flag is in neither the help output nor the `known` list | whether the prose describes the behavior correctly |
 | `config` | `CFG` | the program accepted a declared reject case, or rejected a declared accept case | keys nobody declared a case for |
 | `draft-guard` | design rules (`edge-stripe`, `promo-copy`, …), never `taste` | the omo `frontend` draft-guard checker exited 1 for the declared targets | anything the checker has no rule for |
@@ -201,6 +201,7 @@ A pattern is a triage prior, never a reason to skip a reproduction.
 | `--type`, `--primary`, `--secondary` | the run type; `mixed` requires both, and they are written into the receipt |
 | `--scope` | repeatable; defaults to `**` |
 | `--head`, `--tree` | derived from `git rev-parse` of `--root` when omitted; a `--head` that disagrees with the checkout's HEAD is refused (the commands run on HEAD, so the receipt would bind another state). A `mixed` run takes its **primary** type's identity form (M0 §2): with `primary: research` the head is the 64-hex artifact sha256 and `tree` is `null`, so neither is derived from git |
+| config `base` | a revision only: an option-shaped value (`--output=…`) is refused, because it would turn a diff into a write outside the receipt and scratch boundary (INV4) |
 | config `budgetMs` | the whole-run cap, default 600000 and clamped to it (design §2.5's ten minutes). When it runs out, the remaining probes are `SKIP` with the reason and one `sweep/budget` `WARN` row records it, so an unrun probe can never read as covered |
 | config `timeoutMs`, `parallel` | per command (clamped to 300000) and pool width (clamped to 8) |
 
@@ -208,18 +209,19 @@ A pattern is a triage prior, never a reason to skip a reproduction.
 | --- | --- |
 | 0 | no row failed |
 | 1 | a row failed |
-| 2 | usage, unreadable config, unknown probe or lane, or an unknown type |
-| 3 | state mismatch: HEAD cannot be derived, `--head` is not the checkout's HEAD, or the receipt would violate `references/ledger.md` |
+| 2 | usage, unreadable config, a config that is not a JSON object, unknown probe or lane, an unknown type, or a receipt name that is not the M0 form |
+| 3 | state mismatch: HEAD cannot be derived, `--head` is not the checkout's HEAD, the receipt would violate `references/ledger.md`, or the receipt cannot be written |
 
 `--receipt` writes one `kind: lane`, `stage: verify_lane` receipt. A path that is an existing directory, ends with
 `/`, or whose basename has no dot is a directory: it is created and the file inside takes the canonical
-`verify_lane-<lane>-<head7>.json` name M0 §4.2 requires. Any other path is written exactly as given (a scratch
-copy for inspection); its body is validated either way, and the filename agreement is checked whenever the name
-parses. A receipt is validated against M0 **before** it is written, and a violation exits 3 instead of leaving
-a broken artifact. The runner writes no findings, no ledger event and no plan state: the session owns those
-files (M0 §1).
+`verify_lane-<lane>-<head7>.json` name M0 §4.2 requires. Any other path must already be that canonical name —
+a name M0 would reject is a usage error (exit 2), because a receipt the contract cannot read is not evidence.
+A receipt is validated against M0 **before** it is written (exit 3 on a violation), and an unwritable
+destination is a state mismatch (exit 3), never an uncaught error. The runner writes no findings, no ledger
+event and no plan state: the session owns those files (M0 §1).
 
 Known limits, accepted by the plan: probes see only declared entry points (LIM1); `mutation` covers at most
-12 production lines and reports the rest as one `WARN` (LIM2); `draft-guard` without a checker is `SKIP`
+12 production lines per run and reports the rest as one `WARN` (LIM2); `draft-guard` without a checker is `SKIP`
 (LIM3); `sessionMembers()` reads `/proc` with a `ps` fallback, so the primary kill is always the process
-group (LIM4).
+group (LIM4). A `draft-guard` row keeps the checker's finding excerpt, which is the surface's own source, not
+the checker's diagnostic (LIM6) — a credential inside that source is a repository defect, not a receipt defect.

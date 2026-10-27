@@ -23,9 +23,10 @@ Each case runs as declared and then three generated variants: empty stdin,
 invalid UTF-8, and a 4096-byte boundary with an invalid trailing byte. FAIL
 means a crash marker in the output, an exit code outside "expectExit", or an
 "expectStdout" round trip that did not return the input unchanged. "expectStdout"
-is compared on the declared input only; the generated variants keep the exit and
-crash assertions. A mismatched round trip reports the two lengths, never the
-output itself: a receipt must not become a place a credential can reach.`;
+is compared on the declared input only (one trailing newline is ignored, other
+whitespace is significant); the generated variants keep the exit and crash
+assertions. A mismatched round trip reports the two lengths, never the output
+itself: a receipt must not become a place a credential can reach.`;
 
 function variants(baseStdin) {
   const prefix = Buffer.from(baseStdin ?? "");
@@ -51,7 +52,7 @@ export async function run(config, ctx) {
       const allowed = testCase.expectExit ?? [0];
       const crash = crashIn(`${result.stdout}\n${result.stderr}`);
       const roundTrip = testCase.expectStdout === undefined || variant.id !== "declared"
-        || result.stdout.trim() === testCase.expectStdout;
+        || result.stdout.replace(/\n$/, "") === testCase.expectStdout;
       const ok = !result.timedOut && !crash && allowed.includes(result.code) && roundTrip;
       const note = result.timedOut
         ? `timed out after ${result.ms} ms`

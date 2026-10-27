@@ -44,6 +44,23 @@ function insideCopy(tree, target) {
   }
 }
 
+// A mutant that does not parse is not a kill: the suite would fail for the syntax,
+// not for the behavior. Bun's transpiler answers it in-process; elsewhere the
+// output markers decide.
+function parses(source, file) {
+  if (typeof Bun === "undefined") return true;
+  const extension = String(file).slice(String(file).lastIndexOf(".") + 1);
+  const loaders = { js: "js", mjs: "js", cjs: "js", jsx: "jsx", ts: "ts", mts: "ts", cts: "ts", tsx: "tsx" };
+  const loader = loaders[extension];
+  if (!loader) return true;
+  try {
+    new Bun.Transpiler({ loader }).scan(source);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function run(config, ctx) {
   const cls = ctx.classFor("T");
   if (!config.testCmd) {
@@ -62,7 +79,7 @@ export async function run(config, ctx) {
 
   const raw = config.candidates?.length
     ? config.candidates
-    : addedLines({ root: ctx.root, base: config.base, paths: config.paths });
+    : await addedLines({ root: ctx.root, base: config.base, paths: config.paths });
   const production = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions });
   const cap = Math.max(1, Math.min(Number(config.max) || 12, 12));
   const candidates = production.slice(0, cap);
@@ -81,7 +98,7 @@ export async function run(config, ctx) {
   }
 
   const failMarker = new RegExp(config.failMarker ?? "--- FAIL:|^FAIL\\b|✗|\\(fail\\)|AssertionError|not ok \\d+", "m");
-  const compileError = new RegExp(config.compileErrorPattern ?? "build failed|setup failed|syntax error|Cannot find module|error TS\\d+|undefined reference", "m");
+  const compileError = new RegExp(config.compileErrorPattern ?? "BuildMessage|build failed|setup failed|syntax error|SyntaxError|Cannot find module|error TS\\d+|undefined reference|^error: (?:Unexpected|Expected)", "m");
   const results = await mapPool(candidates, Math.min(8, ctx.parallel), async (candidate) => {
     const id = `mutation/${candidate.file}:${candidate.line}`;
     const observable = "removing this line makes the declared suite fail";
@@ -111,7 +128,11 @@ export async function run(config, ctx) {
       const index = candidate.line - 1;
       if (lines[index] === undefined) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "line no longer exists" });
       lines[index] = "";
-      writeFileSync(target, lines.join("\n"));
+      const mutated = lines.join("\n");
+      if (!parses(mutated, candidate.file)) {
+        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not parse, so it is not counted as killed" });
+      }
+      writeFileSync(target, mutated);
       const result = await runCommand({ cmd: config.testCmd, cwd: tree, timeoutMs: config.timeoutMs ?? ctx.timeoutMs });
       const output = `${result.stdout}\n${result.stderr}`;
       if (compileError.test(output)) {

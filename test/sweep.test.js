@@ -1,10 +1,10 @@
 import { afterAll, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
-import { ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget } from "../skills/wish/scripts/probes/lib.mjs";
+import { clampMs, ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget } from "../skills/wish/scripts/probes/lib.mjs";
 import {
   classValid, findingsClassesFor, receiptFilename, validateReceipt, validateReceiptAgainstFilename,
 } from "../skills/wish/scripts/lib/schema.mjs";
@@ -36,6 +36,10 @@ function lines(dir, file) {
 
 function lineOf(dir, file, needle) {
   return lines(dir, file).findIndex((line) => line.includes(needle)) + 1;
+}
+
+function receiptFile(dir) {
+  return join(dir, `verify_lane-sweep-${HEAD.slice(0, 7)}.json`);
 }
 
 function configFor(dir, overrides = {}) {
@@ -91,10 +95,10 @@ function verdictOf(receipt, id) {
   return receipt.rows.find((entry) => entry.id === id)?.verdict;
 }
 
-function sweepTo(dir, extra = [], receiptPath = join(dir, "receipt.json")) {
+function sweepTo(dir, extra = [], outFile = receiptFile(dir)) {
   writeConfig(dir);
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptPath, "--unit", "u-m3", "--head", HEAD, "--tree", TREE, ...extra]);
-  const receipt = existsSync(receiptPath) ? JSON.parse(readFileSync(receiptPath, "utf8")) : null;
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", outFile, "--unit", "u-m3", "--head", HEAD, "--tree", TREE, ...extra]);
+  const receipt = existsSync(outFile) ? JSON.parse(readFileSync(outFile, "utf8")) : null;
   return { ...run, receipt };
 }
 
@@ -122,9 +126,9 @@ test("a clean tree passes every probe, writes an M0 receipt and exits 0", () => 
   expect(run.receipt.lane).toBe("sweep");
   expect(run.receipt.status).toBe("PASS");
   expect(validateReceipt(run.receipt)).toEqual({ ok: true, errors: [] });
-  const name = receiptFilename({ stage: "verify_lane", lane: "sweep", head: HEAD });
+  const name = basename(receiptFile(dir));
   expect(validateReceiptAgainstFilename(run.receipt, name)).toEqual({ ok: true, errors: [] });
-  expect(run.receipt.artifacts).toEqual([join(dir, "receipt.json")]);
+  expect(run.receipt.artifacts).toEqual([receiptFile(dir)]);
   expect(run.receipt.cleanup.length).toBeGreaterThan(0);
   expect(verdictOf(run.receipt, "boundary/stdin:declared")).toBe("PASS");
   expect(verdictOf(run.receipt, "boundary/stdin:invalid-utf8")).toBe("PASS");
@@ -136,8 +140,8 @@ test("a clean tree passes every probe, writes an M0 receipt and exits 0", () => 
 test("a seeded tree fails each seeded defect on its own probe and exits 1", () => {
   const dir = stage("seeded");
   writeConfig(dir, { ...configFor(dir), probes: { ...configFor(dir).probes, errors: { strict: true, lines: [{ file: "cli.js", line: lineOf(dir, "cli.js", "new Error(error.message)") }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(run.exit).toBe(1);
   expect(probeStatuses(receipt)).toEqual(Object.fromEntries(PROBES.map((probe) => [probe.name, probe.types.includes("code") ? "FAIL" : "SKIP"])));
   const expected = [
@@ -178,8 +182,8 @@ test("the caps clamp and an unusable mutation is INVALID, never a kill", () => {
       mutation: { testCmd: "bun check.js", candidates: [{ file: "cli.js", line: lineOf(dir, "cli.js", "upstream rejected") }, { file: "cli.js", line: 9999 }], failMarker: "CHECK FAILED" },
     },
   });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(verdictOf(receipt, "mutation/cli.js:9999")).toBe("INVALID");
   expect(run.exit).toBe(0);
 }, 120000);
@@ -187,9 +191,10 @@ test("the caps clamp and an unusable mutation is INVALID, never a kill", () => {
 test("an unconfigured probe skips, and every usage mistake exits 2 without writing a receipt", () => {
   const dir = stage("clean");
   writeFileSync(join(dir, ".wish-sweep.json"), JSON.stringify({ timeoutMs: 1000 }, null, 2));
-  const bare = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "bare.json"), "--unit", "u-m3", "--head", HEAD]);
+  const unwritten = join(dir, "unwritten", `verify_lane-sweep-${HEAD.slice(0, 7)}.json`);
+  const bare = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD]);
   expect(bare.exit).toBe(0);
-  const receipt = JSON.parse(readFileSync(join(dir, "bare.json"), "utf8"));
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.status).toBe("SKIP");
   expect(receipt.rows).toHaveLength(PROBES.length);
   expect(receipt.rows.every((entry) => entry.verdict === "SKIP")).toBe(true);
@@ -201,7 +206,7 @@ test("an unconfigured probe skips, and every usage mistake exits 2 without writi
   expect(missing.stderr).toContain("config not readable");
 
   for (const args of [
-    ["--root", dir, "--receipt", join(dir, "x.json"), "--head", HEAD],
+    ["--root", dir, "--receipt", unwritten, "--head", HEAD],
     ["--root", dir, "--nonsense"],
     ["--root", dir, "--config"],
     ["--root", dir, "--type", "nonsense"],
@@ -213,7 +218,7 @@ test("an unconfigured probe skips, and every usage mistake exits 2 without writi
     expect(bad.exit).toBe(2);
     expect(bad.exit).not.toBe(1);
   }
-  expect(existsSync(join(dir, "x.json"))).toBe(false);
+  expect(existsSync(unwritten)).toBe(false);
 });
 
 test("a mutation cap reports what it did not probe, and docs without a help command skips", () => {
@@ -225,8 +230,8 @@ test("a mutation cap reports what it did not probe, and docs without a help comm
       docs: { docs: ["usage.md"] },
     },
   });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(probeStatuses(receipt).docs).toBe("SKIP");
   expect(probeStatuses(receipt).mutation).toBe("WARN");
   const limit = receipt.rows.find((entry) => entry.id === "mutation/limit");
@@ -256,8 +261,8 @@ test("a timeout and an exit both take the process group, so a held pipe cannot o
 test("a WARN-only probe reports WARN and does not fail the run", () => {
   const dir = stage("seeded");
   writeConfig(dir, { probes: { errors: { strict: false, lines: [{ file: "cli.js", line: lineOf(dir, "cli.js", "new Error(error.message)") }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(probeStatuses(receipt).errors).toBe("WARN");
   expect(verdictOf(receipt, `errors/rewrapped-message:cli.js:${lineOf(dir, "cli.js", "new Error(error.message)")}`)).toBe("WARN");
   expect(receipt.status).toBe("WARN");
@@ -279,8 +284,10 @@ test("the default mutation path reads the added lines out of the git diff", () =
   expect(git("commit", "-q", "-m", "guard").exitCode).toBe(0);
 
   writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", base: "HEAD~1", failMarker: "CHECK FAILED" } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3"]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3"]);
+  const written = join(out, `verify_lane-sweep-${Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim().slice(0, 7)}.json`);
+  const receipt = JSON.parse(readFileSync(written, "utf8"));
   expect(probeStatuses(receipt).mutation).toBe("PASS");
   expect(receipt.rows.some((entry) => /^mutation\/cli\.js:\d+$/.test(entry.id))).toBe(true);
   expect(receipt.rows.some((entry) => entry.id === "mutation")).toBe(false);
@@ -324,8 +331,8 @@ test("the draft-guard wrapper turns checker exit codes into rows", () => {
   const checker = "bun checker.js";
   const runWith = (targets, expectArgs = []) => {
     writeConfig(dir, { type: "design", probes: { "draft-guard": { checker, targets } } });
-    const proc = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design", ...expectArgs]);
-    return { ...proc, receipt: JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8")) };
+    const proc = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design", ...expectArgs]);
+    return { ...proc, receipt: JSON.parse(readFileSync(receiptFile(dir), "utf8")) };
   };
 
   const clean = runWith(["clean.css"]);
@@ -351,16 +358,16 @@ test("the draft-guard wrapper turns checker exit codes into rows", () => {
   expect(missing.exit).toBe(0);
 
   writeConfig(dir, { type: "design", probes: {} });
-  const unconfigured = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "unset.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
+  const unconfigured = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
   expect(unconfigured.exit).toBe(0);
-  expect(JSON.parse(readFileSync(join(dir, "unset.json"), "utf8")).rows.find((entry) => entry.id === "draft-guard").verdict).toBe("SKIP");
+  expect(JSON.parse(readFileSync(receiptFile(dir), "utf8")).rows.find((entry) => entry.id === "draft-guard").verdict).toBe("SKIP");
 });
 
 test("a design run skips the code probes and names its type in the receipt", () => {
   const dir = stage("design");
   writeConfig(dir, { type: "design", probes: { "draft-guard": { checker: "bun checker.js", targets: ["clean.css"] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.type).toBe("design");
   expect(receipt.rows.find((entry) => entry.id === "secrets").verdict).toBe("SKIP");
   expect(receipt.rows.find((entry) => entry.id === "secrets").note).toContain("probe types: code");
@@ -372,8 +379,8 @@ test("a design run skips the code probes and names its type in the receipt", () 
 test("a mixed run applies both dictionaries and names its primary and secondary", () => {
   const dir = stage("seeded");
   writeConfig(dir, { type: "mixed", primary: "design", secondary: "code", probes: { secrets: { canary: CANARY, env: { TEST_API_TOKEN: CANARY }, commands: [{ name: "send-fail", cmd: "bun cli.js send --fail" }] }, "draft-guard": { checker: "bun ../design/checker.js", targets: [] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "mixed", "--primary", "design", "--secondary", "code"]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "mixed", "--primary", "design", "--secondary", "code"]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.primary).toBe("design");
   expect(receipt.secondary).toBe("code");
   expect(receipt.rows.find((entry) => entry.id === "secrets/send-fail").verdict).toBe("FAIL");
@@ -402,10 +409,10 @@ test("a receipt written into a directory takes the canonical filename", () => {
 test("no derivable head is a state mismatch, not a usage error", () => {
   const dir = stage("clean");
   writeConfig(dir);
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3"]);
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3"]);
   expect(run.exit).toBe(3);
   expect(run.stderr).toContain("cannot derive HEAD");
-  expect(existsSync(join(dir, "receipt.json"))).toBe(false);
+  expect(existsSync(receiptFile(dir))).toBe(false);
 });
 
 test("the same config yields the same verdicts in two different roots, and writes no state", () => {
@@ -458,8 +465,8 @@ test("the run budget stops the unproven probes and reports it as a memo", () => 
       race: { cmd: "bun check.js" },
     },
   });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.rows.find((entry) => entry.id === "secrets/slow").verdict).toBe("PASS");
   expect(receipt.rows.find((entry) => entry.id === "race").verdict).toBe("SKIP");
   expect(receipt.rows.find((entry) => entry.id === "race").note).toContain("budget was exhausted");
@@ -486,18 +493,18 @@ test("a --head that is not this checkout's HEAD is a state mismatch", () => {
   expect(git("add", "-A").exitCode).toBe(0);
   expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
   writeConfig(dir);
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", "1".repeat(40)]);
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", "1".repeat(40)]);
   expect(run.exit).toBe(3);
   expect(run.stderr).toContain("not this checkout's HEAD");
-  expect(existsSync(join(dir, "receipt.json"))).toBe(false);
+  expect(existsSync(receiptFile(dir))).toBe(false);
 });
 
 test("prose and test files are never mutation candidates", () => {
   const dir = stage("clean");
   const guard = lineOf(dir, "cli.js", "upstream rejected");
   writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", max: 5, candidates: [{ file: "usage.md", line: 2 }, { file: "cli.js", line: guard }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.rows.some((entry) => entry.id.startsWith("mutation/usage.md"))).toBe(false);
   expect(verdictOf(receipt, `mutation/cli.js:${guard}`)).toBe("PASS");
   expect(receipt.rows.some((entry) => entry.id === "mutation/limit")).toBe(false);
@@ -516,8 +523,8 @@ test("the error scan skips test files and prose", () => {
       },
     },
   });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.rows.filter((entry) => entry.id === "errors" || entry.id.startsWith("errors/")).map((entry) => entry.id)).toEqual([`errors/rewrapped-message:cli.js:${rewrap}`]);
   expect(run.exit).toBe(1);
 });
@@ -525,8 +532,8 @@ test("the error scan skips test files and prose", () => {
 test("a candidate path that escapes the throwaway copy is invalid and writes nothing", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", candidates: [{ file: "../escaped.js", line: 1 }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   const escaped = receipt.rows.find((entry) => entry.id === "mutation/../escaped.js:1");
   expect(escaped.verdict).toBe("INVALID");
   expect(escaped.note).toContain("escapes the throwaway copy");
@@ -537,9 +544,9 @@ test("the docs help command is supervised by the same bounded runner", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });
   const started = Date.now();
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   const elapsed = Date.now() - started;
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(elapsed).toBeLessThan(20000);
   expect(receipt.rows.find((entry) => entry.id === "docs/--fail").verdict).toBe("FAIL");
   expect(run.exit).toBe(1);
@@ -549,8 +556,8 @@ test("a mixed run takes its primary type's identity form", () => {
   const dir = stage("seeded");
   const artifact = "a".repeat(64);
   writeConfig(dir, { type: "mixed", primary: "research", secondary: "code", probes: { secrets: { canary: CANARY, env: { TEST_API_TOKEN: CANARY }, commands: [{ name: "send-fail", cmd: "bun cli.js send --fail" }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", artifact, "--type", "mixed", "--primary", "research", "--secondary", "code"]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "out"), "--unit", "u-m3", "--head", artifact, "--type", "mixed", "--primary", "research", "--secondary", "code"]);
+  const receipt = JSON.parse(readFileSync(join(dir, "out", `verify_lane-sweep-${artifact.slice(0, 7)}.json`), "utf8"));
   expect(receipt.head).toBe(artifact);
   expect(receipt.tree).toBeNull();
   expect(receipt.rows.find((entry) => entry.id === "secrets/send-fail").verdict).toBe("FAIL");
@@ -564,8 +571,8 @@ test("a symlinked candidate is invalid and its target is untouched", () => {
   writeFileSync(outside, "const untouched = 1;\n");
   Bun.spawnSync(["ln", "-s", outside, join(dir, "linked.js")]);
   writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", candidates: [{ file: "linked.js", line: 1 }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   const linked = receipt.rows.find((entry) => entry.id === "mutation/linked.js:1");
   expect(linked.verdict).toBe("INVALID");
   expect(linked.note).toContain("symlink");
@@ -577,8 +584,8 @@ test("a symlinked candidate is invalid and its target is untouched", () => {
 test("a config case name cannot steer a write outside the scratch directory", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { config: { cases: [{ name: "../../../escaped-case", cmd: "bun cli.js config --file {tmp}", file: { text: "hello" }, expect: "accept" }] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   const row = receipt.rows.find((entry) => entry.id.startsWith("config/"));
   expect(row.verdict).toBe("PASS");
   expect(row.command).not.toContain("..");
@@ -590,12 +597,12 @@ test("a checker diagnostic never reaches the receipt or stdout", () => {
   const dir = stage("design");
   writeFileSync(join(dir, "leaky.js"), "#!/usr/bin/env bun\nprocess.stderr.write('token=SECRET-abc123\\n');\nprocess.exit(2);\n");
   writeConfig(dir, { type: "design", probes: { "draft-guard": { checker: "bun leaky.js", targets: ["clean.css"] } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   const row = receipt.rows.find((entry) => entry.id === "draft-guard");
   expect(row.verdict).toBe("INVALID");
   expect(row.note).not.toContain("SECRET-abc123");
-  expect(readFileSync(join(dir, "receipt.json"), "utf8")).not.toContain("SECRET-abc123");
+  expect(readFileSync(receiptFile(dir), "utf8")).not.toContain("SECRET-abc123");
   expect(run.stdout).not.toContain("SECRET-abc123");
 });
 
@@ -625,8 +632,8 @@ test("the mutation cap cannot be raised above twelve lines", () => {
   const dir = stage("clean");
   const candidates = Array.from({ length: 13 }, (_, index) => ({ file: "cli.js", line: index + 1 }));
   writeConfig(dir, { probes: { mutation: { testCmd: "true", failMarker: "CHECK FAILED", max: 99, candidates } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   const probed = receipt.rows.filter((entry) => entry.id.startsWith("mutation/cli.js")).length;
   expect(probed).toBe(12);
   expect(receipt.rows.find((entry) => entry.id === "mutation/limit").note).toContain("12 of 13 added production lines probed");
@@ -640,6 +647,79 @@ test("a config that is valid JSON but not an object is a usage error", () => {
     expect(run.exit).toBe(2);
     expect(run.stderr).toContain("config must be a JSON object");
   }
+});
+
+test("a revision-shaped option in the config cannot write outside the sweep", () => {
+  const dir = stage("clean");
+  writeConfig(dir, { probes: { errors: { strict: true, base: `--output=${join(dir, "unexpected")}` } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json"]);
+  expect(run.exit).toBe(1);
+  expect(run.stdout).toContain("a base must be a revision, not an option");
+  expect(existsSync(join(dir, "unexpected...HEAD"))).toBe(false);
+});
+
+test("a mutation that does not parse is invalid, not a kill", () => {
+  const dir = stage("clean");
+  const line = lineOf(dir, "cli.js", "function split(buf, limit");
+  writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", candidates: [{ file: "cli.js", line }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const row = receipt.rows.find((entry) => entry.id === `mutation/cli.js:${line}`);
+  expect(row.verdict).toBe("INVALID");
+  expect(row.note).toContain("did not parse");
+  expect(run.exit).toBe(0);
+});
+
+test("an explicit receipt name must already be the M0 form", () => {
+  const dir = stage("clean");
+  writeConfig(dir);
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  expect(run.exit).toBe(2);
+  expect(run.stderr).toContain("is not a receipt filename");
+  expect(existsSync(join(dir, "receipt.json"))).toBe(false);
+});
+
+test("the lifecycle timeouts are clamped to the command ceiling", () => {
+  expect(clampMs(999999, 5000)).toBe(300000);
+  expect(clampMs(1, 5000)).toBe(1);
+  expect(clampMs(undefined, 5000)).toBe(5000);
+  expect(clampMs(0, 5000)).toBe(5000);
+});
+
+test("an unwritable receipt path is a state mismatch, not a crash", () => {
+  const dir = stage("clean");
+  writeConfig(dir);
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", "/proc/verify_lane-sweep-0123456.json", "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  expect(run.exit).toBe(3);
+  expect(run.stderr).toContain("cannot write the receipt");
+  expect(run.stderr).not.toContain("TypeError");
+});
+
+test("a standalone probe refuses a config that is not an object", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "null.json"), "null");
+  const proc = Bun.spawnSync(["bun", join(probeDir, "secrets.mjs"), "--root", dir, "--config", "null.json"], { cwd: repo });
+  expect(proc.exitCode).toBe(2);
+  expect(proc.stderr.toString()).toContain("config must be a JSON object");
+});
+
+test("the round-trip comparison keeps whitespace and forgives one newline", () => {
+  const dir = stage("clean");
+  writeConfig(dir, {
+    probes: {
+      boundary: {
+        cases: [
+          { name: "padded", cmd: "printf ' x '", stdin: "a", expectExit: [0], expectStdout: "x" },
+          { name: "newline", cmd: "printf 'x\\n'", stdin: "a", expectExit: [0], expectStdout: "x" },
+        ],
+      },
+    },
+  });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(verdictOf(receipt, "boundary/padded:declared")).toBe("FAIL");
+  expect(verdictOf(receipt, "boundary/newline:declared")).toBe("PASS");
+  expect(run.exit).toBe(1);
 });
 
 test("the dictionary's code table is exactly M0's code class set", () => {

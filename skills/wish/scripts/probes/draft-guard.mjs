@@ -11,7 +11,7 @@
 // Its stderr is never copied into a row: a checker may print a credential while
 // explaining itself, and the receipt is an artifact.
 
-import { gitLines, q, row, runCommand, isMain, probeCli } from "./lib.mjs";
+import { assertRevision, gitLines, q, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
 export const name = "draft-guard";
 export const types = ["design"];
@@ -35,8 +35,8 @@ the design class set of references/ledger.md keeps its row and its note but
 carries no "class", so the receipt can never hold a class the contract rejects.`;
 
 function changedFiles(root, base) {
-  const text = gitLines(root, ["diff", "--name-only", `${base ?? "origin/main"}...HEAD`]);
-  return text === null ? [] : text.split("\n").map((line) => line.trim()).filter(Boolean);
+  return gitLines(root, ["diff", "--name-only", `${assertRevision(base) ?? "origin/main"}...HEAD`])
+    .then((text) => (text === null ? [] : text.split("\n").map((line) => line.trim()).filter(Boolean)));
 }
 
 export async function run(config, ctx) {
@@ -49,7 +49,7 @@ export async function run(config, ctx) {
       note: "no checker: set probes.draft-guard.checker or SWEEP_DRAFT_GUARD; the class belongs to the checklist pass",
     })];
   }
-  const targets = config.targets ?? changedFiles(ctx.root, config.base);
+  const targets = config.targets ?? await changedFiles(ctx.root, config.base);
   if (targets.length === 0) {
     return [row({
       id: "draft-guard", verdict: "SKIP", observable: "at least one target file is declared",

@@ -49,15 +49,27 @@ export function q(value) {
 }
 
 export function gitLines(root, args) {
-  const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 60000 });
-  if (result.status !== 0) return null;
-  return result.stdout;
+  return runCommand({ cmd: ["git", "-C", root, ...args].map(q).join(" "), cwd: root, timeoutMs: 60000 })
+    .then((result) => (result.code === 0 ? result.stdout : null));
+}
+
+// A revision is not an option: `-- --output=<path>` would let a config turn a diff
+// into a write outside the receipt and scratch boundary (INV4).
+export function assertRevision(base) {
+  if (base !== undefined && base !== null && String(base).startsWith("-")) {
+    throw new Error(`a base must be a revision, not an option: ${base}`);
+  }
+  return base;
+}
+
+export function clampMs(value, fallback) {
+  return Math.max(1, Math.min(Number(value) || fallback, COMMAND_CAP_MS));
 }
 
 // `head` and `tree` for the M0 receipt; `null` when the root is not a checkout.
-export function gitFacts(root) {
-  const head = gitLines(root, ["rev-parse", "HEAD"]);
-  const tree = gitLines(root, ["rev-parse", "HEAD^{tree}"]);
+export async function gitFacts(root) {
+  const head = await gitLines(root, ["rev-parse", "HEAD"]);
+  const tree = await gitLines(root, ["rev-parse", "HEAD^{tree}"]);
   const trim = (value) => (value ? value.trim() : null);
   return { head: trim(head), tree: trim(tree) };
 }
@@ -278,10 +290,10 @@ export function receiptStatus(rows) {
 // Added lines of the reviewed diff, per file, with their new-file line numbers.
 // Git is called with an argv array, never through a shell, so a path can never
 // be re-parsed.
-export function addedLines({ root, base, paths }) {
-  const args = ["diff", "-U0", "--no-color", `${base ?? "origin/main"}...HEAD`];
+export async function addedLines({ root, base, paths }) {
+  const args = ["diff", "-U0", "--no-color", `${assertRevision(base) ?? "origin/main"}...HEAD`];
   if (paths && paths.length > 0) args.push("--", ...paths);
-  const diff = gitLines(root, args);
+  const diff = await gitLines(root, args);
   if (diff === null) return [];
   const candidates = [];
   let file = null;
@@ -394,8 +406,12 @@ export async function probeCli(probe) {
     process.stderr.write(`${probe.name}: cannot read ${path}: ${error?.message ?? error}\n`);
     process.exit(2);
   }
+  if (document === null || typeof document !== "object" || Array.isArray(document)) {
+    process.stderr.write(`${probe.name}: config must be a JSON object: ${path}\n`);
+    process.exit(2);
+  }
   const config = document.probes?.[probe.name];
-  const ctx = ctxFor({ root, type: document.type ?? "code", primary: document.primary, secondary: document.secondary, ...document });
+  const ctx = ctxFor({ root, type: document.type ?? "code", primary: document.primary, secondary: document.secondary, timeoutMs: document.timeoutMs, parallel: document.parallel });
   let rows;
   if (config === undefined) rows = [row({ id: probe.name, verdict: "SKIP", observable: "the probe is not configured", note: `probes.${probe.name} is absent` })];
   else if (!ctx.applies(probe)) rows = [row({ id: probe.name, verdict: "SKIP", observable: "the probe does not apply to this work type", note: `types: ${probe.types.join(",")}; run type: ${ctx.type}` })];

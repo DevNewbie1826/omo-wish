@@ -37,10 +37,9 @@ export function buildReceipt({ opts, lane, head, tree, status, probes, ctx, star
 
 // A path names a directory when it is an existing directory, ends with a
 // separator, or its basename has no dot; the file inside then takes the canonical
-// <stage>-<lane>-<head7>.json that M0 §4.2 requires. Any other path is written
-// exactly as given (a caller inspecting a run may want a scratch name), and its
-// body is validated either way; the filename agreement is checked whenever the
-// name parses.
+// <stage>-<lane>-<head7>.json that M0 §4.2 requires. Any other path must already be
+// that canonical name: a receipt whose filename M0 would reject is a usage mistake,
+// not an artifact to leave behind.
 export function writeReceipt(pathArg, receipt) {
   const resolved = resolve(pathArg);
   const given = String(pathArg);
@@ -51,16 +50,24 @@ export function writeReceipt(pathArg, receipt) {
   const path = isDir
     ? join(resolved, receiptFilename({ stage: "verify_lane", lane: receipt.lane, head: receipt.head }))
     : resolved;
+  if (!isDir && !parseReceiptFilename(name).ok) {
+    process.stderr.write(`sweep: ${name} is not a receipt filename; pass a directory or verify_lane-<lane>-<head7>.json\n`);
+    return { ok: false, path, reason: "usage" };
+  }
   receipt.artifacts = [path];
   const body = validateReceipt(receipt);
-  const finalName = basename(path);
-  const named = parseReceiptFilename(finalName).ok ? validateReceiptAgainstFilename(receipt, finalName) : { ok: true, errors: [] };
+  const named = validateReceiptAgainstFilename(receipt, basename(path));
   const errors = [...body.errors, ...named.errors];
   if (errors.length > 0) {
     for (const error of errors) process.stderr.write(`sweep: receipt ${error.path}: ${error.message}\n`);
-    return { ok: false, path };
+    return { ok: false, path, reason: "contract" };
   }
-  mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`);
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`);
+  } catch (error) {
+    process.stderr.write(`sweep: cannot write the receipt ${path}: ${error?.message ?? error}\n`);
+    return { ok: false, path, reason: "io" };
+  }
   return { ok: true, path };
 }

@@ -180,7 +180,7 @@ async function main(argv) {
   // M0 §2: a mixed run takes its primary type's identity form, so a
   // research-primary mixed run has an artifact sha256 head and no git tree.
   const identity = opts.type === "mixed" ? opts.primary : opts.type;
-  const facts = gitFacts(root);
+  const facts = await gitFacts(root);
   if (identity !== "research" && opts.head && facts.head && opts.head !== facts.head) {
     process.stderr.write(`sweep: --head ${opts.head.slice(0, 7)} is not this checkout's HEAD ${facts.head.slice(0, 7)}; the commands run on HEAD, so the receipt would bind another state\n`);
     return EXIT_CODES.STATE_MISMATCH;
@@ -203,7 +203,7 @@ async function main(argv) {
   if (opts.receipt) {
     const receipt = buildReceipt({ opts, lane, head, tree, status, probes, ctx, startedAt });
     const written = writeReceipt(opts.receipt, receipt);
-    if (!written.ok) return EXIT_CODES.STATE_MISMATCH;
+    if (!written.ok) return written.reason === "usage" ? EXIT_CODES.USAGE : EXIT_CODES.STATE_MISMATCH;
     process.stdout.write(`${render({ root, head, probes, exit })}\nreceipt: ${written.path}\n`);
     return exit;
   }
