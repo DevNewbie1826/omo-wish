@@ -1,6 +1,6 @@
 # 실험 C2 — 최종 리뷰 1회차: 다른 모델 계열 두 명 병렬 · 합집합 판정
 
-상태: **등록 완료, 측정 대기.** 이 브랜치(`exp/c2`)가 실행 팔을 배포합니다. 팔의 좋음/나쁨은 아직 없습니다. 판정은 아래 취소 기준으로 실제 PR 12건을 측정한 뒤에만 적습니다.
+상태: **등록 완료, 측정 대기.** 이 브랜치(`exp/c2`)가 실행 팔을 배포합니다. 팔의 좋음/나쁨은 아직 없습니다. 판정은 아래 취소 기준으로 실제 PR 12건을 측정한 뒤에만 적습니다. 소유자의 GO 전에는 배정 행도 측정 행도 쓰지 않습니다(CSV는 헤더만).
 
 시리즈 규칙(소유자): 한 실험에 한 변수, 시작 전에 취소 기준(지표·임계값·판정 PR 수) 등록, 개선이 아니면 되돌리고 수치와 이유를 기록한 뒤 다음 실험.
 
@@ -42,12 +42,15 @@
 - **취소 조건**: 계속 조건을 하나라도 못 지키면 취소. 12건에서 REVISE≥1이 **4/12 이상**(33%, 기준선 대비 개선 미증명)이면 취소한다. 장부에 선등록한 취소값 `≥40%`(5/12 이상)는 그 이상의 확정 실패이고, 이 팔의 계속 조건을 3/12로 두었으므로 4/12도 "개선 없음"으로 취소한다. 시간 상한 초과나 품질 가드도 취소다. "개선 없음"은 유지가 아니라 취소다.
 - **품질 가드(언제든 즉시 취소)**: ① 병합 후 12단계(병합 뒤 전체 검증) 실패, ② 병합 뒤 그 PR을 다시 고치는 커밋/PR, ③ 무작위 5건 blind 재리뷰에서 계약 안 코드 결함 발견(이 팔이 줄인 검사가 놓친 것), ④ 꼬리(REVISE≥4) 비율 악화(기준선 8/104 = 7.7/100 초과).
 
-## 측정표 (PR마다 한 행)
+## 측정 기록 위치 (단일 장부)
 
-| PR | 실험 | 열림→병합(분) | A 모델/계열 | B 모델/계열 | 1회차 dispatch→union(분) | A만 | B만 | 둘 다 | 합집합 판정 | 이후 회차 | 12단계 | 재수정 | 비고 |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+기록 권위는 이 저장소의 `docs/experiments/` 한 곳입니다.
 
-1회차 수치는 이제 PR 본문에 남는다(모델·계열, dispatch/verdict 시각, 결함 출처 A만/B만/둘 다, head SHA, 분). 회차 수·REVISE 여부는 `/home/mirage/genie-old-reference/tools/wish-metrics.py`의 CSV로 다시 계산한다.
+- `ledger.md` — 실험 등록·판정. #43(C1 팔)이 커밋했고 C2 행은 그 52행에 있습니다. 이 팔은 `ledger.md`를 복제하지 않습니다(권위 이중화 금지). 이 문서는 C2의 상세 등록문이고, 등록값은 `ledger.md`의 C2 행과 같습니다.
+- `measurements.csv` — PR 단위 공통 스키마(공동 비교 계획 §3.3). 열: `pr,repo,arm,common_e6_e9,path_class,size_bucket,stacked_on,opened_at,merged_at,open_to_merge_minutes,total_rounds,ultrabrain_calls,code_reviewer_calls,architect_calls,content_commits_after_approval,step12_result,post_merge_refix,blind_review_result,invalid_flag,notes`.
+- `rounds.csv` — 회차 단위 공통 스키마(§3.3). 열: `pr,round_index,round_kind,verdict_head_sha,dispatch_at,verdict_at,minutes,reviewer_category,reviewer_family,defect_count,defect_axes,counterexample_present,gate_rows,c2_split,c2_families,six_axis_line_present,verdict_line_present,verdict_line_head_match`.
+
+인코딩: 시각은 ISO-8601(초), 분은 소수 1자리, `gate_rows`=`fixed=N;not_fixed=N;no_command=N`, `c2_split`=`a_only=N;b_only=N;both=N`, `c2_families`=`A=<계열>;B=<계열>`, `invalid_flag`는 `524`·`stall`·`rebase`·`conflict`·`tail`을 `;`로 잇습니다. 처치 PR이 생기면 이 팔 세션이 자기 PR에 자기 행을 추가합니다.
 
 ## 비적합 표본
 
@@ -57,13 +60,24 @@
 
 1. 이 PR이 병합 전이면 PR을 닫는다. 병합 뒤면 이 브랜치의 커밋을 `git revert`로 되돌린다(스킬 문구·README·이 문서).
 2. 이 문서의 "결과" 절에 측정값(12건 각 행, 비율, 중앙 소요, 걸린 가드)과 취소 이유를 적는다.
-3. C1 시리즈 장부(`docs/experiments/ledger.md`, C1 작업 트리)의 C2 행 상태를 `취소`로 바꾸고 다음 실험으로 넘어간다.
+3. 단일 장부 `docs/experiments/ledger.md`의 C2 행(현재 52행) 상태를 `취소`로 바꾸고 다음 실험으로 넘어간다.
 
 ## 출처와 연결
 
-- C1 시리즈 장부 C2 행(선등록, 원문): `| C2 | 1회차 리뷰어 수 1 vs 2(다른 모델 계열) 합집합 판정 | 대기 | 12 PR | ≥1 비율 ≤25% | ≥1 비율 ≥40% 또는 회차 시간 50% 이상 증가 또는 품질 가드 위반 |`
+- 단일 장부의 C2 행(선등록, 원문; `docs/experiments/ledger.md` 52행, #43 커밋): `| C2 | 1회차 리뷰어 수 1 vs 2(다른 모델 계열) 합집합 판정 | 대기 | 12 PR | ≥1 비율 ≤25% | ≥1 비율 ≥40% 또는 회차 시간 50% 이상 증가 또는 품질 가드 위반 |`
 - 측정 데이터: `/tmp/oru-genie-resume/wish-metrics.csv`, `/tmp/oru-genie-resume/report.md` §4, `/tmp/oru-wish-next/report.md` §1-1, `/home/mirage/genie-old-reference/workflow-experiments.md`(라운드 20~45분).
-- 선행 실험: E1(지침 6종) 결론 없음, C1(9단계 dispatch gate) 진행 중 — C2는 1회차 폭만 바꾸므로 C1과 독립 변수다. 다만 C1이 켜진 PR에서는 게이트가 ultrabrain 호출 전에 도는 만큼 1회차 시작점이 늦어질 수 있으니, 시간 비교는 같은 기간 C1 적용 여부를 비고에 적는다.
+- 선행 실험: E1(지침 6종) 결론 없음, C1(9단계 dispatch gate, #43)은 장부를 커밋했고 이 팔은 그 장부를 단일 권위로 쓴다 — C2는 1회차 폭만 바꾸므로 C1과 독립 변수다. 다만 C1이 켜진 PR에서는 게이트가 ultrabrain 호출 전에 도는 만큼 1회차 시작점이 늦어질 수 있으니, 시간 비교는 같은 기간 C1 적용 여부를 `common_e6_e9`/`notes`에 적는다.
+
+## 다른 팔과의 충돌 메모 (공유 파일)
+
+base = origin/main `cbbfbf8`, 줄 번호는 base 파일 기준이며 공동 비교 계획 §2 매트릭스와 같다.
+
+- `skills/wish/references/review.md` 26-32(Step 9): **다섯 팔 전부**가 같은 구역을 고친다. 내 텍스트는 후보일 뿐이고, 둘 이상이 승자면 자동 병합하지 말고 살아남은 Step 9 원문 위에 수동으로 다시 얹어야 한다. 특히 #44의 E6 동결·E9 판정 줄과 같은 문단을 공유한다.
+- `skills/wish/SKILL.md` 1-6(frontmatter description), 23-29(9단계), 45-57(게이트 순서·리뷰어 프롬프트 목록): #43(22-33, 45-51)·#44(23-31, 45-56)·#45(1-6, 21-29, 45-51)와 겹친다. #42는 SKILL을 고치지 않는다. frontmatter 1-6은 #45와 직접 겹친다.
+- `README.md` 103-109(9단계), 124-135(게이트 순서·리뷰어 규칙 목록), 156-162(plan 게이트 호환): 전 팔이 102~140을 고치고, 156-162는 #45와 같은 줄이다. 헝크가 줄로 안 겹쳐도 같은 절이라 순차 병합마다 충돌한다.
+- 신규 파일: 이 팔은 `docs/experiments/c2-dual-round1.md`·`measurements.csv`·`rounds.csv`만 추가한다. #44·#45의 스크립트/시험과 겹치지 않고, #43의 `ledger.md`·`baseline.md`·`baseline-data.csv`와도 파일이 다르다. **`ledger.md`는 만들지 않는다** — #43판이 단일 권위이고 C2 행은 그 52행에 이미 있다.
+- 결합 순서(§4): C2는 5번째다. #44(E6+E9) 뒤에 Step 9를 다시 쓰고, #45(C6)의 라우팅 아래에서 ultrabrain 라우팅 PR에만 적용하는 안이 결합 결정 1로 제안되어 있다(소유자 확인 필요). #43의 C1 게이트와는 게이트→이중 디스패치 순서로 조합한다.
+- 공통 적용: 배정된 처치 PR에는 공통 E6+E9가 함께 걸리므로 `measurements.csv`의 `common_e6_e9`와 `notes`에 남긴다.
 
 ## 결과
 
