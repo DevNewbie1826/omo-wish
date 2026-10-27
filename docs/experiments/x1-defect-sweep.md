@@ -228,4 +228,44 @@ base = origin/main `cbbfbf8`, 줄 번호는 base 파일 기준입니다.
 
 ## 9. 검증 기록
 
-(이 브랜치에서 실행한 명령과 출력. 실험 결과가 아니라 도구·문구 검증입니다.)
+이 브랜치에서 실행한 명령과 출력입니다. 실험 결과가 아니라 도구·문구 검증입니다.
+
+```
+HEAD 7430e40c708f508211f7cab24c56d03c3110b5a8
+$ timeout 300 bun test
+ 11 pass
+ 0 fail
+ 105 expect() calls
+ Ran 11 tests across 2 files. [7.46s]
+
+$ timeout 300 bun scripts/verify.mjs .
+ (실제 senpi 로더로 스킬·프롬프트·확장 발견)
+ ALL PASS: /Volumes/storage/workspace/omo-wish-worktrees/x1
+
+$ node --check skills/wish/scripts/sweep.mjs
+ SYNTAX_OK
+
+$ grep -rn "three references" skills README.md
+ (출력 없음: 참조 4개 문구로 갱신됨)
+```
+
+- `test/sweep.test.js` 5 케이스가 위 11개에 포함됩니다: clean 픽스처 7탐침 전부 PASS(오탐 0), seeded 픽스처 7클래스 각각 자기 탐침 FAIL, 상한 클램프(99→8, 999999→300000)와 없는 줄 변이 INVALID(살상 아님), 설정 없는 영수증 7 SKIP 및 설정 파일 부재 시 exit 2, 변이 상한이 남긴 미탐색 줄 수 보고와 help 명령이 없을 때 docs SKIP.
+- 클래스 표 재계산: 원자료 표에서 행을 기계적으로 파싱하고 아래 부록의 id→클래스 매핑을 적용해 **52행 / blocking 29 / 라운드당 2.64**를 다시 얻었습니다(불일치 0건). 매핑이 없거나 표에 없는 id가 있으면 스크립트가 문제로 보고하도록 했고, 그 검사에서 `pr21`의 `AS21-1 / residual AS8-1`(id 칸에 공백·슬래시가 있는 행)이 처음에 누락되어 51행으로 나왔으므로 파서를 고친 뒤 52행으로 확인했습니다.
+
+## 부록: id → 클래스 매핑 (52행)
+
+원자료의 finding id를 클래스로 옮긴 표입니다. 각 문서의 표에서 severity가 blocking/non-blocking인 행만 셉니다.
+
+```
+pr8-agent-sense.md          AS8-1 C1   AS8-2 C3   AS8-3 C4   AS8-4 C4   AS8-5 C5   AS8-6 C6
+pr9-agent-sense.md          B1 C3      B2 C4      B3 C4      N1 C4      N2 C1      N3 C4      N4 C6
+pr9-delta2-agent-sense.md   D1 C1      D2 C5      D3 C5
+pr10-agent-sense.md         F01 C3     F02 C3     F03 C1     F04 C5     F05 C7     F06 C3     F07 C3     F08 C3
+pr10-delta2-agent-sense.md  F09 C3     F10 C3     F11 C4     F12 C5     F13 C5
+pr12-agent-sense.md         R1 C1      R2 C2      R3 C4      R4 C4      R5 C4      R6 C4      R7 C6      R8 C5
+pr21-agent-sense.md         AS21-1 C1  AS21-2 C5
+pr21-delta2-agent-sense.md  (현재 결함 0: AS21-1·AS21-2는 해소로 표기)
+pr23-agent-sense.md         N1 C1      R1 C4      R3 OTHER   R4a C4     R4b C4     R7 C6
+pr23-round2-agent-sense.md  N1-legacy C4   R1-download C1   R4c C4   D1 C6   R4d C4
+pr81-genie.md               F1 C3      F2 C4
+```

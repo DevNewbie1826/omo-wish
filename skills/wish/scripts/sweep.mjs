@@ -303,6 +303,9 @@ async function probeMutation(config, ctx) {
     : addedLines({ root: ctx.root, base: config.base ?? "origin/main", paths: config.paths });
   const candidates = selectCandidates(raw, { testGlobs: config.testGlobs, max: config.max ?? 12 });
   if (candidates.length === 0) return [...checks, check("mutation", "SKIP", "no candidate production lines in the diff")];
+  if (raw.length > candidates.length) {
+    checks.push(check("mutation/limit", "PASS", `${candidates.length} of ${raw.length} added production lines probed; the rest are unprobed and belong to the checklist pass`));
+  }
 
   const failMarker = new RegExp(config.failMarker ?? "--- FAIL:|^FAIL\\b|✗|\\(fail\\)|AssertionError|not ok \\d+", "m");
   const compileError = new RegExp(config.compileErrorPattern ?? "build failed|setup failed|syntax error|Cannot find module|error TS\\d+|undefined reference", "m");
@@ -342,7 +345,8 @@ function probeDocs(config, ctx) {
   const checks = [];
   const docs = matchFiles(ctx.root, config.docs ?? []);
   if (docs.length === 0) return [check("docs", "SKIP", "no changed docs declared")];
-  const help = config.helpCmd ? syncText(config.helpCmd, ctx.root) : "";
+  if (!config.helpCmd) return [check("docs", "SKIP", "no help command; documented flags go to the checklist pass")];
+  const help = syncText(config.helpCmd, ctx.root);
   const known = new Set(config.known ?? []);
   const pattern = new RegExp(config.flagPattern ?? "--[a-z][a-z0-9-]{2,}", "g");
   const documented = new Set();

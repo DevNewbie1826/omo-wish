@@ -152,3 +152,28 @@ test("bare receipt names the unconfigured probes and a missing config exits 2", 
   expect(missing.exitCode).toBe(2);
   expect(missing.stderr.toString()).toContain("config not found");
 });
+
+test("a mutation cap reports the lines it did not probe and docs without a help command skip", async () => {
+  const dir = stage("clean");
+  const base = configFor(dir).probes;
+  const run = sweep(dir, {
+    probes: {
+      mutation: {
+        testCmd: "bun check.js",
+        candidates: [
+          { file: "cli.js", line: guardLine(dir) },
+          { file: "cli.js", line: guardLine(dir) + 1 },
+          { file: "cli.js", line: guardLine(dir) + 2 },
+        ],
+        failMarker: "CHECK FAILED",
+        max: 1,
+      },
+      docs: { docs: ["usage.md"] },
+    },
+  });
+  expect(run.receipt.probes.find((probe) => probe.name === "docs").status).toBe("SKIP");
+  expect(statusOf(run.receipt, "docs", "docs")).toBe("SKIP");
+  const limit = checks(run.receipt, "mutation").find((entry) => entry.id === "mutation/limit");
+  expect(limit.detail).toContain("1 of 3 added production lines probed");
+  expect(base).toBeDefined();
+}, 120000);
