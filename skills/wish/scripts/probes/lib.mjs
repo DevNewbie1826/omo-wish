@@ -48,11 +48,6 @@ export function q(value) {
   return `'${String(value).split("'").join(`'\\''`)}'`;
 }
 
-export function syncText(cmd, cwd) {
-  const result = spawnSync("/bin/sh", ["-c", cmd], { cwd, encoding: "utf8", timeout: 60000 });
-  return `${result.stdout ?? ""}${result.stderr ?? ""}`;
-}
-
 export function gitLines(root, args) {
   const result = spawnSync("git", ["-C", root, ...args], { encoding: "utf8", timeout: 60000 });
   if (result.status !== 0) return null;

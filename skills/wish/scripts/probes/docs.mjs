@@ -6,7 +6,7 @@
 // checklist pass.
 
 import { readFileSync } from "node:fs";
-import { matchFiles, row, syncText, isMain, probeCli } from "./lib.mjs";
+import { matchFiles, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
 export const name = "docs";
 export const types = ["code"];
@@ -20,8 +20,10 @@ export const usage = `config:
 
 Every token matched by "flagPattern" in the changed docs must appear in the
 output of "helpCmd" or in "known". FAIL means the documentation promises a flag
-that does not exist. A documented flag with a wrong description is not decided
-here; that row goes to the checklist pass.`;
+that does not exist. The help command runs once through the same supervised
+runner as every other command (its own process session, killed on timeout), with
+"helpTimeoutMs" (default: the run's "timeoutMs"). A documented flag with a wrong
+description is not decided here; that row goes to the checklist pass.`;
 
 export async function run(config, ctx) {
   const cls = ctx.classFor("DOC");
@@ -32,7 +34,8 @@ export async function run(config, ctx) {
   if (!config.helpCmd) {
     return [row({ id: "docs", verdict: "SKIP", observable: "a help command is declared", cls, note: "no help command; documented flags go to the checklist pass" })];
   }
-  const help = syncText(config.helpCmd, ctx.root);
+  const help = await runCommand({ cmd: config.helpCmd, cwd: ctx.root, timeoutMs: config.helpTimeoutMs ?? ctx.timeoutMs });
+  const helpText = `${help.stdout}\n${help.stderr}`;
   const known = new Set(config.known ?? []);
   const pattern = new RegExp(config.flagPattern ?? "--[a-z][a-z0-9-]{2,}", "g");
   const documented = new Set();
@@ -52,7 +55,7 @@ export async function run(config, ctx) {
       }));
       continue;
     }
-    const present = help.includes(token);
+    const present = helpText.includes(token);
     checks.push(row({
       id: `docs/${token}`, command: config.helpCmd,
       observable: "a documented flag is in the help output or the known list",

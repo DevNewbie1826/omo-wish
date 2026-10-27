@@ -533,6 +533,18 @@ test("a candidate path that escapes the throwaway copy is invalid and writes not
   expect(run.exit).toBe(0);
 });
 
+test("the docs help command is supervised by the same bounded runner", () => {
+  const dir = stage("clean");
+  writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });
+  const started = Date.now();
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const elapsed = Date.now() - started;
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  expect(elapsed).toBeLessThan(20000);
+  expect(receipt.rows.find((entry) => entry.id === "docs/--fail").verdict).toBe("FAIL");
+  expect(run.exit).toBe(1);
+});
+
 test("the dictionary's code table is exactly M0's code class set", () => {
   const doc = readFileSync(join(repo, "skills/wish/references/defect-classes.md"), "utf8");
   const section = doc.split("## 4. Code classes")[1].split("## 5.")[0];
