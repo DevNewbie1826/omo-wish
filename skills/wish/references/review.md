@@ -36,7 +36,7 @@ Before every dispatch the run writes a gate table under `<evidenceRoot>`, keyed 
 
 - Any `not fixed` row forbids the dispatch: the run returns to the correction path of Step 11, and that row counts as a strike for its component under the two-strike rule.
 - Every row is read at the head the review will be dispatched at. When the head moves after the gate, the gate runs again.
-- In round 1, or when the last verdict was APPROVED, the table is recorded as empty (`no prior verdict`, `no findings in last verdict`) and the dispatch proceeds.
+- In round 1, or when this PR has no earlier in-contract blocking finding at all, the table is recorded as empty (`no prior verdict`, `no findings yet`) and the dispatch proceeds. An APPROVED verdict never erases earlier rows: a later dispatch after a changed patch regenerates every accumulated row at the new head.
 - The table enters the ultrabrain prompt, so the reviewer checks the recorded fixes instead of rediscovering them. Earlier rows stay as history.
 - A rebase-only head move whose patch-id matches keeps the verdict and needs no dispatch, so no gate runs; a differing patch is a delta review, and its gate carries the earlier verdict's rows.
 
