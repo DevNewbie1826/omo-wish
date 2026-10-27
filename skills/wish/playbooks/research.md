@@ -5,19 +5,13 @@ own the facts, and its gates decide fidelity. wish adds the contract (which ques
 must answer), one frozen artifact, the register, the progress line, one verdict, and the switch rule.
 Read `../SKILL.md`, then `ulw-research`'s SKILL.md before this playbook's step 11.
 
-Identity note: a research unit has **no git tree**. Its `head` is the frozen artifact's 64-hex sha256,
-every receipt sets `tree: null`, and `freeze` records that pair. `status` still requires `pr_open`,
-`merge` and `post_merge`, so the deliverable is committed on the branch and shipped as a PR — a
-docs-only or artifact-only PR is the normal case.
+Identity: `../SKILL.md`'s research note applies to every receipt and to the freeze. The deliverable ships as a PR.
 
 ```
 ER=<evidence root>   export WISH_EVIDENCE_ROOT=$ER
 PLAN=.omo/plans/wish-<slug>.md   WT=<absolute worktree>   BR=<branch>   BASE=wish-v2
 wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 ```
-
-A research unit has no git tree, so nothing here can be frozen by commit: the artifact hash is the
-identity, and a source snapshot is what a `before` receipt holds.
 
 ## The steps
 
@@ -47,7 +41,7 @@ identity, and a source snapshot is what a `before` receipt holds.
 
 - A number without a traceable source, a value that differs from its source, a quote that is not verbatim, or a sentence bound to no evidence is a blocking finding — those are the gate codes, not style.
 - A claim state is `unresolved` or `refuted` until its gate passes; `supported` needs the gate record, never the prose.
-- An extension the requester must grant (a wave ceiling, a paid source) is an owner gate; anything else is settled by evidence.
+- An extension the requester must grant is an owner gate (`../SKILL.md`); anything else is settled by evidence.
 
 ## Forbidden
 

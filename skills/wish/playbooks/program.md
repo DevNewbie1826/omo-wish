@@ -14,11 +14,10 @@ PROGRAM=p-<slug>     BASE=wish-v2
 
 - A **unit** is one PR: `wish init --run-id w-<slug>-u<N>-<yyyymmdd-hhmm> --program $PROGRAM --unit u<N> --type <type> --tier <S|M|L> --plan
   .omo/plans/wish-<slug>-u<N>.md --worktree <abs> --branch <branch> --fact "<each fact>"` (init creates
-  the plan when it does not exist; the run id is required and unique per
+  the plan (`../SKILL.md` stage 0); the run id is required and unique per
   unit). The unit-contract rule is in `../SKILL.md` and `../references/contract.md` §2.
 - A **mixed** unit is the one unit whose type is not concrete: it passes `--type mixed --primary <type>
-  --secondary <type>` to `wish init` and the same pair to every `sweep.mjs` call. A concrete `--type`
-  would quietly drop the secondary's lanes, so the union `status` requires would never be satisfied.
+  --secondary <type>` to `wish init` and the same pair to every `sweep.mjs` call (`../SKILL.md`, the mixed row).
 - A **wave** holds the units whose write scopes do not overlap. Wave size is `min(host model slots,
   non-overlapping units)`; never more. Capacity is shared: at most two `mass-ulw` runs and one wish
   program per session, and at most five workers in one batch — so the six lanes a `design` unit requires
@@ -38,8 +37,8 @@ PROGRAM=p-<slug>     BASE=wish-v2
 - [ ] 7. WAVE VERIFY: one `task` batch, unit × lane, at each unit's own head — plus the extra capture batch a `design` unit needs before its two visual passes; a lane never judges another unit's scope [omo: the type playbook's lanes] [receipt: `verify_lane` receipts per unit and lane]
 - [ ] 8. PER-UNIT TAIL: `triage` → `fix` → `freeze` → `pr_open` → `round` → `merge` → `post_merge` run **independently per unit**; one unit's REVISE never blocks another unit's merge [omo: as the type playbook says] [receipt: `round`, `verdict`, `merge`, `post_merge` events per unit]
 - [ ] 9. SPLIT (only here): when a unit keeps failing on one component, the `split` switch makes that component its own unit and PR; the gap row stays `open` and moves to the new unit — this is a re-split, never a scope cut [omo: `architect` premise review + `wish switch record --kind split`] [receipt: `switch` event with `kind: split` and the new unit in the register]
-- [ ] 10. PROGRESS: print the machine line on every transition that changes a number and at least every `report.interval` minutes (30 by default) while any unit runs — `wish status --progress` prints `PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<n> on <#pr|none> · switch <count> · waiting <what|none>`. A repeat with no change is suppressed; only the `waiting` field may differ [omo: `wish.mjs status --progress`; the host's relay consumes the line, the skill never names a channel] [receipt: `progress` events]
-- [ ] 11. CLOSE: the program is complete when every `defect` row is `fixed`, `accepted-limit` (backed by a `LIMIT` row or an owner gate) or `out-of-scope`, every unit is merged with `post_merge`, and each unit has its `cleanup` receipt [omo: session + `metrics export`] [receipt: the last unit's `cleanup` event and the register's final state]
+- [ ] 10. PROGRESS: print the machine line (`../SKILL.md`: cadence and suppression) — `wish status --progress` prints `PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<n> on <#pr|none> · switch <count> · waiting <what|none>`. Only the `waiting` field may differ [omo: `wish.mjs status --progress`; the host's relay consumes the line, the skill never names a channel] [receipt: `progress` events]
+- [ ] 11. CLOSE: the program is complete per `../SKILL.md`'s finish condition, unit by unit [omo: session + `metrics export`] [receipt: the last unit's `cleanup` event and the register's final state]
 
 ## Rules that keep a program honest
 

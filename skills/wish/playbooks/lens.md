@@ -4,8 +4,7 @@ Use when the request names a reference corpus: a standard, a guideline set, a st
 paper set, or "make it match X". The lens is the rule list every later discovery, register row and
 review axis cites. Without one, "list everything wrong" produces taste dressed as defects.
 
-`skip: no corpus` when the request names no such source — and say so in the todo instead of dropping
-the step.
+`skip: no corpus` when the request names no such source (`../SKILL.md` stage 1).
 
 ## Reuse before reading
 
@@ -45,5 +44,5 @@ second; the reducer always sees files, never a transcript.
 ## Forbidden
 
 Inventing a rule the corpus does not state; keeping a platform's local taste as a universal rule;
-letting a node write `lens.md` (the reduce node returns text, the session writes the file); citing a
+letting a node write `lens.md` (`../SKILL.md`, evidence rules); citing a
 rule id that is not in the file.

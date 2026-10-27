@@ -1,8 +1,7 @@
 # resume — after a death, a compaction, or `/wish --resume <run_id>`
 
 The state is the authority, never memory. `ledger.jsonl`, the receipts and the plan's front matter
-survive a killed session, and every receipt is bound to a tree, so a restart re-runs nothing that is
-still valid. Follow the steps in order; do not re-plan from scratch and do not re-derive a decision
+survive a killed session, so a restart re-runs nothing that is still valid (`../SKILL.md`, evidence rules). Follow the steps in order; do not re-plan from scratch and do not re-derive a decision
 that the ledger already records.
 
 ```
@@ -44,6 +43,5 @@ processes, one retry, no relaunch loops.
 ## What a resume never does
 
 - Re-plan a plan that already exists, or edit a plan row to match what the code now does.
-- Re-run a `VALID` receipt, re-open a resolved gate, or re-ask a question the owner already answered.
-- Trust a stale `head`: the ledger's last `freeze` is the state, and a branch that moved past it is a
-  finding, not a new baseline.
+- Re-open a resolved gate or re-ask a question the owner already answered.
+- Trust a stale `head`: the ledger's last `freeze` is the state.

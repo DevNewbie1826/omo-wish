@@ -13,8 +13,7 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 ```
 
 The before matrix is `visual-qa`'s: each case × `{390, 1440}` (add 1920 when the surface has it) ×
-light/dark, plus the scroll end and each interaction frame. `wish init` creates `$PLAN` when it does not
-exist and the body is appended at this playbook's step 7.
+light/dark, plus the scroll end and each interaction frame. `wish init` writes the front matter (`../SKILL.md` stage 0); the body is appended at this playbook's step 7.
 
 ## The steps
 
@@ -38,7 +37,7 @@ exist and the body is appended at this playbook's step 7.
 - [ ] 18. ROUND: `wish gate --round <n>`, then one `category: ultrabrain` review whose input is the integrated visual-qa verdict, the pairs, the checklist rows and the diff — it judges the contract and the delivery, and the visual judgment itself stays `visual-qa`'s; `check-verdict.mjs --require-approved` [omo: `wish.mjs gate` + `category: ultrabrain`] [receipt: `receipts/final-r<n>-<head7>.md` + `round` and `verdict` events]
 - [ ] 19. REVISE: on `REVISE`, go to `playbooks/revise.md`; a redesign is a `strategy` switch, and an unreachable surface is recorded as `unverified`, never as a defect [omo: as `revise.md` says] [receipt: the `switch` event the round requires]
 - [ ] 20. MERGE: after `APPROVED` **and** the visual-qa completion gate — every page's fresh captures passed an independent reviewer, `defect` count 0, taste only — merge and append `merge` [omo: session] [receipt: `merge` event]
-- [ ] 21. POST-MERGE: identical tree means the `smoke` scenarios only; otherwise the full QA set on the merged build [omo: `omo-native-qa-executor`] [receipt: `post_merge` event + `receipts/post_merge-<tree7>.*`]
+- [ ] 21. POST-MERGE: `omo-native-qa-executor` runs what the tree comparison calls for (`../SKILL.md` stage 18) [omo: `omo-native-qa-executor`] [receipt: `post_merge` event + `receipts/post_merge-<tree7>.*`]
 - [ ] 22. CHECKPOINT and CLEANUP: ulw-loop `checkpoint`, `omo-native-gate-reviewer` on the evidence record, `wish metrics export`, `memory` for the design classes caught, teardown of captures, browser contexts and worktrees, then append `cleanup` [omo: `ulw-loop` + `omo-native-gate-reviewer` + `metrics.mjs` + `memory`] [receipt: `checkpoint` event then `cleanup` event with ≥1 teardown receipt]
 
 ## What the design type enforces
@@ -50,4 +49,4 @@ exist and the body is appended at this playbook's step 7.
 
 ## Forbidden
 
-Letting one pass review its own fix; dispatching a pass with no fresh captures; treating an unreachable platform as a pass.repository.
+Letting one pass review its own fix; dispatching a pass with no fresh captures; treating an unreachable platform as a pass.

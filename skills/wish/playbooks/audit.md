@@ -1,6 +1,6 @@
 # audit — the wish v2 playbook for a complete register
 
-Type `audit`: enumerate every surface, judge every rule against it, and report. There is no BUILD (`../SKILL.md` stage 10 names the type it skips). The register and the report are the deliverable, and the verify wave proves the register **correct** rather than proving a fix.
+Type `audit`: enumerate every surface, judge every rule against it, and report. The type's stage set is `../SKILL.md`'s. The register and the report are the deliverable, and the verify wave proves the register **correct** rather than proving a fix.
 
 The audit is also the front half of any program: an audit unit answers "what is wrong and where", and
 the fix units follow as their own PRs.
@@ -11,7 +11,7 @@ PLAN=.omo/plans/wish-<slug>.md   WT=<absolute worktree>   BR=<branch>   BASE=wis
 wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 ```
 
-`wish init` creates `$PLAN` when it does not exist and the body is
+`wish init` writes the front matter (`../SKILL.md` stage 0); the body is
 appended at this playbook's step 7.
 
 ## The steps
