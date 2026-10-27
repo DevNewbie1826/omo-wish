@@ -368,6 +368,18 @@ describe("CLI", () => {
     expect(observed.stdout).not.toContain("ghp_");
   });
 
+  test("the last --token-env wins and even a whitespace token is redacted", async () => {
+    const canary = "second-name-canary-7781";
+    const result = await run(["--pr", "1", "--repo", "owner/name", "--token-env", "GH_TOKEN", "--token-env", "OTHER_TOKEN", "--bogus", canary], { OTHER_TOKEN: canary });
+    expect(result.code).toBe(2);
+    expect(result.stderr).not.toContain(canary);
+    const dir = tempDir();
+    const spaced = await run(["--pr", "1", "--repo", "owner/name", "--bogus", " \t "], { GH_TOKEN: " \t " });
+    expect(spaced.code).toBe(2);
+    expect(spaced.stderr).toContain("[redacted]");
+    expect(spaced.stderr).not.toContain(" \t ");
+  });
+
   test("a token that equals a field name still leaves a readable record", async () => {
     const dir = tempDir();
     const gh = fakeGh(dir, "gh-merged2.sh", `printf '%s\\n' '{"number":40,"state":"MERGED","isDraft":false,"mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN","reviewDecision":"","statusCheckRollup":[],"headRefOid":"${HEAD}"}'`);

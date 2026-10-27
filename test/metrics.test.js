@@ -615,3 +615,95 @@ describe("git history edges", () => {
     expect(result.code).not.toBe(2);
   });
 });
+
+describe("exact names and scan completeness", () => {
+  async function gitFixture() {
+    const dir = tempDir();
+    const git = (args, env = {}) => new Promise((resolvePromise) => {
+      const child = spawn("git", args, { cwd: dir, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.on("close", (code) => resolvePromise({ code, stdout, stderr }));
+    });
+    expect((await git(["init", "-q"])).code).toBe(0);
+    await git(["config", "user.email", "test@example.invalid"]);
+    await git(["config", "user.name", "test"]);
+    const commit = async (message, date, files) => {
+      for (const [name, text] of Object.entries(files)) await Bun.write(join(dir, name), text);
+      await git(["add", "-A"]);
+      const done = await git(["commit", "-qm", message], { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+      expect(done.code).toBe(0);
+      return (await git(["rev-parse", "HEAD"])).stdout.trim();
+    };
+    return { dir, git, commit };
+  }
+
+  test("--files takes the exact name, including a leading space", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-09-20T00:00:00Z", { "root.txt": "r\n" });
+    await repo.commit("base", "2026-09-30T00:00:00Z", { " a.txt": "s\n" });
+    await repo.commit("touch spaced", "2026-10-03T00:00:00Z", { " a.txt": "s2\n" });
+    const exact = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", " a.txt", "--repo-dir", repo.dir]);
+    expect(exact.code).toBe(1);
+    expect(JSON.parse(exact.stdout).refixes[0].files).toEqual([" a.txt"]);
+    const wrong = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir]);
+    expect(wrong.code).toBe(0);
+  });
+
+  test("a name containing a double quote survives the scan", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-09-20T00:00:00Z", { "root.txt": "r\n" });
+    const base = await repo.commit("base", "2026-09-30T00:00:00Z", { 'a"b.txt': "q\n" });
+    await repo.commit('touch a"b', "2026-10-03T00:00:00Z", { 'a"b.txt': "q2\n" });
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--merge-sha", base, "--repo-dir", repo.dir]);
+    expect(result.code).toBe(1);
+    const body = JSON.parse(result.stdout);
+    expect(body.files).toEqual(['a"b.txt']);
+    expect(body.refixes[0].files).toEqual(['a"b.txt']);
+  });
+
+  test("an over-cap git read is an error, never a clean scan", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-09-20T00:00:00Z", { "a.txt": "a\n" });
+    const { runGit } = await import("../skills/wish/scripts/metrics.mjs");
+    const capped = await runGit(["-C", repo.dir, "log", "--pretty=format:%H"], 30000, 10);
+    expect(capped.ok).toBe(false);
+    expect(capped.overflow).toBe(true);
+    expect(capped.error).toContain("exceeded");
+  });
+
+  test("a gate reopened after a resolve still marks the round gate-blocked", () => {
+    const control = { type: "code", unit: "u1", program_id: null, plan: ".omo/plans/wish-x.md", session_id: "senpi:01a17e58" };
+    const gate = (status, at) => ({ ...control, event: "gate", stage: "gate", gate_id: "G1", gate_status: status, started_at: at });
+    const events = [
+      { ...control, event: "intake", stage: "intake", tier: "M", facts: ["one fact"], started_at: "2026-10-27T15:59:00Z" },
+      gate("open", "2026-10-27T16:00:00Z"),
+      gate("resolved", "2026-10-27T16:10:00Z"),
+      gate("open", "2026-10-27T16:20:00Z"),
+      { ...control, event: "pr_open", stage: "pr_open", pr: 51, head: HEAD, started_at: "2026-10-27T16:25:00Z" },
+      { ...control, event: "round", stage: "round", round: 1, verdict: "APPROVED", head: HEAD, started_at: "2026-10-27T16:30:00Z" },
+    ];
+    const derived = deriveRows({ events, options: {} });
+    expect(derived.errors).toEqual([]);
+    const index = ROUNDS_HEADER.indexOf("round_kind");
+    expect(derived.rounds[0][index]).toBe("gate-blocked");
+  });
+
+  test("a resolved gate before the round does not mark it gate-blocked", () => {
+    const control = { type: "code", unit: "u1", program_id: null, plan: ".omo/plans/wish-x.md", session_id: "senpi:01a17e58" };
+    const gate = (status, at) => ({ ...control, event: "gate", stage: "gate", gate_id: "G1", gate_status: status, started_at: at });
+    const events = [
+      { ...control, event: "intake", stage: "intake", tier: "M", facts: ["one fact"], started_at: "2026-10-27T15:59:00Z" },
+      gate("open", "2026-10-27T16:00:00Z"),
+      gate("resolved", "2026-10-27T16:10:00Z"),
+      { ...control, event: "pr_open", stage: "pr_open", pr: 51, head: HEAD, started_at: "2026-10-27T16:15:00Z" },
+      { ...control, event: "round", stage: "round", round: 1, verdict: "APPROVED", head: HEAD, started_at: "2026-10-27T16:30:00Z" },
+    ];
+    const derived = deriveRows({ events, options: {} });
+    expect(derived.errors).toEqual([]);
+    const index = ROUNDS_HEADER.indexOf("round_kind");
+    expect(derived.rounds[0][index]).toBe("first");
+  });
+});

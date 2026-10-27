@@ -31,11 +31,14 @@ it is this one; `metrics.mjs` derives the list with
 The window is applied in code, not with `git log --since`: git prunes traversal on committer
 dates, so a backdated descendant can hide an eligible commit. The scan uses
 `--diff-merges=first-parent` (a merge shows what it introduced against its first parent) and
-`core.quotePath=false`, and it reads paths verbatim — a leading space is part of the name.
-`--max-commits` is off by default; when it is set and the scan reaches it, the command
-reports `truncated: true` and exits 3 instead of claiming a clean result. A ref is any name
-Git accepts without revision syntax (`release+qa` is valid; `~ ^ : ? * [ \` and whitespace
-are not).
+`-z`, so every path is the exact bytes Git stored — NUL-separated, never C-quoted, and a
+leading space or a double quote is part of the name. `--files` takes those exact names too;
+nothing is trimmed. The reader keeps up to 64 MiB of Git output and reports an overflow as an
+error (exit 3, `overflow: true`) instead of silently cutting the history. `--max-commits`
+defaults to 0 (no cap); when it is set and the scan reaches it, the command reports
+`truncated: true` and exits 3 instead of claiming a clean result. A ref is any name Git
+accepts without revision syntax (`release+qa` is valid; `~ ^ : ? * [ \` and whitespace are
+not).
 
 ## 2. Column contract
 

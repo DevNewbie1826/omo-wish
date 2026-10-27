@@ -66,7 +66,7 @@ export function backoffSeconds(interval, attempt = 1, maxInterval = 300) {
 export function tokenValues(env = {}, names = DEFAULTS.tokenEnv) {
   return String(names ?? "").split(",").map((name) => name.trim()).filter(Boolean)
     .map((name) => env[name])
-    .filter((value) => typeof value === "string" && value.trim() !== "");
+    .filter((value) => typeof value === "string" && value.length > 0);
 }
 
 export function redactSecrets(text, secrets = []) {
@@ -324,10 +324,13 @@ export function parseArgs(argv = []) {
 }
 
 function tokenEnvFromArgv(argv) {
+  let names = DEFAULTS.tokenEnv;
   for (let index = 0; index < argv.length; index += 1) {
-    if (argv[index] === "--token-env" && argv[index + 1] !== undefined) return argv[index + 1];
+    // The last occurrence wins, matching parseArgs, so a usage error redacts
+    // exactly the variables the run would have used.
+    if (argv[index] === "--token-env" && argv[index + 1] !== undefined) names = argv[index + 1];
   }
-  return DEFAULTS.tokenEnv;
+  return names;
 }
 
 export async function main(argv = process.argv.slice(2), deps = {}) {

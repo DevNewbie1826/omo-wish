@@ -46,8 +46,10 @@ Usage:
                          [--arm <name>] [--extra <json>] [--json]
   bun metrics.mjs validate (--file <path> --name measurements|rounds | --dir <dir>) [--json]
   bun metrics.mjs post-merge --merged-at <iso> (--files <a,b> | --merge-sha <sha>)
+  [--merge-sha <sha>]
                          --repo-dir <dir> [--ref HEAD] [--days 7]
-                         [--max-commits 200] [--from-json <path>] [--json]
+                         [--max-commits <n>]   (0 = no cap; default 0)
+                         [--from-json <path>] [--json]
   bun metrics.mjs --help
 
 Contract: headers are M0's MEASUREMENTS_COLUMNS + V2_MEASUREMENTS_SUFFIX and
@@ -314,15 +316,15 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
     const roundNumber = event.round;
     const roundFindings = findings.filter((row) => String(row.round) === String(roundNumber));
     const priorFindings = roundNumber > 1 ? findings.filter((row) => String(row.round) === String(roundNumber - 1)) : [];
-    // A round is gate-blocked only while a gate that was opened before it is still
-    // open: a later resolved event for the same id closes it.
-    const gateBefore = scoped.some((other) => {
-      if (other.event !== "gate" || other.gate_status !== "open") return false;
-      if (Date.parse(other.started_at) > Date.parse(event.started_at)) return false;
-      const resolved = scoped.some((later) => later.event === "gate" && later.gate_id === other.gate_id
-        && later.gate_status === "resolved" && Date.parse(later.started_at) <= Date.parse(event.started_at));
-      return !resolved;
-    });
+    // The latest gate event for an id before the round decides: an open after a
+    // resolve re-opens it.
+    const gatesBefore = new Map();
+    for (const other of scoped) {
+      if (other.event !== "gate" || Date.parse(other.started_at) > Date.parse(event.started_at)) continue;
+      const current = gatesBefore.get(other.gate_id);
+      if (!current || Date.parse(other.started_at) >= Date.parse(current.started_at)) gatesBefore.set(other.gate_id, other);
+    }
+    const gateBefore = [...gatesBefore.values()].some((gate) => gate.gate_status === "open");
     const cumulativeSwitches = switches.filter((item) => item.round <= roundNumber);
     const values = {
       pr: String(pr), round_index: String(roundNumber),
@@ -370,17 +372,29 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
 export function parseGitLog(text) {
   const commits = [];
   for (const chunk of String(text ?? "").split("\x1e")) {
-    const trimmed = chunk.replace(/^\n+/, "");
-    if (trimmed.trim() === "") continue;
-    const fields = trimmed.split("\x1f");
+    const raw = chunk.replace(/^\n+/, "");
+    if (raw === "") continue;
+    // `-z` output: header, then a newline, then NUL-separated file names. The
+    // newline form is still accepted so a caller without -z keeps working.
+    const parts = raw.split("\x00");
+    const fields = parts[0].split("\x1f");
     if (fields.length < 3) continue;
     const [sha, committedAt] = fields;
     if (!/^[0-9a-f]{40}$/.test(sha) || !Number.isFinite(Date.parse(committedAt))) continue;
-    const lines = fields.slice(2).join("\x1f").split("\n");
-    const subject = lines.shift() ?? "";
-    // Git's paths are the original names: `core.quotePath=false` keeps Unicode raw,
-    // and a leading space is part of the name, so nothing is trimmed away.
-    commits.push({ sha, committed_at: committedAt, subject, files: lines.filter((line) => line !== "") });
+    const rest = fields.slice(2).join("\x1f");
+    const newline = rest.indexOf("\n");
+    const subject = newline === -1 ? rest : rest.slice(0, newline);
+    const files = [];
+    if (newline !== -1) {
+      const tail = rest.slice(newline + 1);
+      if (parts.length > 1) {
+        if (tail !== "") files.push(tail);
+      } else {
+        files.push(...tail.split("\n").filter((file) => file !== ""));
+      }
+    }
+    for (const file of parts.slice(1)) if (file !== "") files.push(file);
+    commits.push({ sha, committed_at: committedAt, subject, files });
   }
   return commits;
 }
@@ -404,7 +418,9 @@ export function postMergeRefixes({ mergedAt, files = [], commits = [], days = 7,
   return { ok: true, refixes, count: refixes.length, window: { from: new Date(start).toISOString(), to: new Date(end).toISOString(), days } };
 }
 
-function runGit(args, timeoutMs = 30000) {
+export const GIT_OUTPUT_CAP_DEFAULT = 64 * 1024 * 1024;
+
+export function runGit(args, timeoutMs = 30000, capBytes = GIT_OUTPUT_CAP_DEFAULT) {
   return new Promise((resolvePromise) => {
     let child;
     try {
@@ -415,13 +431,25 @@ function runGit(args, timeoutMs = 30000) {
     }
     let stdout = "";
     let stderr = "";
+    let overflow = false;
     let settled = false;
     const finish = (result) => { if (settled) return; settled = true; clearTimeout(timer); resolvePromise(result); };
     const timer = setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* gone */ } finish({ ok: false, error: `git timed out after ${timeoutMs}ms` }); }, timeoutMs);
-    child.stdout.on("data", (chunk) => { stdout = (stdout + chunk).slice(0, 4 * 1024 * 1024); });
+    child.stdout.on("data", (chunk) => {
+      // A silent cut would look like a clean scan that found nothing, so an
+      // over-cap read is reported as an error instead of truncated output.
+      if (stdout.length + chunk.length > capBytes) overflow = true;
+      stdout = (stdout + chunk).slice(0, capBytes);
+    });
     child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(0, 1024 * 1024); });
     child.on("error", (error) => finish({ ok: false, error: String(error?.message ?? error) }));
-    child.on("close", (code) => finish(code === 0 ? { ok: true, stdout } : { ok: false, error: stderr.trim() || `git exited with ${code}` }));
+    child.on("close", (code) => {
+      if (overflow) {
+        finish({ ok: false, overflow: true, error: `git output exceeded ${capBytes} bytes; narrow the scan with --max-commits` });
+        return;
+      }
+      finish(code === 0 ? { ok: true, stdout } : { ok: false, error: stderr.trim() || `git exited with ${code}` });
+    });
   });
 }
 
@@ -610,22 +638,22 @@ async function postMergeVerb(options) {
   if (ref.startsWith("-") || ref.includes("..") || ref.includes("@{") || /[\s\x00~^:?*\[\\]/.test(ref)) {
     return { code: 2, body: { ok: false, errors: [{ path: "ref", message: "invalid ref name" }] } };
   }
-  let files = values.files ? values.files.split(",").map((file) => file.trim()).filter(Boolean) : [];
+  let files = values.files ? values.files.split(",").filter((file) => file !== "") : [];
   const mergeSha = values["merge-sha"] ?? null;
   if (mergeSha !== null) {
     if (!/^[0-9a-f]{40}$/.test(mergeSha)) return { code: 2, body: { ok: false, errors: [{ path: "merge-sha", message: "expected a full 40-hex commit SHA" }] } };
-    const listed = await runGit(["-C", repoDir, "-c", "core.quotePath=false", "diff-tree", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", mergeSha, "--"]);
+    const listed = await runGit(["-C", repoDir, "diff-tree", "-z", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", mergeSha, "--"]);
     if (!listed.ok) return { code: 3, body: { ok: false, errors: [{ path: "merge-sha", message: listed.error }] } };
-    files = [...new Set(listed.stdout.split("\n").filter((line) => line !== ""))];
+    files = [...new Set(listed.stdout.split("\x00").filter((name) => name !== ""))];
   }
   if (files.length === 0) return { code: 3, body: { ok: false, errors: [{ path: "files", message: "no merged files to check" }] } };
   // No --since/--until: git prunes traversal on committer dates, so a backdated
   // descendant can hide an eligible commit. The window is applied in code instead,
   // and --diff-merges=first-parent makes a merge show what it introduced.
   const cap = maxCommits > 0 ? [`--max-count=${maxCommits}`] : [];
-  const log = await runGit(["-C", repoDir, "-c", "core.quotePath=false", "log", ...cap,
+  const log = await runGit(["-C", repoDir, "log", ...cap, "-z",
     "--diff-merges=first-parent", "--name-only", "--pretty=format:%x1e%H%x1f%cI%x1f%s", ref, "--"]);
-  if (!log.ok) return { code: 3, body: { ok: false, errors: [{ path: "git", message: log.error }] } };
+  if (!log.ok) return { code: 3, body: { ok: false, errors: [{ path: "git", message: log.error }], overflow: log.overflow === true } };
   const commits = parseGitLog(log.stdout);
   if (maxCommits > 0 && commits.length >= maxCommits) {
     return {
