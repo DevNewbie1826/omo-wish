@@ -323,12 +323,21 @@ export function parseArgs(argv = []) {
   return { ok: errors.length === 0, options, errors, usage: USAGE };
 }
 
+const VALUE_OPTIONS = new Set([
+  "--pr", "--repo", "--gh", "--until", "--interval", "--max-interval", "--max-failures", "--timeout", "--token-env",
+]);
+
 function tokenEnvFromArgv(argv) {
   let names = DEFAULTS.tokenEnv;
+  // The scan mirrors parseArgs: a known option consumes its value, so a value
+  // that happens to read `--token-env` is data, not another option.
   for (let index = 0; index < argv.length; index += 1) {
-    // The last occurrence wins, matching parseArgs, so a usage error redacts
-    // exactly the variables the run would have used.
-    if (argv[index] === "--token-env" && argv[index + 1] !== undefined) names = argv[index + 1];
+    const arg = argv[index];
+    if (!VALUE_OPTIONS.has(arg)) continue;
+    const value = argv[index + 1];
+    if (value === undefined) break;
+    if (arg === "--token-env") names = value;
+    index += 1;
   }
   return names;
 }

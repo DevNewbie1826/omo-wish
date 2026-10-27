@@ -31,8 +31,9 @@ every name is exactly the bytes Git stored).
 The window is applied in code, not with `git log --since`: git prunes traversal on committer
 dates, so a backdated descendant can hide an eligible commit. The scan uses
 `--diff-merges=first-parent` (a merge shows what it introduced against its first parent) and
-`-z`, so every path is the exact bytes Git stored — NUL-separated, never C-quoted, and a
-leading space or a double quote is part of the name. `--files` takes those exact names too;
+`-z` with a NUL-prefixed record header, so every path is the exact bytes Git stored — never
+C-quoted, and a leading space, a double quote, a newline, or even the `0x1e` byte is part of
+the name. NUL is the only separator, and Git forbids it in a path. `--files` takes those exact names too;
 nothing is trimmed. The reader keeps up to 64 MiB of Git output and reports an overflow as an
 error (exit 3, `overflow: true`) instead of silently cutting the history. `--max-commits`
 defaults to 0 (no cap); when it is set and the scan reaches it, the command reports

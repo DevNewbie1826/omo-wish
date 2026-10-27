@@ -371,8 +371,8 @@ describe("postMergeRefixes", () => {
     expect(postMergeRefixes({ mergedAt, files: ["a"], commits, days: 0 }).ok).toBe(false);
   });
 
-  test("parseGitLog reads sha, committer date, subject and files", () => {
-    const text = `\x1e${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fmerge a\na.txt\nb.txt\n\n\x1e2222222222222222222222222222222222222222\x1f2026-10-02T00:00:00+00:00\x1ffix(a)\na.txt\n`;
+  test("parseGitLog reads sha, committer date, subject and files from the -z stream", () => {
+    const text = `\x00${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fmerge a\na.txt\x00b.txt\x00\x00\x002222222222222222222222222222222222222222\x1f2026-10-02T00:00:00+00:00\x1ffix(a)\na.txt\x00`;
     const commitsRead = parseGitLog(text);
     expect(commitsRead).toEqual([
       { sha: OTHER, committed_at: "2026-10-01T00:00:00+00:00", subject: "merge a", files: ["a.txt", "b.txt"] },
@@ -380,6 +380,8 @@ describe("postMergeRefixes", () => {
     ]);
     expect(parseGitLog("")).toEqual([]);
     expect(parseGitLog("not a log")).toEqual([]);
+    const separator = parseGitLog(`\x00${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fsubject\n\x1enoise.txt\x00a.txt\x00`);
+    expect(separator[0].files).toEqual(["\x1enoise.txt", "a.txt"]);
   });
 });
 
@@ -705,5 +707,56 @@ describe("exact names and scan completeness", () => {
     expect(derived.errors).toEqual([]);
     const index = ROUNDS_HEADER.indexOf("round_kind");
     expect(derived.rounds[0][index]).toBe("first");
+  });
+});
+
+describe("framing and ordering edges", () => {
+  async function gitFixture() {
+    const dir = tempDir();
+    const git = (args, env = {}) => new Promise((resolvePromise) => {
+      const child = spawn("git", args, { cwd: dir, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"] });
+      let stdout = "";
+      let stderr = "";
+      child.stdout.on("data", (chunk) => { stdout += chunk; });
+      child.stderr.on("data", (chunk) => { stderr += chunk; });
+      child.on("close", (code) => resolvePromise({ code, stdout, stderr }));
+    });
+    expect((await git(["init", "-q"])).code).toBe(0);
+    await git(["config", "user.email", "test@example.invalid"]);
+    await git(["config", "user.name", "test"]);
+    const commit = async (message, date, files) => {
+      for (const [name, text] of Object.entries(files)) await Bun.write(join(dir, name), text);
+      await git(["add", "-A"]);
+      const done = await git(["commit", "-qm", message], { GIT_AUTHOR_DATE: date, GIT_COMMITTER_DATE: date });
+      expect(done.code).toBe(0);
+      return (await git(["rev-parse", "HEAD"])).stdout.trim();
+    };
+    return { dir, commit };
+  }
+
+  test("a path holding the record separator does not hide its neighbor", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-09-20T00:00:00Z", { "root.txt": "r\n" });
+    await repo.commit("base", "2026-09-30T00:00:00Z", { "a.txt": "a\n" });
+    await repo.commit("noise", "2026-10-03T00:00:00Z", { "\x1enoise.txt": "n\n", "a.txt": "a2\n" });
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).refixes[0].files).toEqual(["a.txt"]);
+  });
+
+  test("a gate reopened after a round with the same timestamp does not change it", () => {
+    const control = { type: "code", unit: "u1", program_id: null, plan: ".omo/plans/wish-x.md", session_id: "senpi:01a17e58" };
+    const at = "2026-10-27T16:03:00Z";
+    const events = [
+      { ...control, event: "intake", stage: "intake", tier: "S", facts: ["fixture"], started_at: "2026-10-27T15:59:00Z" },
+      { ...control, event: "pr_open", stage: "pr_open", pr: 7, head: HEAD, started_at: "2026-10-27T16:00:00Z" },
+      { ...control, event: "gate", stage: "gate", gate_id: "G1", gate_status: "open", started_at: "2026-10-27T16:01:00Z" },
+      { ...control, event: "gate", stage: "gate", gate_id: "G1", gate_status: "resolved", started_at: "2026-10-27T16:02:00Z" },
+      { ...control, event: "round", stage: "round", round: 1, verdict: "REVISE", head: HEAD, started_at: at },
+      { ...control, event: "gate", stage: "gate", gate_id: "G1", gate_status: "open", started_at: at },
+    ];
+    const derived = deriveRows({ events, options: {} });
+    expect(derived.errors).toEqual([]);
+    expect(derived.rounds[0][ROUNDS_HEADER.indexOf("round_kind")]).toBe("first");
   });
 });

@@ -316,14 +316,23 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
     const roundNumber = event.round;
     const roundFindings = findings.filter((row) => String(row.round) === String(roundNumber));
     const priorFindings = roundNumber > 1 ? findings.filter((row) => String(row.round) === String(roundNumber - 1)) : [];
-    // The latest gate event for an id before the round decides: an open after a
-    // resolve re-opens it.
+    // Timestamp first, then file order to break a tie: a gate written after the
+    // round cannot change it even when both carry the same second, while a
+    // reordered ledger still classifies by when the gate actually changed.
+    const roundTime = Date.parse(event.started_at);
+    const roundIndex = scoped.indexOf(event);
     const gatesBefore = new Map();
-    for (const other of scoped) {
-      if (other.event !== "gate" || Date.parse(other.started_at) > Date.parse(event.started_at)) continue;
+    scoped.forEach((other, index) => {
+      if (other.event !== "gate") return;
+      const gateTime = Date.parse(other.started_at);
+      const before = gateTime < roundTime || (gateTime === roundTime && index < roundIndex);
+      if (!before) return;
       const current = gatesBefore.get(other.gate_id);
-      if (!current || Date.parse(other.started_at) >= Date.parse(current.started_at)) gatesBefore.set(other.gate_id, other);
-    }
+      if (!current) { gatesBefore.set(other.gate_id, other); return; }
+      const currentTime = Date.parse(current.started_at);
+      const currentIndex = scoped.indexOf(current);
+      if (gateTime > currentTime || (gateTime === currentTime && index > currentIndex)) gatesBefore.set(other.gate_id, other);
+    });
     const gateBefore = [...gatesBefore.values()].some((gate) => gate.gate_status === "open");
     const cumulativeSwitches = switches.filter((item) => item.round <= roundNumber);
     const values = {
@@ -371,30 +380,24 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
 
 export function parseGitLog(text) {
   const commits = [];
-  for (const chunk of String(text ?? "").split("\x1e")) {
-    const raw = chunk.replace(/^\n+/, "");
-    if (raw === "") continue;
-    // `-z` output: header, then a newline, then NUL-separated file names. The
-    // newline form is still accepted so a caller without -z keeps working.
-    const parts = raw.split("\x00");
-    const fields = parts[0].split("\x1f");
-    if (fields.length < 3) continue;
-    const [sha, committedAt] = fields;
-    if (!/^[0-9a-f]{40}$/.test(sha) || !Number.isFinite(Date.parse(committedAt))) continue;
-    const rest = fields.slice(2).join("\x1f");
-    const newline = rest.indexOf("\n");
-    const subject = newline === -1 ? rest : rest.slice(0, newline);
-    const files = [];
-    if (newline !== -1) {
-      const tail = rest.slice(newline + 1);
-      if (parts.length > 1) {
-        if (tail !== "") files.push(tail);
-      } else {
-        files.push(...tail.split("\n").filter((file) => file !== ""));
-      }
+  let current = null;
+  // The scan runs with `-z` and a NUL-prefixed header, so every token is either a
+  // header or a path. NUL cannot occur in a path, while 0x1e/0x1f/newline can.
+  const headerPattern = /^([0-9a-f]{40})\x1f([^\x1f]*)\x1f([\s\S]*)$/;
+  for (const token of String(text ?? "").split("\x00")) {
+    if (token === "") continue;
+    const header = headerPattern.exec(token);
+    if (header) {
+      const [, sha, committedAt, tail] = header;
+      if (!Number.isFinite(Date.parse(committedAt))) { current = null; continue; }
+      const newline = tail.indexOf("\n");
+      const subject = newline === -1 ? tail : tail.slice(0, newline);
+      const inline = newline === -1 ? "" : tail.slice(newline + 1);
+      current = { sha, committed_at: committedAt, subject, files: inline === "" ? [] : [inline] };
+      commits.push(current);
+      continue;
     }
-    for (const file of parts.slice(1)) if (file !== "") files.push(file);
-    commits.push({ sha, committed_at: committedAt, subject, files });
+    if (current) current.files.push(token);
   }
   return commits;
 }
@@ -652,7 +655,7 @@ async function postMergeVerb(options) {
   // and --diff-merges=first-parent makes a merge show what it introduced.
   const cap = maxCommits > 0 ? [`--max-count=${maxCommits}`] : [];
   const log = await runGit(["-C", repoDir, "log", ...cap, "-z",
-    "--diff-merges=first-parent", "--name-only", "--pretty=format:%x1e%H%x1f%cI%x1f%s", ref, "--"]);
+    "--diff-merges=first-parent", "--name-only", "--pretty=format:%x00%H%x1f%cI%x1f%s", ref, "--"]);
   if (!log.ok) return { code: 3, body: { ok: false, errors: [{ path: "git", message: log.error }], overflow: log.overflow === true } };
   const commits = parseGitLog(log.stdout);
   if (maxCommits > 0 && commits.length >= maxCommits) {

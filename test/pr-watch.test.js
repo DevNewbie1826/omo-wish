@@ -354,6 +354,17 @@ describe("CLI", () => {
     expect(emptyResult.stdout).toContain("malformed JSON");
   });
 
+  test("a value that reads --token-env is data, not another option", async () => {
+    const secret = "consumed-option-secret-43871";
+    const result = await run([
+      "--pr", "7", "--repo", "o/r", "--token-env", "REAL_TOKEN",
+      "--gh", "--token-env", "DECOY_TOKEN", "--bogus", secret,
+    ], { REAL_TOKEN: secret, DECOY_TOKEN: "" });
+    expect(result.code).toBe(2);
+    expect(result.stderr).not.toContain(secret);
+    expect(result.stderr).toContain("[redacted]");
+  });
+
   test("a usage error never echoes a token and a poll line redacts an observation field", async () => {
     const canary = "canary-usage-4417";
     const usage = await run(["--pr", "1", "--repo", "owner/name", "--bogus", canary], { GH_TOKEN: canary });
