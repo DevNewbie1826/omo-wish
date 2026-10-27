@@ -1,0 +1,4 @@
+id	round	source	class	severity	file_line	blocking	repro_cmd	head_found	status	fixed_head
+F1	1	ultrabrain	C	HIGH	skills/wish/scripts/lib/schema.mjs:120	1	bun test test/schema.test.js --test-name-pattern "rejects a body whose verdict head does not cover HEAD"	0123456789abcdef0123456789abcdef01234567	open	-
+F2	0	sweep	T	MEDIUM	test/schema.test.js:88	1	bun test test/schema.test.js --test-name-pattern "kills the guard when the class set loses PANIC"	0123456789abcdef0123456789abcdef01234567	fixed	1111111111111111111111111111111111111111
+F3	0	code-review	DOC	LOW	skills/wish/references/ledger.md:12	0	no command	no head	note	-

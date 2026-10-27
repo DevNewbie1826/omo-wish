@@ -1,0 +1,3 @@
+id	area	surface	rule	current	ideal	before_artifact	severity	kind	class	type	unit	status	pr	fixed_head
+G1	settings	/settings	skill:visual-qa:B1	primary action is not unique	one prominent primary action	/evidence/w-u2-20261027-1600/receipts/before-G1-89abcde.png	HIGH	defect	B1	design	u2	planned	-	-
+G2	settings	/settings	skill:visual-qa:C2	ISO timestamps shown raw	relative local times	-	LOW	taste	C2	design	u2	open	-	-

@@ -1,0 +1,26 @@
+{
+  "kind": "before",
+  "type": "design",
+  "unit": "u2",
+  "program_id": "p1",
+  "lane": "capture",
+  "gap": "G1",
+  "head": "0123456789abcdef0123456789abcdef01234567",
+  "tree": "89abcdef0123456789abcdef0123456789abcdef",
+  "scope": ["app/routes/settings/**"],
+  "started_at": "2026-10-27T16:00:00Z",
+  "ended_at": "2026-10-27T16:02:00Z",
+  "status": "PASS",
+  "rows": [
+    {
+      "id": "settings-390-dark-before",
+      "command": "browser capture --route /settings --width 390 --theme dark",
+      "observable": "the primary action is the only prominent control in the pre-edit build",
+      "verdict": "PASS",
+      "artifact": "/evidence/w-u2-20261027-1600/receipts/before-G1-89abcde.png",
+      "class": "B1"
+    }
+  ],
+  "artifacts": ["/evidence/w-u2-20261027-1600/receipts/before-G1-89abcde.png"],
+  "cleanup": []
+}
