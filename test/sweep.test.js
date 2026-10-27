@@ -154,6 +154,8 @@ test("a seeded tree fails each seeded defect on its own probe and exits 1", () =
   for (const id of expected) expect(verdictOf(receipt, id)).toBe("FAIL");
   expect(receipt.rows.find((entry) => entry.id === "secrets/send-fail").note).toContain("canary reached");
   expect(receipt.rows.find((entry) => entry.id === "boundary/stdin:boundary-4096").note).toContain("slice bounds out of range");
+  expect(receipt.rows.find((entry) => entry.id === "boundary/echo-markup:declared").note).toContain("the round trip changed the input");
+  expect(receipt.rows.find((entry) => entry.id === "boundary/echo-markup:declared").note).not.toContain("<a href");
   expect(receipt.rows.find((entry) => entry.id.startsWith("mutation/cli.js")).note).toContain("SURVIVED");
   expect(receipt.rows.find((entry) => entry.id === "lifecycle/serve").note).toContain("still alive");
   expect(verdictOf(receipt, "boundary/stdin:declared")).toBe("PASS");

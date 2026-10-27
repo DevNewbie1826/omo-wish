@@ -24,7 +24,8 @@ invalid UTF-8, and a 4096-byte boundary with an invalid trailing byte. FAIL
 means a crash marker in the output, an exit code outside "expectExit", or an
 "expectStdout" round trip that did not return the input unchanged. "expectStdout"
 is compared on the declared input only; the generated variants keep the exit and
-crash assertions.`;
+crash assertions. A mismatched round trip reports the two lengths, never the
+output itself: a receipt must not become a place a credential can reach.`;
 
 function variants(baseStdin) {
   const prefix = Buffer.from(baseStdin ?? "");
@@ -57,7 +58,7 @@ export async function run(config, ctx) {
         : crash
           ? `crash marker ${crash.join(", ")}`
           : !roundTrip
-            ? `the round trip changed the input (got ${JSON.stringify(result.stdout.trim().slice(0, 120))})`
+            ? `the round trip changed the input (declared ${(testCase.stdin ?? "").length} chars, got ${result.stdout.trim().length}); re-run the declared command to see the difference`
             : `exit ${result.code}${allowed.includes(result.code) ? "" : ` not in [${allowed.join(",")}]`}`;
       checks.push(row({
         id: `boundary/${testCase.name}:${variant.id}`,

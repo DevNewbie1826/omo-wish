@@ -358,8 +358,10 @@ export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExte
 
 export function lineBody(ctx, entry) {
   if (entry.text !== undefined) return entry.text;
-  const file = join(ctx.root, entry.file);
-  return existsSync(file) ? (readFileSync(file, "utf8").split("\n")[entry.line - 1] ?? "") : "";
+  const file = resolve(ctx.root, entry.file);
+  return file.startsWith(`${ctx.root}${sep}`) && existsSync(file)
+    ? (readFileSync(file, "utf8").split("\n")[entry.line - 1] ?? "")
+    : "";
 }
 
 export function isMain(metaUrl) {
