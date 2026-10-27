@@ -26,7 +26,8 @@ const USAGE = `usage: bun sweep.mjs [--config <path>] [--root <dir>] [--probe <n
   --receipt <path>    write the M0 lane receipt to a file, or into a directory as
                       verify_lane-<lane>-<head7>.json
   --unit <id>         the unit the receipt belongs to (required with --receipt)
-  --head <sha>        frozen head; derived from git when omitted
+  --head <sha>        frozen head; derived from git when omitted (a research-primary
+                      run passes the 64-hex artifact sha256 instead)
   --tree <sha>        frozen tree; derived from git when omitted
   --scope <glob>      a path or glob the lane covered (repeatable; default **)
   --type <type>       code | design | research | audit | mixed (default code)
@@ -172,13 +173,16 @@ async function main(argv) {
     return EXIT_CODES.USAGE;
   }
 
+  // M0 §2: a mixed run takes its primary type's identity form, so a
+  // research-primary mixed run has an artifact sha256 head and no git tree.
+  const identity = opts.type === "mixed" ? opts.primary : opts.type;
   const facts = gitFacts(root);
-  if (opts.head && facts.head && opts.head !== facts.head) {
+  if (identity !== "research" && opts.head && facts.head && opts.head !== facts.head) {
     process.stderr.write(`sweep: --head ${opts.head.slice(0, 7)} is not this checkout's HEAD ${facts.head.slice(0, 7)}; the commands run on HEAD, so the receipt would bind another state\n`);
     return EXIT_CODES.STATE_MISMATCH;
   }
   const head = opts.head ?? facts.head;
-  const tree = opts.tree ?? facts.tree;
+  const tree = identity === "research" ? null : (opts.tree ?? facts.tree);
   if (opts.receipt && !head) {
     process.stderr.write("sweep: cannot derive HEAD; pass --head <full sha>\n");
     return EXIT_CODES.STATE_MISMATCH;

@@ -545,6 +545,19 @@ test("the docs help command is supervised by the same bounded runner", () => {
   expect(run.exit).toBe(1);
 });
 
+test("a mixed run takes its primary type's identity form", () => {
+  const dir = stage("seeded");
+  const artifact = "a".repeat(64);
+  writeConfig(dir, { type: "mixed", primary: "research", secondary: "code", probes: { secrets: { canary: CANARY, env: { TEST_API_TOKEN: CANARY }, commands: [{ name: "send-fail", cmd: "bun cli.js send --fail" }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", artifact, "--type", "mixed", "--primary", "research", "--secondary", "code"]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  expect(receipt.head).toBe(artifact);
+  expect(receipt.tree).toBeNull();
+  expect(receipt.rows.find((entry) => entry.id === "secrets/send-fail").verdict).toBe("FAIL");
+  expect(validateReceipt(receipt)).toEqual({ ok: true, errors: [] });
+  expect(run.exit).toBe(1);
+});
+
 test("the dictionary's code table is exactly M0's code class set", () => {
   const doc = readFileSync(join(repo, "skills/wish/references/defect-classes.md"), "utf8");
   const section = doc.split("## 4. Code classes")[1].split("## 5.")[0];

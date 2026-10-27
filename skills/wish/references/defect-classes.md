@@ -200,7 +200,7 @@ A pattern is a triage prior, never a reason to skip a reproduction.
 | `--lane <kebab>` | the receipt's lane; default `sweep`, or the probe's own name when exactly one `--probe` is given (so `--probe draft-guard` writes `verify_lane-draft-guard-<head7>.json`, and `--probe mutation --lane tests` files that evidence under the `tests` lane M0 requires for `code`) |
 | `--type`, `--primary`, `--secondary` | the run type; `mixed` requires both, and they are written into the receipt |
 | `--scope` | repeatable; defaults to `**` |
-| `--head`, `--tree` | derived from `git rev-parse` of `--root` when omitted; a `--head` that disagrees with the checkout's HEAD is refused (the commands run on HEAD, so the receipt would bind another state) |
+| `--head`, `--tree` | derived from `git rev-parse` of `--root` when omitted; a `--head` that disagrees with the checkout's HEAD is refused (the commands run on HEAD, so the receipt would bind another state). A `mixed` run takes its **primary** type's identity form (M0 §2): with `primary: research` the head is the 64-hex artifact sha256 and `tree` is `null`, so neither is derived from git |
 | config `budgetMs` | the whole-run cap, default 600000 and clamped to it (design §2.5's ten minutes). When it runs out, the remaining probes are `SKIP` with the reason and one `sweep/budget` `WARN` row records it, so an unrun probe can never read as covered |
 | config `timeoutMs`, `parallel` | per command (clamped to 300000) and pool width (clamped to 8) |
 
