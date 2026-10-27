@@ -44,5 +44,5 @@ second; the reducer always sees files, never a transcript.
 ## Forbidden
 
 Inventing a rule the corpus does not state; keeping a platform's local taste as a universal rule;
-letting a node write `lens.md` (`../SKILL.md`, evidence rules); citing a
+node writes: `../SKILL.md`, evidence rules; citing a
 rule id that is not in the file.

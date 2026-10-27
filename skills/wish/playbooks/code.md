@@ -2,7 +2,7 @@
 
 Type `code`: a patch, a feature, or a refactor. Read `../SKILL.md` for the stage contract and
 `../references/ledger.md` for every machine shape. **Copy the steps below into the `todo` list, one
-task each, verbatim.** A skipped step keeps its `skip: <reason>` line (`../SKILL.md`).
+task each, verbatim.** Skipped steps: `../SKILL.md`.
 `status` is the gate: run `wish.mjs status` before dispatching the next stage and dispatch
 only the stage it names.
 
@@ -50,4 +50,4 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 
 ## What `status` enforces, and what it never does
 
-`status` requires the four code lanes (plus `adversarial`), a valid verdict covering the frozen head, and a `cleanup` event with receipts. Receipt status semantics are `../references/ledger.md` §4.1. `status` never decides a quality question — it says which stage may run and which receipt blocks it.
+What `status` requires is `../SKILL.md`'s (four code lanes plus `adversarial`, a covering verdict, a cleanup receipt). Receipt status semantics are `../references/ledger.md` §4.1. `status` never decides a quality question — it says which stage may run and which receipt blocks it.

@@ -3,8 +3,7 @@
 Type `design`: web UI, TUI, slides, documents, images — anything a person looks at. wish does not
 re-implement the visual work: `frontend` builds inside the BUILD nodes and `visual-qa` verifies inside
 the verify wave, both with their own prompts. wish adds the contract, one head, the register, the
-before/after pairs and the verdict. Read `../SKILL.md` first; copy these steps into `todo` verbatim
-and keep a `skip: <reason>` line rather than deleting one.
+before/after pairs and the verdict. Read `../SKILL.md` first; copy these steps into `todo` verbatim.
 
 ```
 ER=<evidence root>   export WISH_EVIDENCE_ROOT=$ER
