@@ -6,12 +6,12 @@ which parts `scripts/check-plan.mjs` checks mechanically. Three references split
 grammar, exit codes, class sets), and this file fixes the plan's own grammar and the linter's rule list. Where
 this file and `ledger.md` could disagree, `ledger.md` wins and this file has a bug.
 
-Sources: D = `/tmp/oru-wish-v2/design.md` §2.3, §4 (the M2 row); A =
-`/tmp/oru-wish-v2/design-addendum-general.md` §B4 (device rows), §B5 (unit contract), §C.1 (per-type
-contract rows), §C.6 (switch rows), §F (the M2 delta); U = omo `ulw-plan` `SKILL.md` (the checkbox grammar
-and the `## Final verification wave` section); v1 = `skills/wish/references/plan.md` and `SKILL.md:32-44` at
-`main` (`IS`/`COMPANION`/`INVARIANT`/`LIMIT` rows, the risk list, the pinned rules); o3 = branch `exp/o3`
-`skills/wish/scripts/check-plan.mjs` (the lint experiment this file ports and narrows).
+Sources: D = the wish v2 design (§2.3, §4 row M2); A = its general-flow addendum (§B4 device rows, §B5 unit
+contract, §C.1 per-type contract rows, §C.6 switch rows, §F M2 delta); U = omo's `ulw-plan` skill (the checkbox
+grammar and the `## Final verification wave` section); v1 = `references/plan.md` and `SKILL.md:32-44` on `main`
+(the `IS`/`COMPANION`/`INVARIANT`/`LIMIT` rows, the risk list, the pinned rules); o3 = branch `exp/o3`,
+`scripts/check-plan.mjs` (the lint arm this file ports and narrows). The two design documents are build-time
+sources: they are named, never linked, because they do not ship with the skill.
 
 ## 1. The document
 

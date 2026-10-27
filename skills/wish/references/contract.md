@@ -5,9 +5,10 @@ This file says what a wish v2 plan promises and what a reviewer may block on. It
 file fixes the boundary every review judges against. When this file and `ledger.md` could disagree,
 `ledger.md` wins.
 
-Sources: D = `/tmp/oru-wish-v2/design.md` §2.5–§2.6, §4; A = `/tmp/oru-wish-v2/design-addendum-general.md`
-§B4 (device rows), §B5 (unit contract), §C.6 (the cap is a switch); v1 = `skills/wish/SKILL.md:32-56` and
-`references/plan.md` at `main` (the contract rows, the companion guards, the reviewer rule).
+Sources: D = the wish v2 design (§2.5-§2.6, §4); A = its general-flow addendum (§B4 device rows, §B5 unit
+contract, §C.6 the cap is a switch); v1 = `SKILL.md:32-56` and `references/plan.md` on `main` (the contract rows,
+the companion guards, the reviewer rule). The design documents are build-time sources: named, never linked,
+because they do not ship with the skill.
 
 ## 1. What the contract is
 
