@@ -1304,9 +1304,13 @@ REPORT: the gate table, the repair decision, and the residual defects.
 Deliver <the requested outcome> in <worktree> on branch <branch> as one unit. Success is <IS row 1, with its
 scenario and expected evidence>, <IS row 2, ...>, and <COMPANION rows by name>; the contract keeps
 <INVARIANT rows> and accepts <LIMIT rows>. Tier <S|M|L>, type <type> (for a mixed unit also its primary type).
-Evidence lives under <ER>. The end state is <the primary type's end: for code and design, a merged PR whose
-post-merge verification passes at <tree>; for audit, every defect row in the register fixed, accepted-limit or
-out-of-scope with its report delivered; for research, every delivery gate passed with the artifact delivered
+Evidence lives under <ER>. A unit ends when its own contract rows hold at <head> and the final review returns
+APPROVED, followed by MERGE for code and design or DELIVER for research and audit and the CLOSE checkpoint;
+rows assigned to another unit are never part of this unit's end. The end state is <the primary type's end: for
+code and design, a merged PR whose post-merge verification passes at <tree>; for audit, every rule x surface
+judged PASS, FAIL or N/A with no unjudged cell, the spot-reproduction rate recorded, and the schema-valid
+register and report delivered at the frozen register hash, with the defect rows the audit opened left open and
+each naming the unit that will close it; for research, every delivery gate passed with the artifact delivered
 at <artifact_sha256>>. A mixed unit ends on its primary type's end; its secondary type adds lanes, never a
 second end condition.
 ```
@@ -1315,6 +1319,12 @@ second end condition.
 ONE paragraph with no newlines. In program mode each unit is its own paragraph inside the same brief, one
 goal per unit; its criteria are that unit's gap rows (`scenario` = the before device, `expectedEvidence` =
 the after artifact).
+
+The whole request is not the unit. An audit-only request ends at its single audit unit's `DELIVER` + `CLOSE`
+with the defect rows it opened handed to a later repair program. The request's own completion rule — every
+`defect` row `fixed`, `accepted-limit` with a plan `LIMIT` row, or `out-of-scope` — is evaluated at program
+close and lives in the program driver objective, never in a unit's goal: writing it into a unit makes an audit
+unable to finish while a row waits for its repair unit.
 
 After `createGoals`, register the returned handoff with `create_goal`; the driver objective is the one-line
 program or unit statement, never a list. When the devices change after the plan, steer the criterion
