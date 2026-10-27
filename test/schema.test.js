@@ -199,6 +199,42 @@ test("the switch cycle never caps the round count", () => {
   expect(validateLedgerSequence(early).errors.some((error) => error.message.includes("repeats"))).toBe(true);
 });
 
+test("a research freeze carries the artifact head and no git tree", () => {
+  const freeze = (overrides = {}) => event({ event: "freeze", stage: "freeze", type: "research", head: SHA256, tree: null, pr: null, ...overrides });
+  expect(validateLedgerEvent(freeze()).ok).toBe(true);
+  expect(validateLedgerEvent(freeze({ type: "code", head: HEAD, tree: TREE })).ok).toBe(true);
+  expect(validateLedgerEvent(freeze({ type: "code", head: HEAD, tree: null })).ok).toBe(false);
+  expect(validateLedgerEvent(freeze({ tree: TREE })).ok).toBe(false);
+});
+
+test("a mixed receipt takes its primary type's identity", () => {
+  const research = { ...receipt(), type: "mixed", primary: "research", secondary: "code", head: SHA256, tree: null };
+  expect(validateReceipt(research).ok).toBe(true);
+  expect(validateReceipt({ ...research, head: HEAD }).ok).toBe(false);
+  expect(validateReceipt({ ...receipt(), type: "mixed", primary: "code", secondary: "design", head: SHA256 }).ok).toBe(false);
+});
+
+test("the required switch must land before review continues and split is program-only", () => {
+  const base = event();
+  delete base.tier;
+  delete base.facts;
+  const round = (n, verdict) => ({ ...base, event: "round", stage: "round", round: n, verdict, head: HEAD });
+  const swap = (n, kind, programId = null) => ({ ...base, event: "switch", stage: "switch", round: n, kind, premise: "p", new_approach: "n", program_id: programId });
+  const correct = [round(1, "REVISE"), round(2, "REVISE"), round(3, "REVISE"), swap(3, "premise"), round(4, "APPROVED")];
+  expect(validateLedgerSequence(correct).ok).toBe(true);
+  const postHoc = [round(1, "REVISE"), round(2, "REVISE"), round(3, "REVISE"), round(4, "APPROVED"), swap(3, "premise")];
+  expect(validateLedgerSequence(postHoc).ok).toBe(false);
+  const singleSplit = [round(1, "REVISE"), round(2, "REVISE"), round(3, "REVISE"), swap(3, "split"), round(4, "APPROVED")];
+  expect(validateLedgerSequence(singleSplit).errors.some((error) => error.message.includes("program-mode"))).toBe(true);
+  const programSplit = [round(1, "REVISE"), round(2, "REVISE"), round(3, "REVISE"), swap(3, "split", "p1"), round(4, "APPROVED")];
+  expect(validateLedgerSequence(programSplit).ok).toBe(true);
+});
+
+test("a malformed entry returns an error instead of throwing", () => {
+  expect(() => validateLedgerSequence([null])).not.toThrow();
+  expect(validateLedgerSequence([null]).ok).toBe(false);
+});
+
 test("round numbers are consecutive per unit", () => {
   const skipped = ledgerEvents.map((entry) => entry.event === "round" && entry.round === 2 ? { ...entry, round: 3 } : entry);
   expect(codes(validateLedgerSequence(skipped)).some((path) => path.startsWith("unit u1"))).toBe(true);

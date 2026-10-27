@@ -72,7 +72,8 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 
 A receipt is valid while its `tree` (or, for research, its `artifact_sha256` in `head`) matches; a verdict
 is valid while its `patch_id` matches. A seven-character SHA is never accepted as a `head`
-(`headErrors`). `research` never carries a git tree; its receipts set `tree: null`.
+(`headErrors`). `research` never carries a git tree; its receipts set `tree: null`. A `mixed` run takes its
+`primary` type's identity form (A §C.2).
 
 ## 3. Work types and the required-receipt table
 
@@ -311,7 +312,7 @@ The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A
 | `triage` | — | D §2.2 |
 | `fix` | `round` ≥ 0 (`0` = the pre-PR TRIAGE+FIX of D §2.2 step 7), `head` | D §2.2 |
 | `reuse` | `reuse: {receipt, verdict: VALID\|STALE, reason}`, `head` | D §2.7 |
-| `freeze` | `head`, `tree`, `pr` (integer or `null` before the PR) | D §2.6 |
+| `freeze` | `head`, `tree` (the git tree; `null` for research, whose `head` is the artifact sha256), `pr` (integer or `null` before the PR) | D §2.6 |
 | `pr_open` | `pr` | D §2.2 |
 | `gate` | `gate_id`, `gate_status` | D §2.6, P |
 | `round` | `round` ≥ 1, `verdict` ∈ `APPROVED`/`REVISE` | C43, D §2.2 |
@@ -334,16 +335,16 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 
 1. `round` events for a unit are `1, 2, 3, …` with no gap.
 2. No further `round` follows an `APPROVED` round for that unit.
-3. A third-or-later `REVISE` round requires a `switch` event for the same round — otherwise the review
-   stopped without approval, which is not an outcome.
+3. A third-or-later `REVISE` round requires a `switch` event for the same round **before the next round** —
+   otherwise the review continued without a change of approach, which is not an outcome.
 4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.
 5. No event carries `[~]` or a terminal marker.
 
 `switch.kind` values (A §C.6.2): `premise` (the architect premise review has not run), `family` (the fix
 node moves to a model family different from the one that produced the failed fix), `strategy` (a
-`SWITCH: <failed premise> -> <new approach>` plan row; redesign the component, not the patch), `split`
-(program mode only: the failing component becomes its own unit and PR; the gap row stays open), and
-`rediscover` (re-run DISCOVER with the lens and sweep variants).
+`SWITCH: <failed premise> -> <new approach>` plan row; redesign the component, not the patch), `split` (program mode only: the failing component becomes its own unit and PR; the gap row stays open; a
+single-unit run has four applicable kinds), and `rediscover` (re-run DISCOVER with the lens and sweep
+variants).
 
 The owner is asked only when the decision is theirs: an irreversible, destructive or spend decision, or a
 contract-level LIMIT the product owner must accept. "Should we stop reviewing" is not a question. While a
