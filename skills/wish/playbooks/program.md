@@ -14,9 +14,8 @@ PROGRAM=p-<slug>     BASE=wish-v2
 
 - A **unit** is one PR: `wish init --run-id w-<slug>-u<N>-<yyyymmdd-hhmm> --program $PROGRAM --unit u<N> --type <type> --tier <S|M|L> --plan
   .omo/plans/wish-<slug>-u<N>.md --worktree <abs> --branch <branch> --fact "<each fact>"` (init creates
-  the plan when it does not exist; never pre-create an empty file; the run id is required and unique per
-  unit). Its contract
-  is its own `IS` rows only — never another unit's gap (`../references/contract.md` §2).
+  the plan when it does not exist; the run id is required and unique per
+  unit). The unit-contract rule is in `../SKILL.md` and `../references/contract.md` §2.
 - A **mixed** unit is the one unit whose type is not concrete: it passes `--type mixed --primary <type>
   --secondary <type>` to `wish init` and the same pair to every `sweep.mjs` call. A concrete `--type`
   would quietly drop the secondary's lanes, so the union `status` requires would never be satisfied.
@@ -44,7 +43,7 @@ PROGRAM=p-<slug>     BASE=wish-v2
 
 ## Rules that keep a program honest
 
-- A unit's `IS` rows are its contract (`../SKILL.md`); a reviewer of unit A cannot demand unit B's delivery, and a
+- A reviewer of unit A cannot demand unit B's delivery, and a
   register row that moved to another unit is not "missing" from this PR.
 - Completeness lives in the register, quality lives in each unit's review. Do not trade one for the
   other.

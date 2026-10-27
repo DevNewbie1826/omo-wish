@@ -2,7 +2,7 @@
 
 Type `code`: a patch, a feature, or a refactor. Read `../SKILL.md` for the stage contract and
 `../references/ledger.md` for every machine shape. **Copy the steps below into the `todo` list, one
-task each, verbatim.** A skipped step keeps its `skip: <reason>` line (`../SKILL.md`).
+task each, verbatim.** A skipped step keeps its `skip: <reason>` line (`../SKILL.md`) rather than being
 deleted. `status` is the gate: run `wish.mjs status` before dispatching the next stage and dispatch
 only the stage it names.
 
@@ -14,8 +14,8 @@ PLAN=.omo/plans/wish-<slug>.md                      WT=<absolute worktree>   BR=
 wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 ```
 
-`wish init` creates `$PLAN` when it does not exist, so never pre-create it (`../SKILL.md` stage 0);
-empty file (an unparsable plan is a state mismatch) — and the body is appended at this playbook's step 7.
+`wish init` creates `$PLAN` when it does not exist (`../SKILL.md` stage 0);
+the body is appended at this playbook's step 7.
 
 ## The steps
 
@@ -33,7 +33,7 @@ empty file (an unparsable plan is a state mismatch) — and the body is appended
 - [ ] 12. VERIFY-WAVE: one `task` batch at the code-ready head H1 — `tests` (`quick`, suite + one mutation per guard row via `sweep.mjs --root $WT --config $ER/sweep.json --probe mutation --lane tests --unit <u> --type code --receipt $ER/receipts`), `qa` (`omo-native-qa-executor` on the real surface), `sweep` (`quick`, the same runner with its other probes), `code-review` (`omo-native-code-reviewer` with `remove-ai-slops` and `programming`, in a review worktree), and `adversarial` (`deep-high`, a family other than the author's) when `status` lists that lane; every lane writes `receipts/verify_lane-<lane>-<H1:7>.json` and one `verify_lane` event each [omo: one `task` batch of `quick` nodes, `omo-native-qa-executor` and `omo-native-code-reviewer`] [receipt: one `verify_lane-<lane>-<head7>.json` per required lane — `tests`, `qa`, `sweep`, `code-review`, plus `adversarial`]
 - [ ] 13. TRIAGE: file every lane finding with `wish findings add --tsv -`, classify it as fix, dismiss (note) or owner (gate), and append `triage`; a `FAIL` receipt becomes blocking only after you reproduce it [omo: session, bugbot trichotomy] [receipt: `triage` event + `findings.tsv` rows]
 - [ ] 14. FIX: `skip: no blocking finding`; otherwise run `mass-ulw` run `wish-<run>-fix-r<n>` with the `fix-node` prompt (one component per node), then judge every receipt — `bun $WT/skills/wish/scripts/reuse-check.mjs <receipt> --head <H2> [--referrers <lsp refs>.json] [--base-impact <old>..<new>]` — re-run only the lanes it calls `STALE`, and append `fix` and one `reuse` per receipt [omo: `mass-ulw` fix run + `reuse-check.mjs`] [receipt: `fix` and `reuse` events]
-- [ ] 15. FREEZE: `wish freeze --head <H2>` then `wish freeze --check` (nothing may land after it), then `wish pr-body --out $ER/pr-body.md`; the worktree must be clean first — a sweep config or a scratch file lives under `<ER>`, never in the repository, or the freeze refuses to describe a commit [omo: session + `wish.mjs`] [receipt: `freeze` event with `head`, `tree`, `pr`]
+- [ ] 15. FREEZE: `wish freeze --head <H2>` then `wish freeze --check` (nothing may land after it), then `wish pr-body --out $ER/pr-body.md` (`../SKILL.md` stages 5 and 14: a scratch file lives under `<ER>`) [omo: session + `wish.mjs`] [receipt: `freeze` event with `head`, `tree`, `pr`]
 - [ ] 16. PR: `gh pr create --base $BASE --head $BR --body-file $ER/pr-body.md`, append `pr_open` with `{"event":"pr_open","pr":<n>,"head":"<H2>","tree":"<T2>"}`, then arm the watch — `tool.monitor` running `bun $WT/skills/wish/scripts/pr-watch.mjs --pr <n> --repo <owner/name> --until ready` (never poll it in a foreground loop) [omo: `gh` + `tool.monitor` on `pr-watch.mjs`] [receipt: `pr_open` event]
 - [ ] 17. ROUND: `wish gate --round <n> --head <H2>` re-runs last round's blocking reproductions and stops the dispatch if any prints `not fixed`; then one `category: ultrabrain` review — `ultrabrain-r1` for round 1, `ultrabrain-r2` for every later round — and `bun $WT/skills/wish/scripts/check-verdict.mjs --body <report> --head <H2> --require-approved`; append `round` and `verdict` [omo: `wish.mjs gate` + `category: ultrabrain`] [receipt: `receipts/final-r<n>-<head7>.md` + `round` and `verdict` events]
 - [ ] 18. REVISE: on `VERDICT: REVISE`, go to `playbooks/revise.md` — never end the run and never ask whether to continue [omo: as `revise.md` says] [receipt: the `switch` event the round requires]
