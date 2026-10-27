@@ -1512,6 +1512,45 @@ describe("final review round 1", () => {
 
 // Round 2 of the final review: the delta's own regressions, guarded here.
 describe("final review round 2", () => {
+  test("a second unit in the same root cannot take the first unit's labels", () => {
+    // The live break: with a research-primary sibling in the root, the first unit's
+    // findings table was parsed with the sibling's class union and refused its own rows.
+    const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    const plan2 = join(state.box.dir, "plan2.md");
+    writePlan(plan2, { runId: "w-run-20261027-1900", tier: "M", type: "mixed", unit: "u2", worktree: state.repo.dir });
+    expect(cli([
+      "init", "--run-id", "w-run-20261027-1900", "--type", "mixed", "--tier", "M", "--plan", plan2,
+      "--root", state.root, "--unit", "u2", "--worktree", state.repo.dir,
+      "--primary", "research", "--secondary", "design", "--fact", "one fact from the tier triage",
+    ]).code).toBe(0);
+    // A code class belongs to u1's union and must still be accepted after u2 exists.
+    const file = join(state.box.dir, "findings-u1.tsv");
+    writeFileSync(file, [FINDINGS_COLUMNS.join("\t"),
+      ["F-SEC", "1", "ultrabrain", "SEC", "HIGH", "src/a.mjs:4", "1", "exit 3", state.repo.head, "open", "-"].join("\t")].join("\n"));
+    // --plan names the acting unit: a shared root holds more than one plan.
+    const added = cli(["findings", "add", "--tsv", file, "--root", state.root, "--plan", state.plan]);
+    if (added.code !== 0) throw new Error("findings add: " + added.err);
+    expect(added.code).toBe(0);
+    const view = cli(["status", "--json", "--root", state.root, "--plan", state.plan]);
+    if (view.code !== 0) throw new Error("status: " + view.err);
+    expect(JSON.parse(view.out).blocking.some((entry) => entry.startsWith("findings:"))).toBe(true);
+  });
+
+  test("a verb that cannot tell two units apart asks for --plan", () => {
+    const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    const plan2 = join(state.box.dir, "plan2.md");
+    writePlan(plan2, { runId: "w-run-20261027-1900", tier: "M", type: "mixed", unit: "u2", worktree: state.repo.dir });
+    expect(cli([
+      "init", "--run-id", "w-run-20261027-1900", "--type", "mixed", "--tier", "M", "--plan", plan2,
+      "--root", state.root, "--unit", "u2", "--worktree", state.repo.dir,
+      "--primary", "research", "--secondary", "design", "--fact", "one fact from the tier triage",
+    ]).code).toBe(0);
+    const ambiguous = cli(["status", "--json", "--root", state.root]);
+    expect(ambiguous.code).toBe(2);
+    expect(ambiguous.err).toContain("--plan");
+    expect(cli(["status", "--json", "--root", state.root, "--plan", state.plan]).code).toBe(0);
+  });
+
   test("a second unit in the same root reads its own labels", () => {
     // A shared root can hold units whose labels differ, so a lookup must not borrow a
     // sibling's: the research-primary unit's identity follows its own intake event.

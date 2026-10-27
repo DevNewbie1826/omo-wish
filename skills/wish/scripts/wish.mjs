@@ -252,8 +252,10 @@ function headArg(value, identity) {
 // A mixed run's findings table is parsed with the union of its two class sets, so
 // every reader of the table needs the labels that travel on the events.
 function findingOptions(plan, events) {
-  const labels = [...events].reverse().find((event) => typeof event.primary === "string"
-    && typeof event.secondary === "string");
+  // A shared root can hold several units with different labels: read this unit's own.
+  const unit = plan.wish.unit ?? "u1";
+  const labels = [...events].reverse().find((event) => event.unit === unit
+    && typeof event.primary === "string" && typeof event.secondary === "string");
   return { type: plan.wish.type, primary: labels?.primary, secondary: labels?.secondary };
 }
 
@@ -459,8 +461,7 @@ function verbLedger(parsed, root) {
 function verbFindings(parsed, root) {
   const command = expectPositional(parsed, ["add", "set", "list"], "findings");
   const { plan, events } = planFor(root, parsed);
-  const labels = [...events].reverse().find((event) => typeof event.primary === "string");
-  const options = { type: plan.wish.type, primary: labels?.primary, secondary: labels?.secondary };
+  const options = findingOptions(plan, events);
   if (command === "add") {
     const source = parsed.get("--tsv");
     if (!source) throw usage("findings add needs --tsv <file|->");

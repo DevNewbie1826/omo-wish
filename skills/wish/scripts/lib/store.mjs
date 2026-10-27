@@ -333,10 +333,17 @@ export function readLedger(root) {
 // invented to remember it.
 export function resolvePlanPath(events, override) {
   if (override) return resolvePath(override);
-  for (let index = events.length - 1; index >= 0; index -= 1) {
-    const candidate = events[index]?.plan;
-    if (typeof candidate === "string" && candidate !== "") return resolvePath(candidate);
+  // A shared root can hold several units, each with its own plan: guessing the most
+  // recent one would act on another unit's state, so the ambiguity is an error.
+  const named = new Set();
+  for (const event of events) {
+    const candidate = event?.plan;
+    if (typeof candidate === "string" && candidate !== "") named.add(resolvePath(candidate));
   }
+  if (named.size > 1) {
+    throw usage(`the evidence root names ${named.size} plans: pass --plan <path> to name the unit`);
+  }
+  if (named.size === 1) return [...named][0];
   throw stateMismatch("no plan path: pass --plan or append an event that names one");
 }
 
@@ -1287,8 +1294,9 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
   const receipts = listReceipts(root);
   // A mixed run's class set is the union of its two types (ledger.md §5.1), and the
   // labels travel on the events, so the table cannot be parsed without them.
-  const labels = [...events].reverse().find((event) => typeof event.primary === "string"
-    && typeof event.secondary === "string");
+  const unit = plan.wish.unit ?? "u1";
+  const labels = [...events].reverse().find((event) => event.unit === unit
+    && typeof event.primary === "string" && typeof event.secondary === "string");
   const findingOptions = { type: plan.wish.type, primary: labels?.primary, secondary: labels?.secondary };
   const findings = readFindings(root, findingOptions) ?? [];
   const gaps = readGaps(root);
