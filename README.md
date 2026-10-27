@@ -137,12 +137,12 @@ companion은 이번 변경과 같은 결이고, 요청자가 당연히 같이 �
 
 ### 9단계 최종 리뷰 라우팅
 
-9단계 리뷰어는 PR이 바꾼 경로로 고릅니다. 분류는 `git diff --name-status -M <base>...<head>`의 모든 경로에 대해 대소문자를 구분해 전체 경로로 하고, rename은 양쪽 경로를, 삭제는 삭제된 경로를 봅니다. 위쪽 행이 이깁니다.
+9단계 리뷰어는 PR이 바꾼 경로로 고릅니다. 분류는 `git diff --name-status -M <base>...<head>`의 모든 경로에 대해 대소문자를 구분해 저장소 루트 기준 전체 경로로 하고, rename은 양쪽 경로를, 삭제는 삭제된 경로를 봅니다. 위쪽 행이 이깁니다.
 
-- production(제품 오버라이드): 계획이 선언한 제품 콘텐츠 루트 아래. 제품이 런타임에 읽는 스킬·프롬프트·템플릿·로케일 파일입니다.
-- test: `test`, `tests`, `__tests__`, `__mocks__`, `__snapshots__`, `__fixtures__`, `spec`, `specs`, `testdata`, `e2e` 디렉터리 아래, 또는 `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `*.snap`, `test_*.py`, `*_test.py`, `*Test.java`, `*Tests.java`, `*Test.kt`, `*Tests.kt`, `*Tests.cs`, `*_test.go` 파일명.
-- CI: `.github/workflows/`, `.github/actions/`, `.circleci/`, `.buildkite/`, `.gitlab/`, `.azure-pipelines/`, `ci/`, `.ci/` 아래, 또는 `Jenkinsfile`, `Jenkinsfile.*`, `.gitlab-ci.yml`, `.travis.yml`, `azure-pipelines.yml`, `appveyor.yml`, `.drone.yml`, `bitbucket-pipelines.yml`, `.github/dependabot.yml`, `renovate.json`, `.renovaterc`, `.renovaterc.json`.
-- docs(허용 목록): `docs/`, `doc/`, `documentation/` 아래, 또는 루트의 `README*`, `CHANGELOG*`, `CHANGES*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`, `AUTHORS*`, `NOTICE*`, `LICENSE*`, `COPYING*`. 그 밖의 문서 확장자 파일은 production입니다.
+- production(제품 오버라이드): 계획이 선언한 제품 콘텐츠 루트 아래. 제품이 런타임에 읽는 스킬·프롬프트·템플릿·로케일 파일입니다. `.`이나 `/`는 저장소 전체를 뜻합니다.
+- test: `test`, `tests`, `__tests__`, `__mocks__`, `__snapshots__`, `__fixtures__`, `spec`, `specs`, `testdata`, `e2e` 디렉터리 아래, 또는 `*.test.*`, `*.snap`, `test_*.py` 파일명, 또는 최종 확장자가 코드 확장자(`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.py`, `.rb`, `.go`, `.java`, `.kt`, `.kts`, `.cs`, `.scala`, `.php`, `.swift`, `.vue`, `.svelte`)인 `*.spec.*`, `*_spec.*`, `*_test.*`, 또는 `*Test.java`, `*Tests.java`, `*Test.kt`, `*Tests.kt`, `*Test.kts`, `*Tests.kts`, `*Test.scala`, `*Tests.scala`, `*Test.cs`, `*Tests.cs` 파일명.
+- CI: `.github/workflows/`, `.github/actions/`, `.circleci/`, `.buildkite/`, `.gitlab/`, `.azure-pipelines/`, `ci/`, `.ci/` 아래, 또는 `.github/dependabot.yml`/`.yaml`, 또는 파일명이 `Jenkinsfile`, `Jenkinsfile.*`, `.gitlab-ci.yml`/`.yaml`, `.travis.yml`/`.yaml`, `azure-pipelines.yml`/`.yaml`, `appveyor.yml`/`.yaml`, `.drone.yml`/`.yaml`, `bitbucket-pipelines.yml`/`.yaml`, `renovate.json`/`.json5`, `.renovaterc`, `.renovaterc.json`.
+- docs(허용 목록): 루트의 `docs/`, `doc/`, `documentation/` 아래, 또는 루트의 `README`, `CHANGELOG`, `CHANGES`, `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `AUTHORS`, `NOTICE`, `LICENSE`, `COPYING`이거나 그 이름 뒤에 `.`과 접미사가 붙고 최종 확장자가 `.md`, `.mdx`, `.markdown`, `.rst`, `.adoc`, `.txt`인 파일. 그 밖의 문서 확장자 파일과 중첩된 `docs/`, `doc/`, `documentation/` 디렉터리는 production입니다.
 - 나머지 전부는 production입니다.
 
 경로가 하나 이상이고 전부 test·docs·CI이면 `omo-native-code-reviewer`, production 경로가 하나라도 있거나 섞였거나 알 수 없거나 빈 diff면 `ultrabrain`입니다. code reviewer의 최종 리뷰는 7단계 요구사항(두 스킬 적용, 전체 PR, 한 판정)을 따르되 7단계의 두 번째 패스가 아닙니다. 경로는 올라가기만 하고(production이 나타나면 이후 head도 ultrabrain), 분류 오류·기준 없음·잘린 목록은 ultrabrain으로 갑니다. 분류기는 `skills/wish/scripts/review-route.mjs`이고 같은 표를 구현합니다.

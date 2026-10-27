@@ -12,19 +12,25 @@ const TEST_DIRS = new Set([
   "test", "tests", "__tests__", "__mocks__", "__snapshots__", "__fixtures__",
   "spec", "specs", "testdata", "e2e",
 ]);
-const DOC_DIRS = new Set(["docs", "doc", "documentation"]);
-const DOC_ROOT_BASENAME = /^(README|CHANGELOG|CHANGES|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|AUTHORS|NOTICE|LICENSE|COPYING)(\..*)?$/i;
-const TEST_BASENAME = [
-  /\.test\.[^./]+$/i,
-  /\.spec\.[^./]+$/i,
-  /_test\.[^./]+$/i,
-  /_spec\.[^./]+$/i,
-  /\.snap$/i,
-  /^test_.*\.py$/i,
-  /.*_test\.py$/i,
-  /.*Tests?\.(java|kt|scala)$/i,
-  /.*Tests?\.cs$/i,
-  /.*_test\.go$/i,
+const DOC_DIR_PREFIXES = ["docs/", "doc/", "documentation/"];
+const DOC_EXTENSIONS = new Set([".md", ".mdx", ".markdown", ".rst", ".adoc", ".txt"]);
+const DOC_ROOT_NAME = /^(README|CHANGELOG|CHANGES|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY|AUTHORS|NOTICE|LICENSE|COPYING)(\..*)?$/;
+const CODE_EXTENSIONS = new Set([
+  ".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs", ".mts", ".cts", ".py", ".rb",
+  ".go", ".java", ".kt", ".kts", ".cs", ".scala", ".php", ".swift", ".vue", ".svelte",
+]);
+const TEST_BASENAME_ANY = [
+  /\.test\.[^./]+$/,
+  /\.snap$/,
+];
+const TEST_BASENAME_CODE = [
+  /\.spec\.[^./]+$/,
+  /_spec\.[^./]+$/,
+  /_test\.[^./]+$/,
+];
+const TEST_SPECIAL = [
+  /^test_.*\.py$/,
+  /Tests?\.(java|kt|kts|scala|cs)$/,
 ];
 const CI_PREFIXES = [
   ".github/workflows/",
@@ -40,13 +46,15 @@ const CI_BASENAME = [
   /^Jenkinsfile(\..*)?$/,
   /^\.gitlab-ci\.ya?ml$/,
   /^\.travis\.ya?ml$/,
-  /^azure-pipelines\.ya?ml$/i,
-  /^appveyor\.ya?ml$/i,
+  /^azure-pipelines\.ya?ml$/,
+  /^appveyor\.ya?ml$/,
   /^\.drone\.ya?ml$/,
   /^bitbucket-pipelines\.ya?ml$/,
-  /^\.github\/dependabot\.ya?ml$/i,
-  /^renovate\.json5?$/i,
-  /^\.renovaterc(\.json)?$/i,
+  /^renovate\.json5?$/,
+  /^\.renovaterc(\.json)?$/,
+];
+const CI_FULL_PATH = [
+  /^\.github\/dependabot\.ya?ml$/,
 ];
 
 function normalizePath(path) {
@@ -54,11 +62,32 @@ function normalizePath(path) {
 }
 
 function normalizeRoots(roots) {
-  return (roots ?? []).map(normalizePath).filter(Boolean);
+  return (roots ?? []).map((root) => {
+    const normalized = normalizePath(root);
+    return normalized === "" || normalized === "." ? "*" : normalized;
+  }).filter(Boolean);
 }
 
 function underRoot(path, roots) {
-  return roots.some((root) => path === root || path.startsWith(`${root}/`));
+  return roots.some((root) => root === "*" || path === root || path.startsWith(`${root}/`));
+}
+
+function extensionOf(base) {
+  const dot = base.lastIndexOf(".");
+  return dot > 0 ? base.slice(dot).toLowerCase() : "";
+}
+
+function isTestBase(base) {
+  if (TEST_BASENAME_ANY.some((re) => re.test(base))) return true;
+  const ext = extensionOf(base);
+  if (CODE_EXTENSIONS.has(ext) && TEST_BASENAME_CODE.some((re) => re.test(base))) return true;
+  return TEST_SPECIAL.some((re) => re.test(base));
+}
+
+function isRootDoc(base) {
+  if (!DOC_ROOT_NAME.test(base)) return false;
+  const ext = extensionOf(base);
+  return ext === "" || DOC_EXTENSIONS.has(ext.toLowerCase());
 }
 
 export function classifyPath(path, { productRoots = [] } = {}) {
@@ -69,14 +98,12 @@ export function classifyPath(path, { productRoots = [] } = {}) {
   const base = parts.at(-1);
   const dirs = parts.slice(0, -1);
 
-  if (dirs.some((dir) => TEST_DIRS.has(dir)) || TEST_BASENAME.some((re) => re.test(base))) {
-    return "test";
-  }
-  if (CI_PREFIXES.some((prefix) => p.startsWith(prefix)) || CI_BASENAME.some((re) => re.test(p))) {
+  if (dirs.some((dir) => TEST_DIRS.has(dir)) || isTestBase(base)) return "test";
+  if (CI_PREFIXES.some((prefix) => p.startsWith(prefix)) || CI_FULL_PATH.some((re) => re.test(p)) || CI_BASENAME.some((re) => re.test(base))) {
     return "ci";
   }
-  if (dirs.some((dir) => DOC_DIRS.has(dir))) return "docs";
-  if (parts.length === 1 && DOC_ROOT_BASENAME.test(base)) return "docs";
+  if (DOC_DIR_PREFIXES.some((prefix) => p.startsWith(prefix))) return "docs";
+  if (parts.length === 1 && isRootDoc(base)) return "docs";
   return "production";
 }
 
@@ -189,6 +216,9 @@ export function main(argv) {
       return 0;
     }
     if (!options.base) throw new Error("--base is required");
+    if (options.base.startsWith("-") || options.head.startsWith("-")) {
+      throw new Error("a revision must not start with '-'");
+    }
     const diff = execFileSync(
       "git",
       ["-C", options.repo, "diff", "--name-status", "-z", "--find-renames", "--diff-filter=ACDMRTUXB", `${options.base}...${options.head}`],

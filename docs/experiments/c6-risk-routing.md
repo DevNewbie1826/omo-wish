@@ -16,17 +16,18 @@
 
 | 분류 | 경로 규칙 |
 | --- | --- |
-| production (제품 오버라이드) | 계획이 선언한 제품 콘텐츠 루트 아래의 모든 경로. 제품이 런타임에 읽는 스킬·프롬프트·템플릿·로케일 파일이며, 계획이 루트와 소비자를 적습니다. |
-| test | 디렉터리 세그먼트가 `test`, `tests`, `__tests__`, `__mocks__`, `__snapshots__`, `__fixtures__`, `spec`, `specs`, `testdata`, `e2e`; 또는 파일명이 `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `*.snap`, `test_*.py`, `*_test.py`, `*Test.java`, `*Tests.java`, `*Test.kt`, `*Tests.kt`, `*Tests.cs`, `*_test.go` |
-| CI | `.github/workflows/`, `.github/actions/`, `.circleci/`, `.buildkite/`, `.gitlab/`, `.azure-pipelines/`, `ci/`, `.ci/` 아래; 또는 파일명이 `Jenkinsfile`, `Jenkinsfile.*`, `.gitlab-ci.yml`, `.travis.yml`, `azure-pipelines.yml`, `appveyor.yml`, `.drone.yml`, `bitbucket-pipelines.yml`, `.github/dependabot.yml`, `renovate.json`, `.renovaterc`, `.renovaterc.json` |
-| docs (허용 목록) | `docs/`, `doc/`, `documentation/` 아래; 또는 루트의 `README*`, `CHANGELOG*`, `CHANGES*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`, `AUTHORS*`, `NOTICE*`, `LICENSE*`, `COPYING*`. 그 밖의 문서 확장자 파일은 production입니다. |
-| production (기본) | 나머지 전부. 알 수 없는 종류, 허용 목록 밖 문서 확장자, 생성물, 매니페스트, lockfile, 빌드 설정, 빈 diff 포함 |
+| production (제품 오버라이드) | 계획이 선언한 제품 콘텐츠 루트 아래의 모든 경로. 제품이 런타임에 읽는 스킬·프롬프트·템플릿·로케일 파일이며, 계획이 루트와 소비자를 적습니다. `.`이나 `/`는 저장소 전체를 뜻합니다. |
+| test | 디렉터리 세그먼트가 `test`, `tests`, `__tests__`, `__mocks__`, `__snapshots__`, `__fixtures__`, `spec`, `specs`, `testdata`, `e2e`; 또는 파일명이 `*.test.*`, `*.snap`, `test_*.py`; 또는 최종 확장자가 코드 확장자(`.js`, `.jsx`, `.ts`, `.tsx`, `.mjs`, `.cjs`, `.mts`, `.cts`, `.py`, `.rb`, `.go`, `.java`, `.kt`, `.kts`, `.cs`, `.scala`, `.php`, `.swift`, `.vue`, `.svelte`)인 `*.spec.*`, `*_spec.*`, `*_test.*`; 또는 파일명이 `*Test.java`, `*Tests.java`, `*Test.kt`, `*Tests.kt`, `*Test.kts`, `*Tests.kts`, `*Test.scala`, `*Tests.scala`, `*Test.cs`, `*Tests.cs` |
+| CI | `.github/workflows/`, `.github/actions/`, `.circleci/`, `.buildkite/`, `.gitlab/`, `.azure-pipelines/`, `ci/`, `.ci/` 아래; 또는 `.github/dependabot.yml`/`.yaml`; 또는 파일명이 `Jenkinsfile`, `Jenkinsfile.*`, `.gitlab-ci.yml`/`.yaml`, `.travis.yml`/`.yaml`, `azure-pipelines.yml`/`.yaml`, `appveyor.yml`/`.yaml`, `.drone.yml`/`.yaml`, `bitbucket-pipelines.yml`/`.yaml`, `renovate.json`/`.json5`, `.renovaterc`, `.renovaterc.json` |
+| docs (허용 목록) | 루트의 `docs/`, `doc/`, `documentation/` 아래; 또는 루트의 `README`, `CHANGELOG`, `CHANGES`, `CONTRIBUTING`, `CODE_OF_CONDUCT`, `SECURITY`, `AUTHORS`, `NOTICE`, `LICENSE`, `COPYING`이거나 그 이름 뒤에 `.`과 접미사가 붙고 최종 확장자가 `.md`, `.mdx`, `.markdown`, `.rst`, `.adoc`, `.txt`인 파일. 그 밖의 문서 확장자 파일과 중첩된 `docs/`, `doc/`, `documentation/` 디렉터리는 production입니다. |
+| production (기본) | 나머지 전부. 알 수 없는 종류, 중첩 docs 디렉터리, 허용 목록 밖 문서 확장자, 생성물, 매니페스트, lockfile, 빌드 설정, 빈 diff 포함 |
 
 라우팅:
 
 - 경로가 하나 이상 있고 전부 test·docs·CI이면 `omo-native-code-reviewer`(code reviewer).
 - production 경로가 하나라도 있거나, 섞였거나(mixed = production과 그 밖의 경로가 함께), 알 수 없거나, 빈 diff면 `category: ultrabrain`.
 - 분류 오류, 기준(base) 없음, 잘린 파일 목록은 ultrabrain으로 갑니다.
+- `spec`, `specs`, `e2e` 디렉터리 아래에 둔 production 계약(예: OpenAPI)은 계획의 제품 루트로 선언해야 합니다. 경로 기반 표의 알려진 한계입니다.
 
 분류기는 `skills/wish/scripts/review-route.mjs`이며 같은 표를 구현하고 표 버전을 출력합니다. PR 본문에 `REVIEW ROUTE` 줄과 파일별 분류표를 적고, head가 움직이면 다시 계산합니다. 경로는 올라가기만 합니다(production이 나타나면 그 뒤 head도 ultrabrain).
 
