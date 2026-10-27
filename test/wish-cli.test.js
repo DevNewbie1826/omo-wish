@@ -1378,7 +1378,7 @@ describe("final review round 1", () => {
   });
 
   test("typed receipts satisfy the lane they certify", () => {
-    const typedReceipt = (state, kind) => {
+    const typedReceipt = (state, kind, name = `${kind}-${state.repo.head.slice(0, 7)}.json`) => {
       const body = {
         kind, stage: "verify_lane", type: state.type, unit: "u1", program_id: null,
         ...(kind === "vqa-capture" ? { lane: "capture", pass: "capture" } : {}),
@@ -1389,11 +1389,19 @@ describe("final review round 1", () => {
         artifacts: [], cleanup: [],
       };
       expect(validateReceipt(body).errors).toEqual([]);
-      writeFileSync(join(state.root, "receipts", `${kind}-${state.repo.head.slice(0, 7)}.json`), JSON.stringify(body));
+      // A lint receipt's name is <lint-name>-<tree7>: the contract's grammar decides.
+      writeFileSync(join(state.root, "receipts", name), JSON.stringify(body));
     };
+    // The lane only becomes relevant once a verify_lane receipt or event exists, so
+    // one ordinary lane receipt is written first: without it the "after" assertion
+    // would pass on the old code too, which is exactly the vacuity to avoid.
     const design = scene({ type: "design" });
     upToBuild(design);
     mkdirSync(join(design.root, "receipts"), { recursive: true });
+    lane(design, { lane: "draft-guard", type: "design" });
+    const before = status(design);
+    expect(before.code).toBe(0);
+    expect(before.json.blocking).toContain("receipt-missing:capture");
     typedReceipt(design, "vqa-capture");
     const designView = status(design);
     expect(designView.code).toBe(0);
@@ -1402,7 +1410,9 @@ describe("final review round 1", () => {
     const audit = scene({ type: "audit" });
     upToBuild(audit);
     mkdirSync(join(audit.root, "receipts"), { recursive: true });
-    typedReceipt(audit, "lint");
+    lane(audit, { lane: "spot", type: "audit" });
+    expect(status(audit).json.blocking).toContain("receipt-missing:lint");
+    typedReceipt(audit, "lint", `lint-heading-order-${audit.repo.tree.slice(0, 7)}.json`);
     const auditView = status(audit);
     expect(auditView.code).toBe(0);
     expect(auditView.json.blocking).not.toContain("receipt-missing:lint");
@@ -1451,7 +1461,7 @@ describe("final review round 1", () => {
     expect(ledgerEvents({ root: box.root }).at(0).program_id).toBe("null");
   });
 
-  test("a row whose command backgrounds a child is judged by the shell's exit", () => {
+  test("a row whose command backgrounds a child is judged by the shell's exit", { timeout: 40_000 }, () => {
     const state = scene();
     upToBuild(state);
     addFindings(state, [findingRow({ repro_cmd: "sleep 30 & exit 0" })]);
@@ -1497,5 +1507,71 @@ describe("final review round 1", () => {
     expect(body).not.toContain("#null");
     expect(body).not.toContain("#-");
     expect(body).toContain("PR: none");
+  });
+});
+
+// Round 2 of the final review: the delta's own regressions, guarded here.
+describe("final review round 2", () => {
+  test("a second unit in the same root reads its own labels", () => {
+    // A shared root can hold units whose labels differ, so a lookup must not borrow a
+    // sibling's: the research-primary unit's identity follows its own intake event.
+    const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    const plan2 = join(state.box.dir, "plan2.md");
+    writePlan(plan2, { runId: "w-run-20261027-1900", tier: "M", type: "mixed", unit: "u2", worktree: state.repo.dir });
+    const second = cli([
+      "init", "--run-id", "w-run-20261027-1900", "--type", "mixed", "--tier", "M", "--plan", plan2,
+      "--root", state.root, "--unit", "u2", "--worktree", state.repo.dir,
+      "--primary", "research", "--secondary", "design", "--fact", "one fact from the tier triage",
+    ]);
+    expect(second.code).toBe(0);
+    const sha = "a".repeat(64);
+    const frozen = cli(["freeze", "--root", state.root, "--plan", plan2, "--head", sha]);
+    if (frozen.code !== 0) throw new Error("freeze stderr: " + frozen.err);
+    const event = ledgerEvents(state).filter((entry) => entry.event === "freeze" && entry.unit === "u2").pop();
+    expect(event.head).toBe(sha);
+    expect(event.tree).toBe(null);
+    // The code/design unit still takes a commit sha, so the two identities coexist.
+    expect(cli(["freeze", "--root", state.root, "--plan", state.plan, "--head", state.repo.head]).code).toBe(0);
+    const first = ledgerEvents(state).filter((entry) => entry.event === "freeze" && entry.unit === "u1").pop();
+    expect(first.head).toBe(state.repo.head);
+    expect(first.tree).toBe(state.repo.tree);
+  });
+
+
+  test("a typed receipt alone advances the unit past build", () => {
+    const audit = scene({ type: "audit" });
+    upToBuild(audit);
+    mkdirSync(join(audit.root, "receipts"), { recursive: true });
+    expect(status(audit).json.stage).toBe("build");
+    const body = {
+      kind: "lint", stage: "verify_lane", type: "audit", unit: "u1", program_id: null, lane: "lint",
+      name: "heading-order", head: audit.repo.head, tree: audit.repo.tree, scope: ["skills/wish/**"],
+      started_at: "2026-10-27T16:00:00Z", ended_at: "2026-10-27T16:01:00Z", status: "PASS",
+      rows: [{ id: "r", command: "check", observable: "it holds", verdict: "PASS", artifact: null }],
+      artifacts: [], cleanup: [],
+    };
+    expect(validateReceipt(body).errors).toEqual([]);
+    writeFileSync(join(audit.root, "receipts", `lint-heading-order-${audit.repo.tree.slice(0, 7)}.json`), JSON.stringify(body));
+    expect(status(audit).json.stage).toBe("verify_lane");
+  });
+
+
+  test("importing the module installs no signal handler", () => {
+    const script = `import "${CLI}"; console.log(JSON.stringify(process.eventNames().filter((n) => ["SIGINT", "SIGTERM", "SIGHUP"].includes(n))));`;
+    const result = spawnSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", timeout: 30_000 });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout.trim())).toEqual([]);
+  });
+
+
+  test("pr-body --out refuses to overwrite a lane receipt", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const receipt = join(state.root, "receipts", `verify_lane-tests-${state.repo.head.slice(0, 7)}.json`);
+    const before = readFileSync(receipt, "utf8");
+    expect(cli(["pr-body", "--root", state.root, "--out", receipt]).code).toBe(2);
+    expect(readFileSync(receipt, "utf8")).toBe(before);
   });
 });

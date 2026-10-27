@@ -1017,8 +1017,12 @@ export const STAGE_ORDER = Object.freeze([
 function stageAttempted(stage, events, receipts, unit) {
   if (events.some((event) => event.event === stage && event.unit === unit)) return true;
   if (stage === "verify_lane") {
-    return receipts.some((receipt) => receipt.body?.kind === "lane"
-      && receipt.body.unit === unit && receipt.body.stage === "verify_lane");
+    // The same evidence satisfiesLane accepts counts as an attempt: a typed receipt
+    // (claim-gate, vqa-capture, lint) is verification evidence with no stage event.
+    return receipts.some((receipt) => receipt.body?.unit === unit
+      && (receipt.body.kind === "lane"
+        ? receipt.body.stage === "verify_lane"
+        : LANE_KINDS.has(receipt.body.kind)));
   }
   return false;
 }
@@ -1109,6 +1113,7 @@ export function deriveNext(stage, context) {
 // research claim gate writes kind "claim-gate", a design capture kind "vqa-capture",
 // an audit lint kind "lint". A typed receipt for the same lane is evidence for it.
 const TYPED_LANES = Object.freeze({ capture: "vqa-capture" });
+const LANE_KINDS = new Set(["claim-gate", "vqa-capture", "vqa-passA", "vqa-passB", "lint"]);
 
 function satisfiesLane(receipt, lane) {
   const body = receipt.body;

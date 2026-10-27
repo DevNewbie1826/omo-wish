@@ -53,7 +53,7 @@ import {
 } from "./lib/store.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -822,8 +822,10 @@ function verbFreeze(parsed, root) {
     // matter frozen at a head no ledger event records.
     const preChecked = validateLedgerEvent(freezeEvent);
     if (!preChecked.ok) throw checkFailed("the freeze event does not match the contract", preChecked.errors);
-    mergeFrontMatter(planPath, { frozen_head: head, pr: pr ?? plan.wish.pr ?? null });
+    // The event lands first: appendEvent also enforces the sequence, and a rejected
+    // freeze must not leave the plan frozen at a head no ledger event records.
     appendEvent(root, freezeEvent, { plan: planPath, sessionId: sessionId(parsed) });
+    mergeFrontMatter(planPath, { frozen_head: head, pr: pr ?? plan.wish.pr ?? null });
     process.stdout.write(`frozen ${head.slice(0, 7)}${treeForHead ? ` (tree ${treeForHead.slice(0, 7)})` : ""}\n`);
     return null;
   });
@@ -923,8 +925,10 @@ function verbPrBody(parsed, root) {
     const paths = rootPaths(root);
     const reserved = [paths.ledger, paths.findings, paths.gaps, paths.gates, paths.lens, paths.ideal,
       paths.resume, paths.lock, planPath];
-    if (reserved.includes(resolve(out))) {
-      throw usage(`--out may not overwrite run state: ${resolve(out)}`);
+    const target = resolve(out);
+    const evidenceDirs = [join(paths.root, "receipts"), join(paths.root, "rounds")];
+    if (reserved.includes(target) || evidenceDirs.some((dir) => target.startsWith(dir + sep))) {
+      throw usage(`--out may not overwrite run state or evidence: ${target}`);
     }
     writeFileSync(resolve(out), body);
     process.stdout.write(`${resolve(out)}\n`);
@@ -1165,13 +1169,6 @@ function killAllGroups() {
   LIVE_GROUPS.clear();
 }
 
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
-  process.on(signal, () => {
-    killAllGroups();
-    process.exit(130);
-  });
-}
-
 const invokedDirectly = typeof import.meta.main === "boolean"
   ? import.meta.main
   : isDirectInvocation();
@@ -1191,6 +1188,15 @@ function isDirectInvocation() {
 }
 
 if (invokedDirectly) {
+  // A cancelled CLI must not leave a reproduction running: the children are detached
+  // into their own process groups, so the group has to be killed on the way out.
+  // Only the CLI itself installs this: an importer's signals are not ours to handle.
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+    process.on(signal, () => {
+      killAllGroups();
+      process.exit(130);
+    });
+  }
   const outcome = run(process.argv.slice(2));
   if (outcome && typeof outcome.then === "function") {
     outcome.then((code) => {
