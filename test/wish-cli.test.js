@@ -1765,6 +1765,21 @@ describe("final review round 3 (hard links)", () => {
     expect(readFileSync(join(state.root, "ledger.jsonl"), "utf8")).toBe(before);
   });
 
+test("a hard link to a lane receipt cannot be overwritten", () => {
+    const state = scene();
+    upToBuild(state);
+    const receipt = lane(state, { lane: "tests" });
+    ["qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const target = join(state.root, "receipts", receipt.name);
+    const before = readFileSync(target, "utf8");
+    const hard = join(state.root, "innocent-receipt.md");
+    linkSync(target, hard);
+    const result = cli(["pr-body", "--root", state.root, "--out", hard]);
+    expect(result.code).toBe(2);
+    expect(readFileSync(target, "utf8")).toBe(before);
+  });
+
   test("an --out path that cannot be written is a usage error", () => {
     const state = scene();
     upToBuild(state);

@@ -52,7 +52,8 @@ import {
   writeFrontMatter,
 } from "./lib/store.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync,
+  readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -948,13 +949,28 @@ function verbPrBody(parsed, root) {
     if (reserved.includes(targetReal) || evidenceDirs.some((dir) => targetReal === dir || targetReal.startsWith(dir + sep))) {
       throw usage(`--out may not overwrite run state or evidence: ${targetReal}`);
     }
-    // A hard link inside the root points at the same inode as a path that is not
-    // guarded here, so identity is compared too, not just the name.
+    // A hard link points at the same inode as a path that is not guarded here, so
+    // identity is compared too: the state files and every artifact already in the
+    // evidence directories. A link anywhere else that shares an inode is that file.
     if (existsSync(targetReal)) {
       const targetStat = statSync(targetReal);
-      for (const guard of reserved) {
-        if (!existsSync(guard)) continue;
-        const guardStat = statSync(guard);
+      const guarded = reserved.slice();
+      for (const dir of evidenceDirs) {
+        let names = [];
+        try {
+          names = readdirSync(dir);
+        } catch {
+          names = [];
+        }
+        for (const name of names) guarded.push(join(dir, name));
+      }
+      for (const guard of guarded) {
+        let guardStat;
+        try {
+          guardStat = statSync(guard);
+        } catch {
+          continue;
+        }
         if (guardStat.dev === targetStat.dev && guardStat.ino === targetStat.ino) {
           throw usage(`--out may not overwrite run state or evidence: ${targetReal} is ${guard}`);
         }
@@ -963,7 +979,7 @@ function verbPrBody(parsed, root) {
     try {
       writeFileSync(targetReal, body);
     } catch (error) {
-      if (error?.code === "ENOENT" || error?.code === "EISDIR" || error?.code === "ENOTDIR") {
+      if (["ENOENT", "EISDIR", "ENOTDIR", "EACCES", "EPERM", "EROFS"].includes(error?.code)) {
         throw usage(`--out is not a writable path: ${targetReal} (${error.code})`);
       }
       throw error;

@@ -115,7 +115,8 @@ function basename(file) {
 
 // ---------------------------------------------------------------------- paths
 
-// ledger.md §1: `<ER>` plus its files. Nothing else may be created here.
+// ledger.md §1: `<ER>` plus its files, the transient `lock.queue/` that serializes
+// writers, and the `receipts/` and `rounds/` evidence directories.
 export function rootPaths(root) {
   const dir = resolvePath(root);
   return {
@@ -128,7 +129,9 @@ export function rootPaths(root) {
     ideal: join(dir, "ideal.md"),
     resume: join(dir, "resume.md"),
     receipts: join(dir, "receipts"),
+    rounds: join(dir, "rounds"),
     lock: join(dir, "lock"),
+    queue: join(dir, "lock.queue"),
   };
 }
 
@@ -168,7 +171,7 @@ function sleepSync(ms) {
 class FileLock {
   constructor(root) {
     this.paths = rootPaths(root);
-    this.queueDir = `${this.paths.root}/lock.queue`;
+    this.queueDir = this.paths.queue;
     this.id = `${process.pid}-${Math.random().toString(36).slice(2, 10)}`;
     this.ticket = null;
     this.held = false;
