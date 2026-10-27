@@ -235,8 +235,8 @@ base = origin/main `cbbfbf8`, 줄 번호는 base 파일 기준입니다.
 $ timeout 300 bun test
  15 pass
  0 fail
- 128 expect() calls
- Ran 15 tests across 2 files. [9.20s]
+ 129 expect() calls
+ Ran 15 tests across 2 files. [10.39s]
 
 $ timeout 300 bun scripts/verify.mjs .
  (실제 senpi 로더로 스킬·프롬프트·확장 발견)

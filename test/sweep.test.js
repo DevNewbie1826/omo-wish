@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { runCommand } from "../skills/wish/scripts/sweep.mjs";
+import { runCommand, sessionMembers } from "../skills/wish/scripts/sweep.mjs";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
@@ -207,6 +207,7 @@ test("a timeout and an exit both take the process group, so a held pipe cannot o
   const orphan = await runCommand({ cmd: "sleep 20 & sleep 0.1", cwd: repo, timeoutMs: 5000 });
   expect(orphan.timedOut).toBe(false);
   expect(orphan.ms).toBeLessThan(5000);
+  expect(sessionMembers(orphan.session)).toEqual([]);
 }, 60000);
 
 test("a WARN-only probe reports WARN and does not fail the run", async () => {

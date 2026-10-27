@@ -78,11 +78,46 @@ function matchFiles(root, globs) {
 // Runs one command to completion. Resolves; never throws for a non-zero exit.
 export const COMMAND_CAP_MS = 300000;
 
-function killGroup(pid) {
+// Every process started for one command shares the session the command's shell
+// leads, so a background job that the shell moved into its own process group is
+// still in that session.
+export function sessionMembers(sessionId) {
+  const members = [];
   try {
-    process.kill(-pid, "SIGKILL");
+    for (const name of readdirSync("/proc")) {
+      if (!/^\d+$/.test(name)) continue;
+      let stat;
+      try {
+        stat = readFileSync(`/proc/${name}/stat`, "utf8");
+      } catch {
+        continue;
+      }
+      const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+      if (Number(fields[3]) === sessionId) members.push(Number(name));
+    }
+    return members;
+  } catch {
+    const listed = spawnSync("/bin/sh", ["-c", "ps -A -o sess= -o pid= 2>/dev/null"], { encoding: "utf8" });
+    for (const line of (listed.stdout ?? "").split("\n")) {
+      const [session, pid] = line.trim().split(/\s+/);
+      if (Number(session) === sessionId && Number(pid) > 0) members.push(Number(pid));
+    }
+    return members;
+  }
+}
+
+function killSession(sessionId) {
+  try {
+    process.kill(-sessionId, "SIGKILL");
   } catch {
     /* the group is already gone */
+  }
+  for (const pid of sessionMembers(sessionId)) {
+    try {
+      process.kill(pid, "SIGKILL");
+    } catch {
+      /* already gone */
+    }
   }
 }
 
@@ -101,16 +136,16 @@ export function runCommand({ cmd, cwd, stdin, timeoutMs = COMMAND_CAP_MS, env = 
     let timedOut = false;
     const timer = setTimeout(() => {
       timedOut = true;
-      killGroup(child.pid);
+      killSession(child.pid);
     }, budget);
     child.stdout.on("data", (chunk) => out.push(chunk));
     child.stderr.on("data", (chunk) => err.push(chunk));
     child.on("error", (error) => {
       clearTimeout(timer);
-      resolvePromise({ code: -1, signal: null, stdout: "", stderr: String(error), timedOut, ms: Date.now() - started, budget });
+      resolvePromise({ code: -1, signal: null, stdout: "", stderr: String(error), timedOut, ms: Date.now() - started, budget, session: child.pid });
     });
     child.on("exit", () => {
-      killGroup(child.pid);
+      killSession(child.pid);
     });
     child.on("close", (code, signal) => {
       clearTimeout(timer);
@@ -122,6 +157,7 @@ export function runCommand({ cmd, cwd, stdin, timeoutMs = COMMAND_CAP_MS, env = 
         timedOut,
         ms: Date.now() - started,
         budget,
+        session: child.pid,
       });
     });
     child.stdin.on("error", () => {});
