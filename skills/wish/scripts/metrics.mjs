@@ -378,28 +378,47 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
 
 // --------------------------------------------------------------- post-merge
 
-export function parseGitLog(text) {
+// The commit list and each commit's file list are read separately: a path can
+// contain any byte except NUL and "/", so a header and a path must never share a
+// stream where a token could be read as either.
+export function parseCommitList(text) {
   const commits = [];
-  let current = null;
-  // The scan runs with `-z` and a NUL-prefixed header, so every token is either a
-  // header or a path. NUL cannot occur in a path, while 0x1e/0x1f/newline can.
-  const headerPattern = /^([0-9a-f]{40})\x1f([^\x1f]*)\x1f([\s\S]*)$/;
   for (const token of String(text ?? "").split("\x00")) {
     if (token === "") continue;
-    const header = headerPattern.exec(token);
-    if (header) {
-      const [, sha, committedAt, tail] = header;
-      if (!Number.isFinite(Date.parse(committedAt))) { current = null; continue; }
-      const newline = tail.indexOf("\n");
-      const subject = newline === -1 ? tail : tail.slice(0, newline);
-      const inline = newline === -1 ? "" : tail.slice(newline + 1);
-      current = { sha, committed_at: committedAt, subject, files: inline === "" ? [] : [inline] };
-      commits.push(current);
-      continue;
-    }
-    if (current) current.files.push(token);
+    const fields = token.split("\x1f");
+    if (fields.length < 3) continue;
+    const [sha, committedAt] = fields;
+    if (!/^[0-9a-f]{40}$/.test(sha) || !Number.isFinite(Date.parse(committedAt))) continue;
+    commits.push({ sha, committed_at: committedAt, subject: fields.slice(2).join("\x1f"), files: [] });
   }
   return commits;
+}
+
+// Kept for callers written against the earlier combined-stream parser: the file
+// list is read separately now, so this returns the commit list only.
+export const parseGitLog = parseCommitList;
+
+export async function readGitHistory({ repoDir, ref = "HEAD", mergedAt, days, maxCommits = 0 }) {
+  const start = Date.parse(mergedAt);
+  if (!Number.isFinite(start)) return { ok: false, error: "mergedAt is not an ISO timestamp" };
+  const cap = maxCommits > 0 ? [`--max-count=${maxCommits}`] : [];
+  const list = await runGit(["-C", repoDir, "log", ...cap, "-z", "--pretty=format:%H%x1f%cI%x1f%s%x00", ref, "--"]);
+  if (!list.ok) return { ok: false, error: list.error, overflow: list.overflow === true };
+  const commits = parseCommitList(list.stdout);
+  if (maxCommits > 0 && commits.length >= maxCommits) {
+    return { ok: false, truncated: true, error: `the scan stopped at the cap of ${maxCommits} commits; raise --max-commits or drop it` };
+  }
+  const end = start + days * 86400000;
+  const commitsInWindow = commits.filter((commit) => {
+    const at = Date.parse(commit.committed_at);
+    return Number.isFinite(at) && at > start && at <= end;
+  });
+  for (const commit of commitsInWindow) {
+    const files = await runGit(["-C", repoDir, "diff-tree", "-z", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", commit.sha, "--"]);
+    if (!files.ok) return { ok: false, error: files.error, overflow: files.overflow === true };
+    commit.files = files.stdout.split("\x00").filter((name) => name !== "");
+  }
+  return { ok: true, commits: commitsInWindow };
 }
 
 export function postMergeRefixes({ mergedAt, files = [], commits = [], days = 7, mergeSha = null }) {
@@ -653,18 +672,14 @@ async function postMergeVerb(options) {
   // No --since/--until: git prunes traversal on committer dates, so a backdated
   // descendant can hide an eligible commit. The window is applied in code instead,
   // and --diff-merges=first-parent makes a merge show what it introduced.
-  const cap = maxCommits > 0 ? [`--max-count=${maxCommits}`] : [];
-  const log = await runGit(["-C", repoDir, "log", ...cap, "-z",
-    "--diff-merges=first-parent", "--name-only", "--pretty=format:%x00%H%x1f%cI%x1f%s", ref, "--"]);
-  if (!log.ok) return { code: 3, body: { ok: false, errors: [{ path: "git", message: log.error }], overflow: log.overflow === true } };
-  const commits = parseGitLog(log.stdout);
-  if (maxCommits > 0 && commits.length >= maxCommits) {
-    return {
-      code: 3,
-      body: { ok: false, errors: [{ path: "max-commits", message: `the scan stopped at the cap of ${maxCommits} commits; raise --max-commits or drop it` }], truncated: true },
-    };
+  const history = await readGitHistory({ repoDir, ref, mergedAt, days, maxCommits });
+  if (!history.ok) {
+    if (history.truncated) {
+      return { code: 3, body: { ok: false, truncated: true, errors: [{ path: "max-commits", message: history.error }] } };
+    }
+    return { code: 3, body: { ok: false, overflow: history.overflow === true, errors: [{ path: "git", message: history.error }] } };
   }
-  const result = postMergeRefixes({ mergedAt, files, commits, days, mergeSha });
+  const result = postMergeRefixes({ mergedAt, files, commits: history.commits, days, mergeSha });
   return {
     code: result.ok ? (result.count > 0 ? 1 : 0) : 3,
     body: { ok: result.ok, pr: values.pr === undefined ? null : Number(values.pr), files, ...result, errors: result.errors ?? [] },

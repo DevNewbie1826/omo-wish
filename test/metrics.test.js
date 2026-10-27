@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { spawn } from "node:child_process";
 import {
   FINDING_SCOPES, INT_COLUMNS, MEASUREMENTS_HEADER, ROUNDS_HEADER, ROUND_KINDS,
-  deriveRows, formatCsv, main, parseArgs, parseCsv, parseGitLog, postMergeRefixes,
+  deriveRows, formatCsv, main, parseArgs, parseCommitList, parseCsv, postMergeRefixes,
   validateDir, validateFile,
 } from "../skills/wish/scripts/metrics.mjs";
 import {
@@ -371,17 +371,17 @@ describe("postMergeRefixes", () => {
     expect(postMergeRefixes({ mergedAt, files: ["a"], commits, days: 0 }).ok).toBe(false);
   });
 
-  test("parseGitLog reads sha, committer date, subject and files from the -z stream", () => {
-    const text = `\x00${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fmerge a\na.txt\x00b.txt\x00\x00\x002222222222222222222222222222222222222222\x1f2026-10-02T00:00:00+00:00\x1ffix(a)\na.txt\x00`;
-    const commitsRead = parseGitLog(text);
+  test("parseCommitList reads sha, committer date and subject from the NUL list", () => {
+    const text = `${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fmerge a\x002222222222222222222222222222222222222222\x1f2026-10-02T00:00:00+00:00\x1ffix(a)\x00`;
+    const commitsRead = parseCommitList(text);
     expect(commitsRead).toEqual([
-      { sha: OTHER, committed_at: "2026-10-01T00:00:00+00:00", subject: "merge a", files: ["a.txt", "b.txt"] },
-      { sha: "2222222222222222222222222222222222222222", committed_at: "2026-10-02T00:00:00+00:00", subject: "fix(a)", files: ["a.txt"] },
+      { sha: OTHER, committed_at: "2026-10-01T00:00:00+00:00", subject: "merge a", files: [] },
+      { sha: "2222222222222222222222222222222222222222", committed_at: "2026-10-02T00:00:00+00:00", subject: "fix(a)", files: [] },
     ]);
-    expect(parseGitLog("")).toEqual([]);
-    expect(parseGitLog("not a log")).toEqual([]);
-    const separator = parseGitLog(`\x00${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fsubject\n\x1enoise.txt\x00a.txt\x00`);
-    expect(separator[0].files).toEqual(["\x1enoise.txt", "a.txt"]);
+    expect(parseCommitList("")).toEqual([]);
+    expect(parseCommitList("not a log")).toEqual([]);
+    // A subject may carry the field separator; the rest of the token stays the subject.
+    expect(parseCommitList(`${OTHER}\x1f2026-10-01T00:00:00+00:00\x1fa\x1fb\x00`)[0].subject).toBe("a\x1fb");
   });
 });
 
@@ -733,6 +733,17 @@ describe("framing and ordering edges", () => {
     };
     return { dir, commit };
   }
+
+  test("a path shaped like a header stays a path", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-09-20T00:00:00Z", { "root.txt": "r\n" });
+    await repo.commit("base", "2026-09-30T00:00:00Z", { "a.txt": "a\n" });
+    const headerShaped = "0123456789abcdef0123456789abcdef01234567\x1f2026-10-01T00:00:00Z\x1fnote";
+    await repo.commit("noise", "2026-10-03T00:00:00Z", { "0first.txt": "f\n", [headerShaped]: "n\n", "a.txt": "a2\n" });
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).refixes[0].files).toEqual(["a.txt"]);
+  });
 
   test("a path holding the record separator does not hide its neighbor", async () => {
     const repo = await gitFixture();
