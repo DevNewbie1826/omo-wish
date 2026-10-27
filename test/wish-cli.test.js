@@ -310,6 +310,12 @@ describe("init", () => {
     ]);
     expect(again.code).toBe(0);
     expect(ledgerEvents(state).length).toBe(1);
+    const differentTier = cli([
+      "init", "--run-id", state.runId, "--type", "code", "--tier", "S", "--plan", state.plan,
+      "--root", state.root, "--unit", "u1", "--worktree", state.repo.dir, "--fact", "again",
+    ]);
+    expect(differentTier.code).toBe(0);
+    expect(readFileSync(state.plan, "utf8")).toContain("  tier: M");
     const other = cli([
       "init", "--run-id", "w-other-20261027-1600", "--type", "code", "--tier", "M", "--plan", state.plan,
       "--root", join(state.box.dir, "er2"), "--unit", "u1", "--worktree", state.repo.dir, "--fact", "other",

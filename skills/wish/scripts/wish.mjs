@@ -278,6 +278,16 @@ function verbInit(parsed, root) {
     if (existing && existing.wish.run_id !== runId) {
       throw stateMismatch(`the plan belongs to another run: ${existing.wish.run_id}`);
     }
+    if (existing) {
+      // A second init for the same run is a no-op: rewriting the front matter from
+      // these flags would erase values (program_id, unit, branch) that a resume did
+      // not repeat on its command line.
+      const events = readLedger(root);
+      const already = events.some((event) => event.event === "intake" && event.unit === existing.wish.unit);
+      if (already) {
+        return { run_id: runId, root: paths.root, plan: planPath, intake: null, note: "already initialized" };
+      }
+    }
     const wish = {
       run_id: runId,
       tier,
