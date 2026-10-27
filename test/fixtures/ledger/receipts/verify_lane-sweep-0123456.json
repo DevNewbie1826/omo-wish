@@ -1,0 +1,35 @@
+{
+  "kind": "lane",
+  "stage": "verify_lane",
+  "type": "code",
+  "unit": "u1",
+  "program_id": null,
+  "lane": "sweep",
+  "head": "0123456789abcdef0123456789abcdef01234567",
+  "tree": "89abcdef0123456789abcdef0123456789abcdef",
+  "scope": ["skills/wish/scripts/**"],
+  "started_at": "2026-10-27T16:20:00Z",
+  "ended_at": "2026-10-27T16:24:30Z",
+  "status": "WARN",
+  "rows": [
+    {
+      "id": "secrets-canary",
+      "command": "bun $SKILL/scripts/sweep.mjs --probe secrets",
+      "observable": "the canary token appears in neither stdout nor any artifact",
+      "verdict": "PASS",
+      "artifact": "/evidence/w-u1-20261027-1610/receipts/sweep-secrets.log",
+      "class": "SEC"
+    },
+    {
+      "id": "docs-flags",
+      "command": "bun $SKILL/scripts/sweep.mjs --probe docs",
+      "observable": "every flag documented in ledger.md exists in --help",
+      "verdict": "WARN",
+      "artifact": null,
+      "class": "DOC",
+      "note": "two flags undocumented; filed as a note finding, never blocking"
+    }
+  ],
+  "artifacts": ["/evidence/w-u1-20261027-1610/receipts/verify_lane-sweep-0123456.json"],
+  "cleanup": ["rm -rf /tmp/wish-sweep-8f3 (exit 0)"]
+}
