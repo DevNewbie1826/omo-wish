@@ -1001,8 +1001,10 @@ describe("status derivation against the contract's own example", () => {
     expect(cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--pr", "51", "--root", state.root]).code).toBe(0);
     const illegal = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", state.root]);
     expect(illegal.code).toBe(3);
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
     const rows = JSON.parse(cli(["gaps", "list", "--json", "--root", state.root]).out);
-    expect(rows[0].status).toBe("fixed");
+    expect(rows[0].status).toBe("open");
+    expect(rows[0].fixed_head).toBe("-");
   });
 
   test("a mixed run takes its primary type's identity form", () => {
@@ -1207,4 +1209,4 @@ async function gone(pid) {
   return false;
 }
 
-void GAPS_COLUMNS;
+void 0;

@@ -669,6 +669,9 @@ export function setGap(root, id, patch) {
   if (patch.fixedHead !== undefined) {
     row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
   }
+  // Leaving "fixed" clears the fix head, exactly as findings.set does: a row that
+  // is open again must not claim a commit that no longer closes it.
+  if (row.status !== "fixed") row.fixed_head = "-";
   const checked = parseGapsTsv(renderTsv(GAPS_COLUMNS, rows.map((entry, at) => (at === index ? row : entry))));
   if (!checked.ok) throw checkFailed("the register does not match the contract", checked.errors);
   writeTsv(paths.gaps, GAPS_COLUMNS, checked.rows);
