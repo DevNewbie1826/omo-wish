@@ -50,4 +50,4 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 
 ## What `status` enforces, and what it never does
 
-What `status` requires is `../SKILL.md`'s (four code lanes plus `adversarial`, a covering verdict, a cleanup receipt). Receipt status semantics are `../references/ledger.md` §4.1. `status` never decides a quality question — it says which stage may run and which receipt blocks it.
+What `status` requires is `../SKILL.md`'s. Receipt status semantics are `../references/ledger.md` §4.1. `status` never decides a quality question — it says which stage may run and which receipt blocks it.
