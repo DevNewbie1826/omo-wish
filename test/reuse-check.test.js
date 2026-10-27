@@ -93,6 +93,7 @@ beforeAll(() => {
     ["src/z.ts", "export const z = 1;\n"],
     ["test/a.test.ts", "import { a } from '../src/a';\n"],
     ["docs/readme.md", "intro\n"],
+    ["docs/new\nline.md", "newline\n"],
     ["src/한글.ts", "export const k = 1;\n"],
   ]) {
     mkdirSync(dirname(join(repo, path)), { recursive: true });
@@ -155,6 +156,60 @@ describe("reuse-check CLI", () => {
     const valid = run([path, "--head", c3, "--repo", repo, "--referrers", empty]);
     expect(valid.code).toBe(0);
     expect(valid.stdout).toContain("0 referrers checked");
+  });
+
+  test("a root-directory scope covers every changed path", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "root", c0), receipt({ lane: "root", scope: ["."] }));
+    const result = run([path, "--head", c5, "--repo", repo]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("STALE changed files inside scope:");
+  });
+
+  test("a referrer whose path contains a newline is still matched", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "docs", c4), receipt({
+      lane: "docs",
+      head: c4,
+      tree: git("rev-parse", `${c4}^{tree}`),
+      scope: ["docs/**"],
+    }));
+    const referrers = join(evidence, "referrers-newline.json");
+    writeFileSync(referrers, JSON.stringify(["docs/new\nline.md"]));
+    const result = run([path, "--head", c5, "--repo", repo, "--referrers", referrers]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("referenced by files inside scope: docs/new\nline.md");
+  });
+
+  test("a design receipt without a surface artifact hash is never reusable", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "capture-plain", c0), receipt({
+      type: "design",
+      lane: "capture-plain",
+      env_sha: undefined,
+    }));
+    const result = run([path, "--head", c0, "--repo", repo, "--env-sha", ENV_A]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("records no env_sha to verify");
+  });
+
+  test("a bracket-class scope matches the files it names", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "bracket", c3), receipt({
+      lane: "bracket",
+      head: c3,
+      tree: git("rev-parse", `${c3}^{tree}`),
+      scope: ["src/[ab].ts"],
+    }));
+    const result = run([path, "--head", c4, "--repo", repo]);
+    expect(result.code).toBe(1);
+    expect(result.stdout).toContain("src/b.ts");
+  });
+
+  test("an unterminated bracket class in a scope is a state failure", () => {
+    const path = writeReceipt(evidence, laneName("verify_lane", "badscope", c0), receipt({
+      lane: "badscope",
+      scope: ["src/[ab.ts"],
+    }));
+    const result = run([path, "--head", c0, "--repo", repo]);
+    expect(result.code).toBe(3);
+    expect(result.stderr).toContain("unterminated bracket class");
   });
 
   test("a changed non-ASCII path inside the scope is still a hit", () => {
@@ -354,6 +409,12 @@ describe("reuse-check helpers", () => {
     expect(scopeMatches("docs/x.md", "*.md")).toBe(false);
     expect(globToRegExp("src/**/x.ts").test("src/x.ts")).toBe(true);
     expect(globToRegExp("src/**/x.ts").test("src/a/b/x.ts")).toBe(true);
+    expect(globToRegExp("docs/**").test("docs/new\nline.md")).toBe(true);
+    expect(scopeMatches("anything/at/all.ts", ".")).toBe(true);
+    expect(scopeMatches("skills/wish/scripts/check-verdict.mjs", "skills/wish/scripts/[cp]*.mjs")).toBe(true);
+    expect(scopeMatches("skills/wish/scripts/readme.mjs", "skills/wish/scripts/[cp]*.mjs")).toBe(false);
+    expect(globToRegExp("a[!b]c").test("adc")).toBe(true);
+    expect(globToRegExp("a[!b]c").test("abc")).toBe(false);
     expect(scopeHits(["b", "a", "a"], ["**"])).toEqual(["a", "b"]);
   });
 

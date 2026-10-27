@@ -173,6 +173,8 @@ function escapeRegex(character) {
   return /[.*+?^${}()|[\]\\]/.test(character) ? `\\${character}` : character;
 }
 
+// Supported scope glob syntax: `*` (never across `/`), `**`, `**/`, `?`, `[abc]`,
+// `[!abc]`. A brace expression is a literal path, and anything else is a path.
 export function globToRegExp(glob) {
   let pattern = "";
   for (let index = 0; index < glob.length; index += 1) {
@@ -180,17 +182,27 @@ export function globToRegExp(glob) {
     if (character === "*") {
       if (glob[index + 1] === "*") {
         index += 1;
+        // [\s\S] so a path that contains a newline still matches.
         if (glob[index + 1] === "/") {
           index += 1;
-          pattern += "(?:.*/)?";
+          pattern += "(?:[\\s\\S]*/)?";
         } else {
-          pattern += ".*";
+          pattern += "[\\s\\S]*";
         }
       } else {
         pattern += "[^/]*";
       }
     } else if (character === "?") {
       pattern += "[^/]";
+    } else if (character === "[") {
+      const close = glob.indexOf("]", index + 1);
+      if (close === -1) throw new RangeError("unterminated bracket class in a scope entry");
+      const inner = glob.slice(index + 1, close);
+      const negated = inner.startsWith("!") || inner.startsWith("^");
+      const body = negated ? inner.slice(1) : inner;
+      const escaped = body.replace(/[\\\]^]/g, (entry) => `\\${entry}`);
+      pattern += `[${negated ? "^" : ""}${escaped}]`;
+      index = close;
     } else {
       pattern += escapeRegex(character);
     }
@@ -207,7 +219,8 @@ export function normalizePath(value) {
 export function scopeMatches(path, entry) {
   const candidate = normalizePath(path);
   const scope = normalizePath(entry).replace(/\/+$/, "");
-  if (scope === "") return false;
+  if (candidate === "") return false;
+  if (scope === "" || scope === ".") return true;
   if (!/[*?[]/.test(scope)) {
     return candidate === scope || candidate.startsWith(`${scope}/`);
   }
@@ -244,6 +257,12 @@ export function decideReuse({ receipt, head, tree, changed = [], referrers, envS
     return same
       ? { verdict: "VALID", reason: `artifact sha256 ${short(head)} unchanged` }
       : { verdict: "STALE", reason: `artifact sha256 changed: ${short(receipt.head)} -> ${short(head)}` };
+  }
+  if (identityType(receipt) === "design" && (receipt.env_sha === undefined || receipt.env_sha === null)) {
+    return {
+      verdict: "STALE",
+      reason: "a design receipt is bound to its surface artifact; this capture records no env_sha to verify",
+    };
   }
   if (receipt.env_sha !== undefined && receipt.env_sha !== null) {
     if (envSha === undefined || envSha === null) {
@@ -451,6 +470,15 @@ function main(argv) {
     const [first] = anchor.errors;
     console.error(`FAIL the receipt filename disagrees with its body: ${first.path} ${first.message}`);
     return EXIT_CODES.STATE_MISMATCH;
+  }
+  for (const entry of receipt.value.scope) {
+    if (!/[*?[]/.test(entry)) continue;
+    try {
+      globToRegExp(entry);
+    } catch {
+      console.error("FAIL the receipt has an unterminated bracket class in its scope");
+      return EXIT_CODES.STATE_MISMATCH;
+    }
   }
 
   const isResearch = identityType(receipt.value) === "research";
