@@ -102,6 +102,19 @@ test("task rows: a sub-heading inside ## Todos stays in Todos", () => {
   expectClean(plan);
 });
 
+test("task rows: a malformed checkbox row is loud", () => {
+  for (const broken of ["- [ ] 2.", "- [ ] x2. n-test:", "- [x] 3.", "- [ ] 0. n-zero: a zero row"]) {
+    const plan = mutate(CODE, "- [ ] 2. n-test: cover the empty input and the single-token input", broken);
+    expectProblem(plan, broken, "malformed row");
+  }
+});
+
+test("task rows: a tab after the checkbox is still a row", () => {
+  const plan = mutate(CODE, "- [ ] 2. n-test:", "- [ ]\t2. n-test:");
+  const result = expectClean(plan);
+  expect(result.counts.tasks).toBe(3);
+});
+
 test("task rows: duplicate numbers are complaints", () => {
   const plan = mutate(CODE, "- [ ] 2. n-test:", "- [ ] 1. n-test:");
   expectProblem(plan, "1. n-test:", "duplicate task row number 1");
@@ -226,6 +239,14 @@ test("contract rows: a complaint never echoes the row body", () => {
   const clean = runCli([tempPlan(inCommand)]);
   expect(clean.err + clean.out).not.toContain(canary);
 });
+test("contract rows: a near-miss id marker is loud", () => {
+  for (const broken of ["- QA 2: run the tokenizer on the regression fixture", "- IS 1: an empty input yields an empty token list ; criterion: QA-1", "- IS1: an empty input ; criterion: QA-1", "- G 1 DEVICE: qa x => y"]) {
+    const anchor = broken.startsWith("- QA") ? "- QA-2: run the tokenizer on the regression fixture" : "- IS-2: the usage text names the empty-input behavior ; criterion: QA-2";
+    const plan = mutate(CODE, anchor, broken);
+    expectProblem(plan, broken, "malformed row");
+  }
+});
+
 test("contract rows: a near-miss marker is loud", () => {
   expectProblem(mutate(CODE, "## Risk list\n", "- Device: vqa B1 @ 390 light pair x-390-light\n\n## Risk list\n"), "Device:", "malformed row");
 });

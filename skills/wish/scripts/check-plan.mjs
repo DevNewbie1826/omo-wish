@@ -99,8 +99,8 @@ export function parseFrontMatter(lines) {
 }
 
 const MARKERS = [
-  ["task", /^- \[(?: |x|X)\] (\d+)\. (\S.*)$/],
-  ["final", /^- \[(?: |x|X)\] F(\d+)\. (\S.*)$/],
+  ["task", /^- \[(?: |x|X)\][ \t]+([1-9]\d*)\. (\S.*)$/],
+  ["final", /^- \[(?: |x|X)\][ \t]+F([1-9]\d*)\. (\S.*)$/],
   ["device", /^- ((?:IS-|G)\d+) DEVICE: (.*)$/],
   ["is", /^- (IS-\d+): (.*)$/],
   ["qa", /^- (QA-\d+): (.*)$/],
@@ -114,7 +114,7 @@ const MARKERS = [
   ["typed", /^- (SCREEN|AXIS|CLAIM|RULE): (.*)$/],
 ];
 // Case-insensitive on purpose: a near-miss marker (`- Device: ...`) must be loud, never prose.
-const DECLARED = /^- (?:IS-?\d|QA-?\d|INV\d|G\d+\s+DEVICE|DEVICE|COMPANION|INVARIANT|LIMIT|SWITCH|guard|no-test|HIGH-RISK|SCREEN|AXIS|CLAIM|RULE)\b/i;
+const DECLARED = /^- (?:\[|(?:IS|QA|INV|G)\s*-?\s*\d|(?:IS|QA|INV)[\s:.-]*$|(?:DEVICE|COMPANION|INVARIANT|LIMIT|SWITCH|guard|no-test|HIGH-RISK|SCREEN|AXIS|CLAIM|RULE)\b)/i;
 const KEEP_SECTIONS = ["Todos", "Final verification wave"];
 const TYPE_OF_KIND = { SCREEN: "design", AXIS: "research", CLAIM: "research", RULE: "audit" };
 const REQUIRED_KINDS = { code: [], design: ["SCREEN"], research: ["AXIS", "CLAIM"], audit: ["RULE"], mixed: [] };

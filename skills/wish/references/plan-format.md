@@ -76,7 +76,8 @@ concrete type. The linter therefore accepts any concrete device form on a mixed 
 - [ ] F1. <title>
 ```
 
-Under `## Todos`, each implementation row is `- [ ] <N>. <title>` with a positive decimal `N`. Under
+Under `## Todos`, each implementation row is `- [ ] <N>. <title>` with a positive decimal `N` (no zero, no
+letter), one space or tab between the box and the number. Under
 `## Final verification wave`, each final-verifier row is `- [ ] F<n>. <title>`. A row may be checked `- [x]`.
 Both section names are exact, both sections are required, each needs at least one row, numbers are unique
 within their section, and a task row outside those two sections is a complaint: it would never run. Only a
@@ -230,7 +231,7 @@ by the test suite, so a rule cannot be added on one side only.
 | Rule | Check |
 | --- | --- |
 | PL1 | The file opens with front matter that M0's `validatePlanFrontMatter` accepts; every parse error is reported on its key's line. |
-| PL2 | `## Todos` exists with at least one `- [ ] <N>. <title>` row; `## Final verification wave` exists with at least one `- [ ] F<n>. <title>` row; task numbers are unique per section; no task row appears outside those sections. |
+| PL2 | `## Todos` exists with at least one `- [ ] <N>. <title>` row; `## Final verification wave` exists with at least one `- [ ] F<n>. <title>` row; numbers are positive integers, unique per section; no valid task row appears outside those sections; a checkbox bullet that does not match either grammar is a PL16 complaint. |
 | PL3 | At least one IS row exists; ids are unique. |
 | PL4 | Every IS row names at least one QA scenario, and every QA scenario is named by at least one IS row. |
 | PL5 | Every QA row has its four fields in order, each non-empty; `run` is the last field. |
@@ -244,7 +245,7 @@ by the test suite, so a rule cannot be added on one side only.
 | PL13 | Every INVARIANT row has an id, a property and a proof, and ids are unique. |
 | PL14 | Every LIMIT row has both a limit and a reason. |
 | PL15 | Every SWITCH row has both a premise and a new approach. |
-| PL16 | A column-zero bullet that begins with a declared marker but does not match that marker's grammar is a complaint (this is what makes a malformed row loud instead of invisible). |
+| PL16 | A column-zero bullet that begins with a declared marker — a marker word, an id-shaped token (`IS 2`, `QA 2`, `IS1`, `G 1`), or any `- [` checkbox — but does not match that marker's grammar is a complaint. This is what makes a malformed row loud instead of invisible. |
 | PL17 | With `--register <gaps.tsv>`: the register parses with M0's `parseGapsTsv`, every IS row cites `gap: G<n>`, and every cited id exists in the register. |
 | PL18 | Fenced blocks, indented prose, tables and headings are never rows; CRLF, a BOM and a missing final newline change nothing. |
 
