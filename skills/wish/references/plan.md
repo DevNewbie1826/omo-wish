@@ -40,7 +40,18 @@ Before Step 3, run the plan checker from the repository root:
 node skills/wish/scripts/check-plan.mjs <plan file> --repo <repository root>
 ```
 
-Fix every line it prints and record the command and its output in the plan's review record. It checks that every IS row is named by a QA scenario and every QA scenario by an IS row, that the wiring names an entry point, consumer, and owner whose paths exist or are delivered by an IS row, that every guard row cites a listed INVARIANT or IS row, the COMPANION shape, the transitions of state and lifetime rows, and the two pinned rules. Step 3 stays one architect review and the checker never replaces it.
+Fix every line it prints and record the command and its output in the plan's review record, and record verbatim every complaint you judged to be a false positive with its reason. It checks that every IS row is named by a QA scenario and every QA scenario by an IS row, that the wiring names an entry point, consumer, and owner whose paths exist or are delivered by an IS row, that every guard row cites a listed INVARIANT or IS row, the COMPANION shape, the transitions of state and lifetime rows, and the two pinned rules. Step 3 stays one architect review and the checker never replaces it.
+
+The checker reads these row shapes; a row in another shape is a complaint, never a silent pass:
+
+- IS rows: one bullet or one IS-table row per property, `- IS-<id> ...`.
+- Wiring: `## Wiring` with `- IS-<id>: entry point ..., consumer ..., owner ...`, or IS-table columns headed entry point, consumer, and owner.
+- QA scenarios: one bullet or table row per scenario, `- QA-<id> (...) <command> -> PASS iff <observable>`, plus one pairing line `IS-row to QA pairing: IS-<id>, IS-<id> -> QA-<id>; IS-<id> -> QA-<id>`.
+- Ranges: `IS-1-IS-4` covers every row between the two ids.
+- Invariants: `- INV-<id> <property> : <test or scenario>` or `- INVARIANT: <property> : <test or scenario>`; a risk row cites one of those ids, an IS row, or the invariant's property text: `- guard: <INVARIANT or IS row> : <regression a user would hit> -> <node>`.
+- Companions: `COMPANION: <item> <- <IS row> : <why expected>`, or `COMPANION: none.`
+- State or lifetime rows: mark them `high-risk (state/lifetime): <IS row>` and list their transitions under `## Transitions`.
+- Pinned rules: a `## Pinned rules` section that states the worktree pin and serialized commits.
 
 ## Step 3: Architect plan review
 
