@@ -1,0 +1,9 @@
+.card {
+  padding: 12px;
+  border: 1px solid var(--line);
+}
+
+.card__title {
+  font-size: 15px;
+  font-weight: 600;
+}
