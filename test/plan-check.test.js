@@ -293,6 +293,19 @@ test("pairing segments split only when a part holds several arrows", () => {
 	expect(result.code).toBe(0);
 });
 
+test("a guard row may cite an INVARIANT property text or its id", () => {
+	const plan = mutate(
+		"- INV1 A plan that satisfies every rule passes cleanly. : QA-1\n- INV2 Every complaint names a plan line. : QA-2",
+		"- INVARIANT: a plan that satisfies every rule passes cleanly : QA-1\n- INVARIANT: INV2 every complaint names a plan line : QA-2",
+	).replace(
+		"- guard: INV1 : a complete plan is rejected",
+		"- guard: a plan that satisfies every rule passes cleanly : a complete plan is rejected",
+	);
+	const result = run(plan);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+});
+
 test("missing arguments and unreadable plans exit 2", () => {
 	const noArgs = spawnSync("node", [cli], { encoding: "utf8" });
 	expect(noArgs.status).toBe(2);
