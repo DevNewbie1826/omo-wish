@@ -414,7 +414,7 @@ export async function readGitHistory({ repoDir, ref = "HEAD", mergedAt, days, ma
     return Number.isFinite(at) && at > start && at <= end;
   });
   for (const commit of commitsInWindow) {
-    const files = await runGit(["-C", repoDir, "diff-tree", "-z", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", commit.sha, "--"]);
+    const files = await runGit(["-C", repoDir, "diff-tree", "--root", "-z", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", commit.sha, "--"]);
     if (!files.ok) return { ok: false, error: files.error, overflow: files.overflow === true };
     commit.files = files.stdout.split("\x00").filter((name) => name !== "");
   }
@@ -664,7 +664,7 @@ async function postMergeVerb(options) {
   const mergeSha = values["merge-sha"] ?? null;
   if (mergeSha !== null) {
     if (!/^[0-9a-f]{40}$/.test(mergeSha)) return { code: 2, body: { ok: false, errors: [{ path: "merge-sha", message: "expected a full 40-hex commit SHA" }] } };
-    const listed = await runGit(["-C", repoDir, "diff-tree", "-z", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", mergeSha, "--"]);
+    const listed = await runGit(["-C", repoDir, "diff-tree", "--root", "-z", "-r", "--no-commit-id", "--name-only", "-m", "--first-parent", mergeSha, "--"]);
     if (!listed.ok) return { code: 3, body: { ok: false, errors: [{ path: "merge-sha", message: listed.error }] } };
     files = [...new Set(listed.stdout.split("\x00").filter((name) => name !== ""))];
   }

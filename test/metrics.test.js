@@ -734,6 +734,16 @@ describe("framing and ordering edges", () => {
     return { dir, commit };
   }
 
+  test("a root commit's files are read too", async () => {
+    const repo = await gitFixture();
+    await repo.commit("root", "2026-10-03T00:00:00Z", { "a.txt": "a\n" });
+    const result = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--files", "a.txt", "--repo-dir", repo.dir]);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout).refixes[0].files).toEqual(["a.txt"]);
+    const viaSha = await run(["post-merge", "--merged-at", "2026-10-01T00:00:00Z", "--merge-sha", (await repo.commit("second", "2026-10-04T00:00:00Z", { "b.txt": "b\n" })), "--repo-dir", repo.dir]);
+    expect(viaSha.code).toBe(0);
+  });
+
   test("a path shaped like a header stays a path", async () => {
     const repo = await gitFixture();
     await repo.commit("root", "2026-09-20T00:00:00Z", { "root.txt": "r\n" });
