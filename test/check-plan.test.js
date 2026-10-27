@@ -230,6 +230,15 @@ test("contract rows: a near-miss marker is loud", () => {
   expectProblem(mutate(CODE, "## Risk list\n", "- Device: vqa B1 @ 390 light pair x-390-light\n\n## Risk list\n"), "Device:", "malformed row");
 });
 
+test("contract rows: a quoted value is truncated to one short value", () => {
+  const tail = "x".repeat(400);
+  const plan = mutate(CODE, "criterion: QA-2", "criterion: QA-2 ; gap: G" + tail);
+  const messages = lintPlan(plan).problems.map((problem) => problem.message).join(" | ");
+  expect(messages).toContain("is not a G<n> id");
+  expect(messages).not.toContain("x".repeat(60));
+  expect(Math.max(...lintPlan(plan).problems.map((problem) => problem.message.length))).toBeLessThan(200);
+});
+
 test("contract rows: complaints are ordered by line", () => {
   const plan = mutate(CODE, "criterion: QA-2", "criterion: QA-7");
   const broken = mutate(plan, " : the request covers whitespace-separated input only", "");
@@ -245,6 +254,14 @@ test("contract rows: CRLF changes nothing", () => {
 test("device rows: every IS row needs one", () => {
   const plan = mutate(CODE, "- IS-1 DEVICE: guard INV1 -> n-test\n", "");
   expectProblem(plan, "IS-1:", "IS-1 has no DEVICE row");
+});
+
+test("device rows: every golden fixture lints clean", () => {
+  for (const name of ["code-plan.md", "design-plan.md", "research-plan.md", "audit-plan.md", "mixed-plan.md"]) {
+    expect({ name, problems: lintPlan(fixture(name)).problems }).toEqual({ name, problems: [] });
+  }
+  const register = { register: { path: "register.tsv", text: registerText() } };
+  expect(lintPlan(fixture("register-plan.md"), register).problems).toEqual([]);
 });
 
 test("device rows: a form from another type is a complaint", () => {

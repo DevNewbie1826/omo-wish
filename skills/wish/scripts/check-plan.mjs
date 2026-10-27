@@ -48,6 +48,12 @@ export function parseArgs(argv) {
   return options;
 }
 
+// A message may quote one short value, never a whole row: a row can carry a token.
+const brief = (value) => {
+  const text = String(value).trim();
+  return text.length > 40 ? `${text.slice(0, 40)}...` : text;
+};
+
 const scalar = (raw) => {
   const text = raw.trim();
   if (text === "null" || text === "~") return null;
@@ -237,13 +243,13 @@ export function lintPlan(text, options = {}) {
     row.gap = gap;
     row.qa = [];
     for (const name of (gapAt === -1 ? criterion : criterion.slice(0, gapAt)).split(",").map((part) => part.trim())) {
-      if (!/^QA-\d+$/.test(name)) { add(row.line, `${row.id} criterion "${name}" is not a QA-<n> id`); continue; }
+      if (!/^QA-\d+$/.test(name)) { add(row.line, `${row.id} criterion "${brief(name)}" is not a QA-<n> id`); continue; }
       row.qa.push(name);
       if (!qaOwner.has(name)) qaOwner.set(name, new Set());
       qaOwner.get(name).add(row.id);
     }
     if (!row.qa.length) add(row.line, `${row.id} names no QA scenario: every IS row needs its proof`);
-    if (gap !== null && !/^G[1-9]\d*$/.test(gap)) add(row.line, `${row.id} gap "${gap}" is not a G<n> id`);
+    if (gap !== null && !/^G[1-9]\d*$/.test(gap)) add(row.line, `${row.id} gap "${brief(gap)}" is not a G<n> id`);
   }
 
   const qaIds = new Map();
@@ -313,7 +319,7 @@ export function lintPlan(text, options = {}) {
       const name = fields.head.trim();
       if (!name) add(row.line, `${row.kind} has no name`);
       if (row.kind === "RULE") {
-        if (!classValid("audit", name)) add(row.line, `${name} is not an audit rule id`);
+        if (!classValid("audit", name)) add(row.line, `${brief(name)} is not an audit rule id`);
         if (ruleIds.has(name)) add(row.line, `duplicate rule ${name}`);
         ruleIds.set(name, row);
       }
@@ -362,10 +368,10 @@ export function lintPlan(text, options = {}) {
     if (!fields) { add(row.line, "guard must read `guard: <INVARIANT or IS row> : <the regression a user would hit> -> <node>`"); continue; }
     const cited = fields[1];
     if (/^INV\d+$/.test(cited) ? !invariantIds.has(cited) : !isIds.has(cited)) {
-      add(row.line, `guard cites "${cited}", which is neither a declared INVARIANT nor an IS row`);
+      add(row.line, `guard cites "${brief(cited)}", which is neither a declared INVARIANT nor an IS row`);
     }
     if (!fields[2].trim()) add(row.line, "guard states no regression");
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fields[3])) add(row.line, `guard node "${fields[3]}" is not a node id`);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fields[3])) add(row.line, `guard node "${brief(fields[3])}" is not a node id`);
   }
   for (const row of rows.notest) {
     const fields = fieldsOf(row.body, [" : "]);
@@ -377,8 +383,8 @@ export function lintPlan(text, options = {}) {
     const fields = /^(IS-\d+|INV\d+) \((concurrency|persistence|state|lifetime)\) -> (\S+)$/.exec(row.body);
     if (!fields) { add(row.line, `HIGH-RISK must read \`HIGH-RISK: <IS row|INV> (${HIGH_RISK_KINDS.join("|")}) -> <node>\``); continue; }
     const cited = fields[1];
-    if (/^INV\d+$/.test(cited) ? !invariantIds.has(cited) : !isIds.has(cited)) add(row.line, `HIGH-RISK cites "${cited}", which is not declared`);
-    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fields[3])) add(row.line, `HIGH-RISK node "${fields[3]}" is not a node id`);
+    if (/^INV\d+$/.test(cited) ? !invariantIds.has(cited) : !isIds.has(cited)) add(row.line, `HIGH-RISK cites "${brief(cited)}", which is not declared`);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(fields[3])) add(row.line, `HIGH-RISK node "${brief(fields[3])}" is not a node id`);
     if (type !== null && type !== "code" && type !== "mixed") add(row.line, `a ${type} plan runs no adversarial lane, so it cannot flag a HIGH-RISK row`);
   }
 
