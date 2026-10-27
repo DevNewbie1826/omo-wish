@@ -34,6 +34,14 @@ Write one plan file that holds:
 
 The Step 3 review challenges any duplicate source of authority: a second parser, a reconstructed path, a duplicate identity, or an enumeration of a domain the change does not own. For each, the plan records the authoritative source or a user-approved known limit.
 
+Before Step 3, run the plan checker from the repository root:
+
+```sh
+node skills/wish/scripts/check-plan.mjs <plan file> --repo <repository root>
+```
+
+Fix every line it prints and record the command and its output in the plan's review record. It checks that every IS row is named by a QA scenario and every QA scenario by an IS row, that the wiring names an entry point, consumer, and owner whose paths exist or are delivered by an IS row, that every guard row cites a listed INVARIANT or IS row, the COMPANION shape, the transitions of state and lifetime rows, and the two pinned rules. Step 3 stays one architect review and the checker never replaces it.
+
 ## Step 3: Architect plan review
 
 Spawn one review with `category: architect`. The prompt follows SKILL.md, Delegation prompts, and carries the evidence rule from there. The reviewer reads the plan against the request and answers OKAY or lists blockers: a blocker is anything that would make the plan fail the request, introduce a regression, or rest on a proof that shows the code does not do what is claimed (a code defect); typos, number errors, and wording or format problems in evidence are correction memos. Because nothing outside the contract can block later, the reviewer also checks that the invariants and known limits cover what the request needs kept. Record one fix per blocker in the plan's review record, then continue; the round is not re-reviewed. If the host lists no architect category, stop and report that as a blocker; name no substitute.
