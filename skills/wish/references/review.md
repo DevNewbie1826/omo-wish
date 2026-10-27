@@ -16,17 +16,38 @@ Both branches must pass before the PR (gate order: SKILL.md, Rules).
 
 ## Step 7: Code review round
 
-Run `omo-native-code-reviewer` once per round, before the PR. The reviewer must load and apply the `remove-ai-slops` skill and the `programming` skill, and state in its report whether that check ran. It reports findings by severity CRITICAL, HIGH, MEDIUM, LOW. Severity ranks a finding; it does not decide whether it blocks. Apply the finite-contract blocker rule of Step 10. Fix every reproduced in-contract code blocker once, then continue without a second code-review pass. All other findings remain notes. In a REVISE round the reviewer sees only the delta diff since the last reviewed commit. Its prompt follows SKILL.md, Delegation prompts.
+Run `omo-native-code-reviewer` once per round, before the PR. The reviewer must load and apply the `remove-ai-slops` skill and the `programming` skill, and state in its report whether that check ran. It reports findings by severity CRITICAL, HIGH, MEDIUM, LOW. Severity ranks a finding; it does not decide whether it blocks. Apply the finite-contract blocker rule of Step 10. Fix every reproduced in-contract code blocker once, then continue without a second code-review pass; a routed PR's step-9 final review may use the same agent, and it is a separate step-9 review, not a second step-7 pass. All other findings remain notes. In a REVISE round the reviewer sees only the delta diff since the last reviewed commit. Its prompt follows SKILL.md, Delegation prompts.
 
 ## Step 8: Open the PR
 
-One PR to the repository's main branch. The body states the behavior delivered, the tests and QA run with their capture paths, and the real limits. Claims stay within what the captures hold; never retype a number or SHA that a capture already holds.
+One PR to the repository's main branch. Before writing the body, compute the final-review route (Step 9) and put `REVIEW ROUTE: <omo-native-code-reviewer|ultrabrain>`, the table version, and the per-file class table in the body; recompute and update it whenever the head moves. The body states the behavior delivered, the tests and QA run with their capture paths, and the real limits. Claims stay within what the captures hold; never retype a number or SHA that a capture already holds.
 
 Take the head SHA, commands, exit codes, counts, and the base each result is attributed to from their captures; label claims about earlier heads as history, separate from final-head claims, and keep the source reports until step 13 cleanup.
 
 ## Step 9: Final review
 
-One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Its prompt follows SKILL.md, Delegation prompts.
+The final review is one review per round. Its reviewer is chosen by the paths the PR changes, recorded in the PR body (Step 8), and recomputed whenever the head moves.
+
+Classify every path in `git diff --name-status -M <base>...<head>`, matched case-sensitively on the full path from the repo root. A rename contributes both paths and a deletion the removed path; production on either side wins. The first matching row wins.
+
+| Class | Path rule |
+| --- | --- |
+| production (product override) | a path under a product-content root the plan declares: a text or asset file the shipped product reads at runtime (skill, prompt, template, locale). The plan names the root and its consumer. |
+| test | a directory segment `test`, `tests`, `__tests__`, `__mocks__`, `__snapshots__`, `__fixtures__`, `spec`, `specs`, `testdata`, or `e2e`; or a basename `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `*.snap`, `test_*.py`, `*_test.py`, `*Test.java`, `*Tests.java`, `*Test.kt`, `*Tests.kt`, `*Tests.cs`, or `*_test.go` |
+| CI | a path under `.github/workflows/`, `.github/actions/`, `.circleci/`, `.buildkite/`, `.gitlab/`, `.azure-pipelines/`, `ci/`, or `.ci/`; or a basename `Jenkinsfile`, `Jenkinsfile.*`, `.gitlab-ci.yml`, `.travis.yml`, `azure-pipelines.yml`, `appveyor.yml`, `.drone.yml`, `bitbucket-pipelines.yml`, `.github/dependabot.yml`, `renovate.json`, `.renovaterc`, or `.renovaterc.json` |
+| docs (allowlist) | a path under `docs/`, `doc/`, or `documentation/`; or a root-level basename `README*`, `CHANGELOG*`, `CHANGES*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`, `AUTHORS*`, `NOTICE*`, `LICENSE*`, or `COPYING*`. Every other docs-extension file is production. |
+| production (default) | everything else: unknown kinds, a docs-extension file outside the docs allowlist, generated files, manifests, lockfiles, build configuration, and an empty diff |
+
+Route:
+
+- every changed path is test, docs, or CI (at least one path): `omo-native-code-reviewer`.
+- any production path, a mixed set, an unknown path, or an empty diff: `category: ultrabrain`. Mixed means at least one production path alongside anything else; test plus docs alone is routed.
+
+The code-reviewer final review is one pass with the Step 7 prompt requirements: it loads and applies `remove-ai-slops` and `programming`, reports every CODE defect of the whole PR in one verdict, and follows the Step 10 rule. It is the Step 9 review, not a second Step 7 pass and not a delta of it. Its APPROVED or REVISE gets the same Step 11 handling as an ultrabrain verdict.
+
+The route upgrades and never downgrades: once a head adds a production path, ultrabrain reviews that head and every later head, even if a later head removes it. A classification error, a missing base, or a truncated file list routes to ultrabrain.
+
+`skills/wish/scripts/review-route.mjs` implements this table verbatim and prints the table version: `bun <skill>/scripts/review-route.mjs --base <base> --head <head> [--product-root <dir>]... [--json]`. When the script cannot run, apply the table by hand and record the same route line and per-file classes in the PR body.
 
 ## Step 10: Evidence problems
 
