@@ -148,6 +148,21 @@ export function formatLine(record) {
   return `${JSON.stringify(record)}\n`;
 }
 
+// Redaction runs over the record's string values, never over the serialised
+// line, so a token that happens to equal a field name cannot break the shape a
+// monitor reads.
+export function sanitizeRecord(record, sanitize) {
+  const walk = (value) => {
+    if (typeof value === "string") return sanitize(value);
+    if (Array.isArray(value)) return value.map(walk);
+    if (value && typeof value === "object") {
+      return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, walk(entry)]));
+    }
+    return value;
+  };
+  return walk(record);
+}
+
 function abortError() {
   const error = new Error("aborted");
   error.name = "AbortError";
@@ -342,7 +357,7 @@ export async function main(argv = process.argv.slice(2), deps = {}) {
   try {
     return await chrome({
       query: () => (deps.query ? deps.query() : runGh({ gh: options.gh, args, signal: controller.signal, timeoutMs: options.timeoutMs, sanitize })),
-      emit: (record) => process.stdout.write(sanitize(formatLine(record))),
+      emit: (record) => process.stdout.write(formatLine(sanitizeRecord(record, sanitize))),
       now: deps.now,
       sleep: deps.sleep,
       sanitize,

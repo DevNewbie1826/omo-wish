@@ -368,6 +368,16 @@ describe("CLI", () => {
     expect(observed.stdout).not.toContain("ghp_");
   });
 
+  test("a token that equals a field name still leaves a readable record", async () => {
+    const dir = tempDir();
+    const gh = fakeGh(dir, "gh-merged2.sh", `printf '%s\\n' '{"number":40,"state":"MERGED","isDraft":false,"mergeable":"UNKNOWN","mergeStateStatus":"UNKNOWN","reviewDecision":"","statusCheckRollup":[],"headRefOid":"${HEAD}"}'`);
+    const result = await run(["--pr", "40", "--repo", "owner/name", "--gh", gh, "--once"], { GH_TOKEN: "pr" });
+    expect(result.code).toBe(0);
+    const parsed = JSON.parse(result.stdout.trim());
+    expect(parsed.pr).toBe(40);
+    expect(parsed.state).toBe("MERGED");
+  });
+
   test("a shell-looking repo value exits 2 and creates nothing", async () => {
     const dir = tempDir();
     const marker = join(dir, "pwned");
