@@ -238,6 +238,16 @@ function unitContext(plan) {
   return { type: plan.wish.type, unit: plan.wish.unit ?? "u1", programId: plan.wish.program_id ?? null };
 }
 
+// One validator for every --head: the contract fixes the width by identity, and a
+// seven-character SHA is never accepted (ledger.md §2).
+function headArg(value, identity) {
+  if (value === undefined) return undefined;
+  if (identity === "research" ? /^[0-9a-f]{64}$/.test(value) : /^[0-9a-f]{40}$/.test(value)) return value;
+  throw usage(identity === "research"
+    ? "--head takes the 64-hex artifact sha256 of a research run"
+    : "--head takes a full 40-hex commit SHA");
+}
+
 // A mixed run's findings table is parsed with the union of its two class sets, so
 // every reader of the table needs the labels that travel on the events.
 function findingOptions(plan, events) {
@@ -345,10 +355,7 @@ function verbInit(parsed, root) {
 function verbStatus(parsed, root) {
   const { plan, planPath, events } = planFor(root, parsed);
   const identity = identityOf(plan, events);
-  const given = parsed.get("--head");
-  if (given !== undefined && !/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/.test(given)) {
-    throw usage("--head takes a full 40-hex commit or a 64-hex artifact sha256");
-  }
+  const given = headArg(parsed.get("--head"), identity);
   const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
   const head = given ?? observed.head;
   const tree = identity === "research" ? null : observed.tree;
@@ -406,8 +413,13 @@ function verbLedger(parsed, root) {
     const text = readInput(source, "--json");
     try {
       input = JSON.parse(text);
-    } catch (error) {
-      throw usage(`--json is not JSON: ${error?.message ?? error}`);
+    } catch {
+      // The parser message quotes the input, which may be an unredacted token:
+      // report the failure, not the bytes.
+      throw usage("--json does not contain valid JSON");
+    }
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw usage("--json must contain one JSON object");
     }
   }
   if (input.event === undefined) input.event = name;
@@ -545,7 +557,8 @@ async function runDispatchGate(parsed, root) {
     throw stateMismatch(`the worktree ${plan.wish.worktree} does not exist; a row would run in the wrong directory`);
   }
   const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
-  const head = parsed.get("--head") ?? (identity === "research" ? plan.wish.frozen_head : observed.head);
+  const head = headArg(parsed.get("--head"), identity)
+    ?? (identity === "research" ? plan.wish.frozen_head : observed.head);
   if (!head) throw stateMismatch("the gate needs a head: pass --head or freeze a worktree with a commit");
   const tree = identity === "research" ? null : observed.tree;
 
@@ -600,17 +613,31 @@ async function runDispatchGate(parsed, root) {
   }
   withLock(root, () => {
     atomicWrite(join(rootPaths(root).receipts, name), JSON.stringify(receipt, null, 2) + "\n");
+    // Re-read under the lock: a row may have moved while its command was running
+    // (the session can fix a finding mid-gate). Applying the snapshot instead would
+    // either write a stale state or abort the whole commit on an illegal move and
+    // lose the gate event, which is the one record the dispatch gate owes.
+    const fresh = readFindings(root, findingOptions(plan, events)) ?? [];
+    const notes = [];
     for (const entry of results) {
-      const row = rows.find((candidate) => candidate.id === entry.id);
-      if (!row) continue;
-      if (entry.status === "not-fixed" && row.status !== "fixed") {
-        setFinding(root, entry.id, { status: "not-fixed" }, { type: plan.wish.type });
+      const target = entry.status === "not-fixed" ? "not-fixed" : entry.status === "no-command" ? "no-command" : null;
+      if (!target) continue;
+      const current = fresh.find((row) => row.id === entry.id);
+      if (!current) {
+        notes.push(entry.id.concat(" vanished"));
+        continue;
       }
-      if (entry.status === "no-command" && row.status === "open") {
-        setFinding(root, entry.id, { status: "no-command" }, { type: plan.wish.type });
+      if (current.status === target) continue;
+      try {
+        setFinding(root, entry.id, { status: target }, { type: plan.wish.type });
+      } catch (error) {
+        notes.push(entry.id.concat(": ", error?.message ?? "transition refused"));
       }
     }
-    recordGate(root, { plan, planPath, context, parsed, started, head, open: anyFail });
+    recordGate(root, {
+      plan, planPath, context, parsed, started, head, open: anyFail,
+      note: notes.length > 0 ? "skipped: ".concat(notes.join("; ")) : undefined,
+    });
   });
 
   const lines = ["gate on " + head.slice(0, 7) + ": " + (anyFail ? "BLOCKED" : "PASS")];
@@ -622,7 +649,7 @@ async function runDispatchGate(parsed, root) {
 
 // The dispatch gate is a section 9 'gate' event with the id the contract's own
 // example uses: 'dispatch' + 'open' is what status.blocking reports.
-function recordGate(root, { plan, planPath, context, parsed, started, head, open }) {
+function recordGate(root, { plan, planPath, context, parsed, started, head, open, note }) {
   appendEvent(root, {
     event: "gate",
     type: plan.wish.type,
@@ -634,6 +661,7 @@ function recordGate(root, { plan, planPath, context, parsed, started, head, open
     gate_id: "dispatch",
     gate_status: open ? "open" : "resolved",
     head,
+    ...(note ? { note } : {}),
   }, { plan: planPath, sessionId: sessionId(parsed) });
 }
 
@@ -702,7 +730,7 @@ function verbFreeze(parsed, root) {
   const identity = identityOf(plan, events);
   const check = parsed.has("--check");
   const observed = identity === "research" ? { head: null, tree: null, dirty: null } : observeWorktree(plan.wish.worktree);
-  const given = parsed.get("--head");
+  const given = headArg(parsed.get("--head"), identity);
   // --check must compare the recorded head with the *observed* one; defaulting to
   // the recorded head would make the comparison vacuous.
   const head = given ?? observed.head ?? plan.wish.frozen_head;

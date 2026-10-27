@@ -1180,6 +1180,79 @@ describe("review blockers", () => {
   });
 });
 
+describe("robustness review blockers", () => {
+  test("no lock artifact except `lock` can wedge acquisition", () => {
+    const state = scene();
+    writeFileSync(join(state.root, "lock.takeover"), JSON.stringify({ pid: 999999 }));
+    writeFileSync(join(state.root, "lock.dead.1.2"), "leftover");
+    expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
+    expect(existsSync(join(state.root, "lock"))).toBe(false);
+  });
+
+  test("the gate records its event when a row moves under it", () => {
+    const state = scene();
+    upToBuild(state);
+    const fix = `${process.execPath} ${CLI} findings set --id F1 --status fixed --fixed-head ${state.repo.head} --root ${state.root}`;
+    expect(addFindings(state, [findingRow({ repro_cmd: `${fix}; exit 1` })]).code).toBe(0);
+    const result = cli(["gate", "--round", "2", "--root", state.root]);
+    expect(result.code).toBe(1);
+    const gateEvent = ledgerEvents(state).filter((event) => event.event === "gate").pop();
+    expect(gateEvent).toBeDefined();
+    expect(gateEvent.gate_status).toBe("open");
+    expect(gateEvent.note).toContain("skipped");
+    const row = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out)[0];
+    expect(row.status).toBe("fixed");
+  });
+
+  test("a JSON parse failure never echoes the submitted bytes", () => {
+    const state = scene();
+    const marker = "CANARY_9d1f";
+    const bad = cli(["ledger", "append", "--event", "resume", "--json", "-", "--root", state.root], { input: marker });
+    expect(bad.code).toBe(2);
+    expect(bad.err).not.toContain(marker);
+    const nullBody = cli(["ledger", "append", "--event", "resume", "--json", "-", "--root", state.root], { input: "null" });
+    expect(nullBody.code).toBe(2);
+    expect(nullBody.err).not.toContain("internal error");
+  });
+
+  test("a seven-hex head is a usage error on every verb that takes one", () => {
+    const state = scene();
+    for (const args of [
+      ["status", "--head", HEAD.slice(0, 7), "--root", state.root],
+      ["gate", "--head", HEAD.slice(0, 7), "--round", "2", "--root", state.root],
+      ["gate", "--head", HEAD.slice(0, 7), "--round", "2", "--dry-run", "--root", state.root],
+      ["freeze", "--head", HEAD.slice(0, 7), "--root", state.root],
+    ]) {
+      expect(cli(args).code).toBe(2);
+    }
+  });
+
+  test("a CRLF plan survives init byte for byte", () => {
+    const box = sandbox();
+    const repo = makeRepo(box);
+    const plan = "---\r\nwish:\r\n  run_id: w-crlf-20261027-1900\r\n  tier: M\r\n  type: code\r\n  unit: u1\r\n  program_id: null\r\n"
+      + `  worktree: ${repo.dir}\r\n  branch: fixture\r\n  pr: null\r\n  frozen_head: null\r\n  round: 0\r\n---\r\n\r\n# Body\r\nA\r\nB\r\n`;
+    writeFileSync(box.plan, plan);
+    const result = cli(["init", "--run-id", "w-crlf-20261027-1900", "--type", "code", "--tier", "M", "--plan", box.plan,
+      "--root", box.root, "--unit", "u1", "--worktree", repo.dir, "--branch", "fixture", "--fact", "f"]);
+    expect(result.code).toBe(0);
+    expect(readFileSync(box.plan, "utf8")).toBe(plan);
+  });
+
+  test("a malformed or non-file before/after receipt is stale, never valid", () => {
+    const state = scene();
+    const dir = join(state.root, "receipts");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "before-G1-aaaaaaa.md"), "no front matter\n");
+    mkdirSync(join(dir, "after-G1-aaaaaaa.json"), { recursive: true });
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.stale_receipts).toContain("before-G1-aaaaaaa.md");
+    expect(reported.json.stale_receipts).toContain("after-G1-aaaaaaa.json");
+    expect(reported.json.valid_receipts).toEqual([]);
+  });
+});
+
 function snapshotDir(dir) {
   const entries = {};
   const walk = (current) => {

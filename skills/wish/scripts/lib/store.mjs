@@ -180,7 +180,6 @@ class FileLock {
   constructor(root) {
     this.paths = rootPaths(root);
     this.candidate = `${this.paths.lock}.candidate.${process.pid}.${Date.now()}`;
-    this.takeover = `${this.paths.lock}.takeover`;
     this.held = false;
   }
 
@@ -209,7 +208,7 @@ class FileLock {
           continue;
         }
         if (holder === undefined) continue;
-        this.reclaim();
+        this.reclaim(holder);
         if (this.held) return this;
         if (Date.now() >= deadline) {
           throw stateMismatch(`cannot lock ${this.paths.lock}: still held after ${waitMs}ms`);
@@ -235,27 +234,44 @@ class FileLock {
     }
   }
 
-  // One reclaimer at a time: the takeover lock is the only code allowed to
-  // unlink the main lock, so a second taker can never remove the winner's lock.
-  reclaim() {
-    if (!this.tryLink(this.takeover)) return;
+  // Reclaiming a stale lock needs exactly one winner and no second lock file: a
+  // takeover lock left behind by a crash would wedge every later command, so the
+  // claim is a rename instead. Only one process can rename a given path (the rest
+  // get ENOENT), and the winner re-reads what it took: if the bytes name a live
+  // holder it was not stale after all, so it is put back and nobody takes it.
+  reclaim(stalePid) {
+    const tomb = `${this.paths.lock}.dead.${process.pid}.${Date.now()}`;
     try {
-      const holder = lockHolder(this.paths.lock);
-      if (holder === null || (holder !== undefined && !pidAlive(holder))) {
-        try {
-          unlinkSync(this.paths.lock);
-        } catch {
-          // someone else finished the job
-        }
-        this.held = this.tryLink(this.paths.lock);
-      }
-    } finally {
+      renameSync(this.paths.lock, tomb);
+    } catch {
+      return; // another process reclaimed it first
+    }
+    let content = null;
+    try {
+      content = JSON.parse(readFileSync(tomb, "utf8"));
+    } catch {
+      content = null;
+    }
+    const holderPid = content && Number.isInteger(content.pid) ? content.pid : null;
+    if (holderPid !== null && holderPid !== stalePid && pidAlive(holderPid)) {
       try {
-        unlinkSync(this.takeover);
+        linkSync(tomb, this.paths.lock);
+      } catch {
+        // a third process installed its own lock; leave it alone
+      }
+      try {
+        unlinkSync(tomb);
       } catch {
         // already gone
       }
+      return;
     }
+    try {
+      unlinkSync(tomb);
+    } catch {
+      // already gone
+    }
+    this.held = this.tryLink(this.paths.lock);
   }
 
   release() {
@@ -394,22 +410,14 @@ export function switchesOf(events, unit) {
 
 // ---------------------------------------------------------- plan front matter
 
-// §8.1: the YAML shape M1 reads and writes. A deliberately small subset -
-// `wish:` plus scalar keys - because anything richer would be a second parser
-// for a shape the contract fixes.
-const FRONT_MATTER_KEYS = [
-  "run_id", "tier", "type", "unit", "program_id", "worktree", "branch", "pr", "frozen_head", "round",
-];
-
+// §8.1: the YAML shape M1 reads and writes. Only the front-matter block is
+// re-rendered; the body is handed back exactly as it arrived, line endings and
+// all, because the plan body belongs to the session and M2.
 export function splitFrontMatter(text) {
-  const lines = String(text ?? "").replace(/\r\n?/g, "\n").split("\n");
-  if (lines[0] !== "---") return { block: null, body: String(text ?? "") };
-  for (let index = 1; index < lines.length; index += 1) {
-    if (lines[index] === "---") {
-      return { block: lines.slice(1, index), body: lines.slice(index + 1).join("\n") };
-    }
-  }
-  return { block: null, body: String(text ?? ""), unterminated: true };
+  const source = String(text ?? "");
+  const match = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(?=\r?\n|$)/.exec(source);
+  if (!match) return { block: null, body: source, unterminated: source.startsWith("---") };
+  return { block: match[1].split(/\r?\n/), body: source.slice(match[0].length) };
 }
 
 function coerceScalar(raw, key) {
@@ -426,6 +434,10 @@ function coerceScalar(raw, key) {
   }
   return value;
 }
+
+const FRONT_MATTER_KEYS = [
+  "run_id", "tier", "type", "unit", "program_id", "worktree", "branch", "pr", "frozen_head", "round",
+];
 
 export function parseFrontMatter(text) {
   const split = splitFrontMatter(text);
@@ -461,7 +473,7 @@ export function readPlan(planPath) {
   return { wish: parsed.wish, body: parsed.body, path: planPath };
 }
 
-export function renderFrontMatter(wish) {
+export function renderFrontMatter(wish, eol = "\n") {
   const lines = ["---", "wish:"];
   for (const key of FRONT_MATTER_KEYS) {
     if (!(key in wish)) continue;
@@ -469,16 +481,20 @@ export function renderFrontMatter(wish) {
     lines.push(`  ${key}: ${value === null || value === undefined ? "null" : String(value)}`);
   }
   lines.push("---");
-  return `${lines.join("\n")}\n`;
+  return `${lines.join(eol)}${eol}`;
 }
 
 // The plan body belongs to M2 and the session; M1 rewrites only the front
 // matter block and keeps the rest byte-for-byte.
 export function writeFrontMatter(planPath, wish) {
   const existing = readTextOrNull(planPath);
-  const body = existing === null ? "" : splitFrontMatter(existing).body;
-  const separator = body === "" || body.startsWith("\n") ? "" : "\n";
-  atomicWrite(planPath, renderFrontMatter(wish) + separator + body);
+  const raw = existing === null ? "" : splitFrontMatter(existing).body;
+  // The plan's own line ending is honoured, so a CRLF document survives a freeze
+  // byte for byte; the marker's break travels with the body and is re-supplied by
+  // the renderer, so exactly one is dropped and every other byte is kept.
+  const eol = existing?.match(/\r?\n/)?.[0] ?? "\n";
+  const body = raw.replace(/^\r?\n/, "");
+  atomicWrite(planPath, renderFrontMatter(wish, eol) + body);
 }
 
 export function mergeFrontMatter(planPath, patch) {
@@ -816,6 +832,10 @@ function parseReceiptMarkdown(text) {
 // an opaque capture is judged by its filename anchor only.
 export function judgeReceipt(receipt, { type, head, tree, reuseEvents = [] }) {
   const kind = receipt.body?.kind ?? receipt.parsed?.kind;
+  // Structural validity comes first: a malformed file or a directory named like a
+  // receipt is unproven evidence, and being exempt from age checks (before/after)
+  // must never make an unreadable file count as valid.
+  if (!receipt.ok) return { valid: false, reason: "unparseable" };
   if (kind === "before" || kind === "after") return { valid: true, reason: "capture exempt from reuse" };
   if (receipt.opaque) {
     const anchor = receipt.parsed?.tree7 ?? receipt.parsed?.head7;
