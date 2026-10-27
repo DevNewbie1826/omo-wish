@@ -9,6 +9,7 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import {
+  chmodSync,
   copyFileSync,
   existsSync,
   linkSync,
@@ -1828,6 +1829,28 @@ test("a dangling output symlink is refused, not followed out of the root", () =>
     expect(result.code).toBe(3);
     expect(result.err).toContain("deeper than the guard walks");
     expect(readFileSync(join(deep, "evidence.txt"), "utf8")).toBe("deep\n");
+  });
+
+test("an unsearchable evidence directory refuses the write instead of skipping it", () => {
+    const state = scene();
+    upToBuild(state);
+    const receipt = lane(state, { lane: "tests" });
+    ["qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const target = join(state.root, "receipts", receipt.name);
+    const before = readFileSync(target, "utf8");
+    const hard = join(state.root, "innocent-unsearchable.md");
+    linkSync(target, hard);
+    const receiptsDir = join(state.root, "receipts");
+    chmodSync(receiptsDir, 0o400);
+    try {
+      const result = cli(["pr-body", "--root", state.root, "--out", hard]);
+      expect(result.code).toBe(3);
+      expect(result.err).toContain("cannot inspect");
+    } finally {
+      chmodSync(receiptsDir, 0o755);
+    }
+    expect(readFileSync(target, "utf8")).toBe(before);
   });
 
   test("an --out path that cannot be written is a usage error", () => {

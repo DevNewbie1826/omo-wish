@@ -973,7 +973,12 @@ function verbPrBody(parsed, root) {
     let linkStat = null;
     try {
       linkStat = lstatSync(requested);
-    } catch {
+    } catch (error) {
+      // Only "absent" means absent: a metadata error (EIO, EACCES) has to refuse the
+      // write, or the dangling-link check silently disappears.
+      if (error?.code !== "ENOENT") {
+        throw stateMismatch(`cannot inspect the output path ${requested}: ${error?.code ?? error}`);
+      }
       linkStat = null;
     }
     if (linkStat?.isSymbolicLink() && !existsSync(requested)) {
@@ -999,8 +1004,11 @@ function verbPrBody(parsed, root) {
         let guardStat;
         try {
           guardStat = statSync(guard);
-        } catch {
-          continue;
+        } catch (error) {
+          // Absent is fine; any other metadata failure means the identity set is
+          // unknown, and an unknown set cannot be trusted to be a superset.
+          if (error?.code === "ENOENT") continue;
+          throw stateMismatch(`cannot inspect ${guard}: ${error?.code ?? error}`);
         }
         if (guardStat.dev === targetStat.dev && guardStat.ino === targetStat.ino) {
           throw usage(`--out may not overwrite run state or evidence: ${targetReal} is ${guard}`);
