@@ -47,10 +47,23 @@
 기록 권위는 이 저장소의 `docs/experiments/` 한 곳입니다.
 
 - `ledger.md` — 실험 등록·판정. #43(C1 팔)이 커밋했고 C2 행은 그 52행에 있습니다. 이 팔은 `ledger.md`를 복제하지 않습니다(권위 이중화 금지). 이 문서는 C2의 상세 등록문이고, 등록값은 `ledger.md`의 C2 행과 같습니다.
-- `measurements.csv` — PR 단위 공통 스키마(공동 비교 계획 §3.3). 열: `pr,repo,arm,common_e6_e9,path_class,size_bucket,stacked_on,opened_at,merged_at,open_to_merge_minutes,total_rounds,ultrabrain_calls,code_reviewer_calls,architect_calls,content_commits_after_approval,step12_result,post_merge_refix,blind_review_result,invalid_flag,notes`.
-- `rounds.csv` — 회차 단위 공통 스키마(§3.3). 열: `pr,round_index,round_kind,verdict_head_sha,dispatch_at,verdict_at,minutes,reviewer_category,reviewer_family,defect_count,defect_axes,counterexample_present,gate_rows,c2_split,c2_families,six_axis_line_present,verdict_line_present,verdict_line_head_match`.
+- `measurements.csv` — PR 단위 공통 스키마(공동 비교 계획 §3.3). 열: `pr,repo,arm,common_e6_e9,path_class,size_bucket,stacked_on,opened_at,merged_at,open_to_merge_minutes,total_rounds,ultrabrain_calls,code_reviewer_calls,architect_calls,content_commits_after_approval,step12_result,post_merge_refix,blind_review_result,invalid_flag,notes,test_only_rounds,test_only_tail_max,production_defect_rounds`. 뒤 세 열은 2026-10-27 테스트 전용 꼬리 측정 추가분이다.
+- `rounds.csv` — 회차 단위 공통 스키마(§3.3). 열: `pr,round_index,round_kind,verdict_head_sha,dispatch_at,verdict_at,minutes,reviewer_category,reviewer_family,defect_count,defect_axes,counterexample_present,gate_rows,c2_split,c2_families,six_axis_line_present,verdict_line_present,verdict_line_head_match,test_only_round,production_defect_reproduced,finding_test_count,finding_prod_count,finding_plan_count`. 뒤 다섯 열은 테스트 전용 꼬리 측정 추가분이다.
 
-인코딩: 시각은 ISO-8601(초), 분은 소수 1자리, `gate_rows`=`fixed=N;not_fixed=N;no_command=N`, `c2_split`=`a_only=N;b_only=N;both=N`, `c2_families`=`A=<계열>;B=<계열>`, `invalid_flag`는 `524`·`stall`·`rebase`·`conflict`·`tail`을 `;`로 잇습니다. 처치 PR이 생기면 이 팔 세션이 자기 PR에 자기 행을 추가합니다.
+인코딩: 시각은 ISO-8601(초), 분은 소수 1자리, `gate_rows`=`fixed=N;not_fixed=N;no_command=N`, `c2_split`=`a_only=N;b_only=N;both=N`, `c2_families`=`A=<계열>;B=<계열>`, `invalid_flag`는 `524`·`stall`·`rebase`·`conflict`·`tail`을 `;`로 잇습니다. `test_only_round`/`production_defect_reproduced`는 `yes`/`no`, `test_only_tail_max`는 그 PR에서 **연속** test-only 회차의 최대 길이(회차 인덱스 기준)입니다. 처치 PR이 생기면 이 팔 세션이 자기 PR에 자기 행을 추가합니다.
+
+## 결과 보고 (테스트 전용 꼬리 분리)
+
+측정 근거: `/tmp/oru-revise-tests/report.md`(2026-10-27). 정의는 그 문서의 규칙을 그대로 쓴다: **TEST 파인딩** = 파인딩이 요구하는 수정이 테스트 산물(`test/`, `*_test.go`, `*.test.ts`, `test/qa/`, mutation·guard·QA fixture)에 들어가거나 검사 추가·강화를 요구하는 것. 시험이 운영 코드 결함을 관찰만 하면 TEST가 아니다. **test-only 회차** = 그 회차의 블로킹 파인딩이 전부 TEST인 회차. **production_defect_reproduced** = 그 회차의 판정·재현에 생산 코드 결함이 하나라도 재현된 경우.
+
+기준선(같은 문서): genie 병합 104 PR에서 test-only 회차 10/74 = 13.5%, TEST 파인딩 13/68 = 19.1%(INFERENCE). genie 열린 9 PR은 16/43 = 37.2%, 27/99 = 27.3%(VERIFIED)이고, 그 격차는 #63 하나가 만든다 — 30회차 중 15회가 TEST, 2026-10-26 23:27Z부터 **15연속 test-only**, 약 20시간("Two test-only defects require revision. No production defect was reproduced").
+
+결과를 쓸 때 반드시 따로 보고한다(1차 지표와 섞지 않는다):
+
+1. 표본 전체와 C2 처치/대조 각각의 **test-only 회차 수/비중**, TEST 파인딩 수/비중(PROD·PLAN과 나란히).
+2. PR별 **최장 연속 test-only 꼬리**(`test_only_tail_max`)와, 그 꼬리가 첫 생산 결함 회차 뒤에 시작됐는지.
+3. **이 팔이 꼬리를 줄였는가**: test-only 비중·최장 연속 길이를 동시창 대조와 기준선에 비교해 yes/no로 적고, 총 회차만 줄고 test-only 비중이 늘었으면 그렇게 적는다(합집합은 두 번째 계열이 테스트 결함을 더 낼 수 있으므로 악화 가능성도 열어 둔다).
+4. 실패/취소 판정은 위 1~3이 아니라 **사전 등록한 취소 기준**으로만 한다. 이 절은 2차 진단이고 취소 기준을 바꾸지 않는다(임계값·판정 PR 수·품질 가드 그대로).
 
 ## 비적합 표본
 
