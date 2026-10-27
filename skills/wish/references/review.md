@@ -26,7 +26,17 @@ Take the head SHA, commands, exit codes, counts, and the base each result is att
 
 ## Step 9: Final review
 
-One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Its prompt follows SKILL.md, Delegation prompts.
+Round 1 runs two reviewers in parallel, after the PR exists and steps 6-7 pass. Reviewer A is `category: ultrabrain`. Reviewer B comes from a different model family: pick a category or an explicit model the host routes to another family, by the rule of run.md, Step 5 for the adversarial review, and record B's model with the evidence. Both get the same inputs: the PR and the plan's finite contract; each prompt follows SKILL.md, Delegation prompts. Each reviewer reports every CODE defect of the PR, never stopping at the first defect, and ends APPROVED or REVISE. Neither reviewer sees the other's report before writing its own.
+
+Dispatch both in one wave, and record the head SHA before dispatch: the head is frozen from dispatch to the union verdict. A commit that lands in that window makes both reports history, and the round restarts at the new head. A head that moved only by a rebase follows the patch-id rule of Step 11: equal ids keep the reports, different ids restart the round. A stale report never approves a moved head.
+
+The running agent merges the two reports into one verdict by union, never by majority or intersection: every defect either reviewer reports stands as a defect of the round, the same defect reported by both is one row that names both sources, and the round is APPROVED only when both reviewers approved. A REVISE round therefore fixes every defect of the union before the next round.
+
+Round 2 and later run one reviewer, the ultrabrain one, on the delta diff, as Step 11 says. Round 1's second reviewer is the one wide pass; it is not repeated on every later round.
+
+Record the round-1 metrics in the PR body: each reviewer's model and family, its dispatch and verdict timestamps, its finding and blocking counts, the frozen head SHA, the source of each defect (A only, B only, both), and the dispatch-to-union-verdict minutes.
+
+If the host cannot route a different model family, record that inability, run round 1 with one reviewer, and mark the round one-reviewer in the metrics; never present two instances of one family as two opinions.
 
 ## Step 10: Evidence problems
 
