@@ -827,7 +827,7 @@ function verbPrBody(parsed, root) {
   const lines = [
     `# ${plan.wish.run_id} - ${plan.wish.type} (${plan.wish.tier})`,
     "",
-    `PR: ${pr === null ? "-" : `#${pr}`}`,
+    ...(pr === null ? [] : [`PR: #${pr}`]),
     `Frozen head: ${String(frozen.head)}  tree: ${frozen.tree ?? "null"}`,
     `Evidence root: ${root}`,
     "",
@@ -882,7 +882,8 @@ function planSection(body, heading) {
       break;
     }
   }
-  return lines.slice(start, end).join("\n").trim();
+  // The renderer emits the heading, so the section body is returned without it.
+  return lines.slice(start + 1, end).join("\n").trim();
 }
 
 function verbSwitch(parsed, root) {
