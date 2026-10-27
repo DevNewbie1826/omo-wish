@@ -107,6 +107,20 @@ test("task rows: a fenced task row is documentation", () => {
   expectClean(plan);
 });
 
+test("contract rows: a plan with no IS rows is a complaint", () => {
+  const plan = CODE.split("\n").filter((line) => !line.startsWith("- IS-")).join("\n");
+  expect(lintPlan(plan).problems[0]).toEqual({ line: 1, message: "PL3: no IS rows: the plan delivers nothing measurable", rule: "PL3" });
+});
+
+test("contract rows: duplicate IS ids are complaints", () => {
+  const plan = mutate(CODE, "- IS-2: the usage text", "- IS-1: the usage text");
+  expectProblem(plan, "1: the usage text", "duplicate IS row IS-1");
+});
+
+test("contract rows: an IS row without a property is a complaint", () => {
+  expectProblem(mutate(CODE, "- IS-1: an empty input", "- IS-1:  ; criterion: QA-1 empty input"), "IS-1:", "states no property");
+});
+
 test("contract rows: an IS row naming an undeclared QA scenario is a complaint", () => {
   expectProblem(mutate(CODE, "criterion: QA-2", "criterion: QA-7"), "criterion: QA-7", "names QA-7, which has no QA scenario");
 });
