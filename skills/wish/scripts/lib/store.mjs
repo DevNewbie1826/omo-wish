@@ -180,6 +180,7 @@ class FileLock {
   constructor(root) {
     this.paths = rootPaths(root);
     this.candidate = `${this.paths.lock}.candidate.${process.pid}.${Date.now()}`;
+    this.claimPath = `${this.paths.lock}.claim`;
     this.held = false;
   }
 
@@ -208,7 +209,7 @@ class FileLock {
           continue;
         }
         if (holder === undefined) continue;
-        this.reclaim(holder);
+        this.reclaim();
         if (this.held) return this;
         if (Date.now() >= deadline) {
           throw stateMismatch(`cannot lock ${this.paths.lock}: still held after ${waitMs}ms`);
@@ -234,44 +235,51 @@ class FileLock {
     }
   }
 
-  // Reclaiming a stale lock needs exactly one winner and no second lock file: a
-  // takeover lock left behind by a crash would wedge every later command, so the
-  // claim is a rename instead. Only one process can rename a given path (the rest
-  // get ENOENT), and the winner re-reads what it took: if the bytes name a live
-  // holder it was not stale after all, so it is put back and nobody takes it.
-  reclaim(stalePid) {
-    const tomb = `${this.paths.lock}.dead.${process.pid}.${Date.now()}`;
+  // Reclaiming must be exclusive and must never remove a lock a competitor just
+  // installed. The claim is a second link-lock whose body is complete at creation;
+  // inside it the main lock is re-read, so a lock that appeared meanwhile is left
+  // alone. A claimer that dies leaves that file behind, so a dead claimer is
+  // reclaimed by pid and the loser of the re-link backs off (the main lock keeps
+  // its own single-winner install either way).
+  reclaim() {
+    if (!this.claim()) return;
     try {
-      renameSync(this.paths.lock, tomb);
-    } catch {
-      return; // another process reclaimed it first
-    }
-    let content = null;
-    try {
-      content = JSON.parse(readFileSync(tomb, "utf8"));
-    } catch {
-      content = null;
-    }
-    const holderPid = content && Number.isInteger(content.pid) ? content.pid : null;
-    if (holderPid !== null && holderPid !== stalePid && pidAlive(holderPid)) {
+      const holder = lockHolder(this.paths.lock);
+      if (holder !== undefined && holder !== null && pidAlive(holder)) return;
       try {
-        linkSync(tomb, this.paths.lock);
+        unlinkSync(this.paths.lock);
       } catch {
-        // a third process installed its own lock; leave it alone
+        // someone else finished the job
       }
+      this.held = this.tryLink(this.paths.lock);
+    } finally {
+      const owner = lockHolder(this.claimPath);
+      if (owner === process.pid) {
+        try {
+          unlinkSync(this.claimPath);
+        } catch {
+          // already gone
+        }
+      }
+    }
+  }
+
+  claim() {
+    for (let attempt = 0; attempt < 200; attempt += 1) {
+      if (this.tryLink(this.claimPath)) return true;
+      const holder = lockHolder(this.claimPath);
+      if (holder !== undefined && holder !== null && pidAlive(holder)) {
+        sleepSync(2);
+        continue;
+      }
+      if (holder === undefined) continue;
       try {
-        unlinkSync(tomb);
+        unlinkSync(this.claimPath);
       } catch {
-        // already gone
+        // lost the race to another claimer
       }
-      return;
     }
-    try {
-      unlinkSync(tomb);
-    } catch {
-      // already gone
-    }
-    this.held = this.tryLink(this.paths.lock);
+    return false;
   }
 
   release() {
@@ -487,23 +495,37 @@ export function renderFrontMatter(wish, eol = "\n") {
 // The plan body belongs to M2 and the session; M1 rewrites only the front
 // matter block and keeps the rest byte-for-byte.
 export function writeFrontMatter(planPath, wish) {
-  const existing = readTextOrNull(planPath);
-  const raw = existing === null ? "" : splitFrontMatter(existing).body;
-  // The plan's own line ending is honoured, so a CRLF document survives a freeze
-  // byte for byte; the marker's break travels with the body and is re-supplied by
-  // the renderer, so exactly one is dropped and every other byte is kept.
-  const eol = existing?.match(/\r?\n/)?.[0] ?? "\n";
-  const body = raw.replace(/^\r?\n/, "");
-  atomicWrite(planPath, renderFrontMatter(wish, eol) + body);
+  mutateText(planPath, (current) => {
+    const raw = current === null ? "" : splitFrontMatter(current).body;
+    // The plan's own line ending is honoured, so a CRLF document survives a freeze
+    // byte for byte; the marker's break travels with the body and is re-supplied by
+    // the renderer, so exactly one is dropped and every other byte is kept.
+    const eol = current?.match(/\r?\n/)?.[0] ?? "\n";
+    const body = raw.replace(/^\r?\n/, "");
+    return renderFrontMatter(wish, eol) + body;
+  }, (text) => {
+    const written = parseFrontMatter(text).wish;
+    return Object.entries(wish).every(([key, value]) => written[key] === value);
+  });
 }
 
 export function mergeFrontMatter(planPath, patch) {
-  const plan = readPlan(planPath);
-  const wish = { ...plan.wish, ...patch };
-  const checked = validatePlanFrontMatter({ wish });
-  if (!checked.ok) throw stateMismatch("the updated front matter would not match the contract", checked.errors);
-  writeFrontMatter(planPath, wish);
-  return wish;
+  let merged = null;
+  mutateText(planPath, (current) => {
+    if (current === null) throw stateMismatch(`the plan does not exist: ${planPath}`);
+    const parsed = parseFrontMatter(current);
+    const wish = { ...parsed.wish, ...patch };
+    const checked = validatePlanFrontMatter({ wish });
+    if (!checked.ok) throw stateMismatch("the updated front matter would not match the contract", checked.errors);
+    merged = wish;
+    const eol = current.match(/\r?\n/)?.[0] ?? "\n";
+    const body = splitFrontMatter(current).body.replace(/^\r?\n/, "");
+    return renderFrontMatter(wish, eol) + body;
+  }, (text) => {
+    const wish = parseFrontMatter(text).wish;
+    return Object.entries(patch).every(([key, value]) => wish[key] === value);
+  });
+  return merged;
 }
 
 // ------------------------------------------------------------------ tsv files
@@ -532,6 +554,66 @@ function tsvCell(value, label) {
     throw usage(`${label} may not contain a tab, CR or LF`);
   }
   return text;
+}
+
+// A read-modify-write on a whole file cannot be made safe by a lock alone: POSIX
+// has no compare-and-swap on a path, and a reclaimer that removes a lock a
+// competitor just installed lets two writers into the same section. So the write
+// itself is guarded: re-read, compare against the bytes the computation saw, and
+// only then swap the file in. A writer that loses the race recomputes against the
+// newer bytes instead of overwriting them, which turns a possible lost update into
+// either a correct result or a loud refusal (bounded, never a silent clobber).
+function mutateText(file, compute, verify) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (attempt > 0) sleepSync(1 + (attempt % 7));
+    const before = readTextOrNull(file);
+    const next = compute(before);
+    if (next === null || next === undefined) return;
+    if (readTextOrNull(file) !== before) continue;
+    if (!swapIfUnchanged(file, next, before)) continue;
+    // A rename is atomic but last-wins: another writer may have replaced the file
+    // between the comparison and the swap. Re-read and confirm this write's own
+    // effect survived; if it did not, recompute against the newer bytes instead of
+    // silently losing the update.
+    if (!verify) return;
+    let holds = false;
+    try {
+      holds = verify(readTextOrNull(file));
+    } catch {
+      holds = false;
+    }
+    if (holds) return;
+  }
+  throw stateMismatch(`cannot update ${file}: concurrent writers keep moving it`);
+}
+
+function swapIfUnchanged(file, text, expected) {
+  ensureDir(dirname(file));
+  const tmp = join(dirname(file), `.${basename(file)}.tmp.${process.pid}.${Date.now()}`);
+  writeSyncFile(tmp, text);
+  if (readTextOrNull(file) !== expected) {
+    try {
+      unlinkSync(tmp);
+    } catch {
+      // the temp file is already gone
+    }
+    return false;
+  }
+  renameSync(tmp, file);
+  return true;
+}
+
+function rowsFromText(text, columns, parse) {
+  if (text === null) return [];
+  const body = text.replace(/\r\n?/g, "\n").replace(/\n+$/, "");
+  if (body.trim() === "" || body === columns.join("\t")) return [];
+  const parsed = parse(text);
+  if (!parsed.ok) throw stateMismatch("the table does not match the contract", parsed.errors);
+  return parsed.rows;
+}
+
+function renderTsv(columns, rows) {
+  return [columns.join("\t"), ...rows.map((row) => columns.map((column) => row[column]).join("\t"))].join("\n");
 }
 
 export function readFindings(root, options = {}) {
@@ -571,23 +653,27 @@ function normalizeRows(input) {
 }
 
 // `findings add --tsv <file|->`: the text is the full file (header + rows) or
-// just rows when `withHeader: false`. Existing ids are never replaced.
+// just rows. Existing ids are never replaced.
 export function addFindings(root, text, { type, primary, secondary } = {}) {
   const paths = rootPaths(root);
-  const now = readFindings(root, { type, primary, secondary }) ?? [];
+  const options = { type, primary, secondary };
   const incoming = parseFindingsText(text);
-  const seen = new Set(now.map((row) => row.id));
-  const added = [];
-  for (const row of incoming) {
-    if (seen.has(row.id)) throw checkFailed(`finding ${row.id} already exists; findings.set moves it`);
-    seen.add(row.id);
-    added.push(row);
-  }
-  const merged = [...now, ...added];
-  const checked = parseFindingsTsv(renderTsv(FINDINGS_COLUMNS, merged), { type, primary, secondary });
-  if (!checked.ok) throw checkFailed("the findings rows do not match the contract", checked.errors);
-  writeTsv(paths.findings, FINDINGS_COLUMNS, merged);
-  return added;
+  mutateText(paths.findings, (current) => {
+    const now = rowsFromText(current, FINDINGS_COLUMNS, (value) => parseFindingsTsv(value, options));
+    const seen = new Set(now.map((row) => row.id));
+    for (const row of incoming) {
+      if (seen.has(row.id)) throw checkFailed(`finding ${row.id} already exists; findings.set moves it`);
+      seen.add(row.id);
+    }
+    const merged = [...now, ...incoming];
+    const checked = parseFindingsTsv(renderTsv(FINDINGS_COLUMNS, merged), options);
+    if (!checked.ok) throw checkFailed("the findings rows do not match the contract", checked.errors);
+    return `${renderTsv(FINDINGS_COLUMNS, merged)}\n`;
+  }, (text) => {
+    const ids = new Set(rowsFromText(text, FINDINGS_COLUMNS, (value) => parseFindingsTsv(value, options)).map((row) => row.id));
+    return incoming.every((row) => ids.has(row.id));
+  });
+  return incoming;
 }
 
 function parseFindingsText(text) {
@@ -601,49 +687,57 @@ function parseFindingsText(text) {
   return checked.rows;
 }
 
-function renderTsv(columns, rows) {
-  return [columns.join("\t"), ...rows.map((row) => columns.map((column) => row[column]).join("\t"))].join("\n");
-}
-
 export function setFinding(root, id, patch, { type, primary, secondary } = {}) {
   const paths = rootPaths(root);
-  const rows = readFindings(root, { type, primary, secondary });
-  if (rows === null) throw stateMismatch(`no findings file: ${paths.findings}`);
-  const index = rows.findIndex((row) => row.id === id);
-  if (index === -1) throw stateMismatch(`unknown finding id ${id}`);
-  const row = { ...rows[index] };
-  if (patch.status !== undefined) {
-    if (!FINDINGS_STATUSES.includes(patch.status)) throw usage(`unknown finding status ${patch.status}`);
-    const allowed = FINDING_TRANSITIONS[row.status] ?? [];
-    if (patch.status !== row.status && !allowed.includes(patch.status)) {
-      throw checkFailed(`finding ${id} may not move from ${row.status} to ${patch.status}`);
+  const options = { type, primary, secondary };
+  let updated = null;
+  mutateText(paths.findings, (current) => {
+    if (current === null) throw stateMismatch(`no findings file: ${paths.findings}`);
+    const rows = rowsFromText(current, FINDINGS_COLUMNS, (value) => parseFindingsTsv(value, options));
+    const index = rows.findIndex((row) => row.id === id);
+    if (index === -1) throw stateMismatch(`unknown finding id ${id}`);
+    const row = { ...rows[index] };
+    if (patch.status !== undefined) {
+      if (!FINDINGS_STATUSES.includes(patch.status)) throw usage(`unknown finding status ${patch.status}`);
+      const allowed = FINDING_TRANSITIONS[row.status] ?? [];
+      if (patch.status !== row.status && !allowed.includes(patch.status)) {
+        throw checkFailed(`finding ${id} may not move from ${row.status} to ${patch.status}`);
+      }
+      row.status = patch.status;
     }
-    row.status = patch.status;
-  }
-  if (patch.blocking !== undefined) {
-    if (patch.blocking !== "0" && patch.blocking !== "1") throw usage("--blocking takes 0 or 1");
-    row.blocking = patch.blocking;
-  }
-  if (patch.fixedHead !== undefined) {
-    row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
-  }
-  if (row.status === "fixed" && !/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(row.fixed_head)) {
-    throw checkFailed(`finding ${id} is fixed but names no fix head`);
-  }
-  if (row.status !== "fixed" && row.fixed_head !== "-") row.fixed_head = "-";
-  if ((row.status === "note" || row.status === "owner") && row.blocking === "1") {
-    throw checkFailed(`finding ${id} is ${row.status} and may not block`);
-  }
-  rows[index] = row;
-  const checked = parseFindingsTsv(renderTsv(FINDINGS_COLUMNS, rows), { type, primary, secondary });
-  if (!checked.ok) throw checkFailed("the findings rows do not match the contract", checked.errors);
-  writeTsv(paths.findings, FINDINGS_COLUMNS, rows);
-  return row;
+    if (patch.blocking !== undefined) {
+      if (patch.blocking !== "0" && patch.blocking !== "1") throw usage("--blocking takes 0 or 1");
+      row.blocking = patch.blocking;
+    }
+    if (patch.fixedHead !== undefined) {
+      row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
+    }
+    if (row.status === "fixed" && !/^[0-9a-f]{40}$|^[0-9a-f]{64}$/.test(row.fixed_head)) {
+      throw checkFailed(`finding ${id} is fixed but names no fix head`);
+    }
+    if (row.status !== "fixed" && row.fixed_head !== "-") row.fixed_head = "-";
+    if ((row.status === "note" || row.status === "owner") && row.blocking === "1") {
+      throw checkFailed(`finding ${id} is ${row.status} and may not block`);
+    }
+    rows[index] = row;
+    const checked = parseFindingsTsv(renderTsv(FINDINGS_COLUMNS, rows), options);
+    if (!checked.ok) throw checkFailed("the findings rows do not match the contract", checked.errors);
+    updated = row;
+    return `${renderTsv(FINDINGS_COLUMNS, rows)}\n`;
+  }, (text) => {
+    const rows = rowsFromText(text, FINDINGS_COLUMNS, (value) => parseFindingsTsv(value, options));
+    const row = rows.find((entry) => entry.id === id);
+    if (!row) return false;
+    if (patch.status !== undefined && row.status !== patch.status) return false;
+    if (patch.blocking !== undefined && row.blocking !== patch.blocking) return false;
+    if (patch.fixedHead !== undefined && row.fixed_head !== (patch.fixedHead === "-" ? "-" : patch.fixedHead)) return false;
+    return true;
+  });
+  return updated;
 }
 
 export function addGaps(root, text) {
   const paths = rootPaths(root);
-  const now = readGaps(root) ?? [];
   const lines = normalizeRows(text);
   if (lines.length === 0) throw usage("no gap rows were given");
   const header = GAPS_COLUMNS.join("\t");
@@ -651,47 +745,65 @@ export function addGaps(root, text) {
   if (body.length === 0) throw usage("the gaps text has a header and no rows");
   const incoming = parseGapsTsv([header, ...body].join("\n"));
   if (!incoming.ok) throw checkFailed("the gap rows do not match the contract", incoming.errors);
-  const seen = new Set(now.map((row) => row.id));
-  for (const row of incoming.rows) {
-    if (seen.has(row.id)) throw checkFailed(`gap ${row.id} already exists; gaps.set moves it`);
-    seen.add(row.id);
-  }
-  const merged = [...now, ...incoming.rows];
-  const checked = parseGapsTsv(renderTsv(GAPS_COLUMNS, merged));
-  if (!checked.ok) throw checkFailed("the register does not match the contract", checked.errors);
-  writeTsv(paths.gaps, GAPS_COLUMNS, merged);
+  mutateText(paths.gaps, (current) => {
+    const now = rowsFromText(current, GAPS_COLUMNS, (value) => parseGapsTsv(value));
+    const seen = new Set(now.map((row) => row.id));
+    for (const row of incoming.rows) {
+      if (seen.has(row.id)) throw checkFailed(`gap ${row.id} already exists; gaps.set moves it`);
+      seen.add(row.id);
+    }
+    const merged = [...now, ...incoming.rows];
+    const checked = parseGapsTsv(renderTsv(GAPS_COLUMNS, merged));
+    if (!checked.ok) throw checkFailed("the register does not match the contract", checked.errors);
+    return `${renderTsv(GAPS_COLUMNS, merged)}\n`;
+  }, (text) => {
+    const ids = new Set(rowsFromText(text, GAPS_COLUMNS, (value) => parseGapsTsv(value)).map((row) => row.id));
+    return incoming.rows.every((row) => ids.has(row.id));
+  });
   return incoming.rows;
 }
 
 export function setGap(root, id, patch) {
   const paths = rootPaths(root);
-  const rows = readGaps(root);
-  if (rows === null) throw stateMismatch(`no register: ${paths.gaps}`);
-  const index = rows.findIndex((row) => row.id === id);
-  if (index === -1) throw stateMismatch(`unknown gap id ${id}`);
-  const row = { ...rows[index] };
-  if (patch.status !== undefined) {
-    if (!GAP_STATUSES.includes(patch.status)) throw usage(`unknown gap status ${patch.status}`);
-    const allowed = GAP_TRANSITIONS[row.status] ?? [];
-    if (patch.status !== row.status && !allowed.includes(patch.status)) {
-      throw stateMismatch(`gap ${id} may not move from ${row.status} to ${patch.status}`);
+  let updated = null;
+  mutateText(paths.gaps, (current) => {
+    if (current === null) throw stateMismatch(`no register: ${paths.gaps}`);
+    const rows = rowsFromText(current, GAPS_COLUMNS, (value) => parseGapsTsv(value));
+    const index = rows.findIndex((row) => row.id === id);
+    if (index === -1) throw stateMismatch(`unknown gap id ${id}`);
+    const row = { ...rows[index] };
+    if (patch.status !== undefined) {
+      if (!GAP_STATUSES.includes(patch.status)) throw usage(`unknown gap status ${patch.status}`);
+      const allowed = GAP_TRANSITIONS[row.status] ?? [];
+      if (patch.status !== row.status && !allowed.includes(patch.status)) {
+        throw stateMismatch(`gap ${id} may not move from ${row.status} to ${patch.status}`);
+      }
+      row.status = patch.status;
     }
-    row.status = patch.status;
-  }
-  if (patch.pr !== undefined) {
-    if (patch.pr !== "-" && !/^[1-9][0-9]*$/.test(String(patch.pr))) throw usage("--pr takes a PR number or -");
-    row.pr = String(patch.pr);
-  }
-  if (patch.fixedHead !== undefined) {
-    row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
-  }
-  // Leaving "fixed" clears the fix head, exactly as findings.set does: a row that
-  // is open again must not claim a commit that no longer closes it.
-  if (row.status !== "fixed") row.fixed_head = "-";
-  const checked = parseGapsTsv(renderTsv(GAPS_COLUMNS, rows.map((entry, at) => (at === index ? row : entry))));
-  if (!checked.ok) throw checkFailed("the register does not match the contract", checked.errors);
-  writeTsv(paths.gaps, GAPS_COLUMNS, checked.rows);
-  return row;
+    if (patch.pr !== undefined) {
+      if (patch.pr !== "-" && !/^[1-9][0-9]*$/.test(String(patch.pr))) throw usage("--pr takes a PR number or -");
+      row.pr = String(patch.pr);
+    }
+    if (patch.fixedHead !== undefined) {
+      row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
+    }
+    // Leaving "fixed" clears the fix head, exactly as findings.set does: a row that
+    // is open again must not claim a commit that no longer closes it.
+    if (row.status !== "fixed") row.fixed_head = "-";
+    rows[index] = row;
+    const checked = parseGapsTsv(renderTsv(GAPS_COLUMNS, rows));
+    if (!checked.ok) throw checkFailed("the register does not match the contract", checked.errors);
+    updated = row;
+    return `${renderTsv(GAPS_COLUMNS, rows)}\n`;
+  }, (text) => {
+    const row = rowsFromText(text, GAPS_COLUMNS, (value) => parseGapsTsv(value)).find((entry) => entry.id === id);
+    if (!row) return false;
+    if (patch.status !== undefined && row.status !== patch.status) return false;
+    if (patch.pr !== undefined && row.pr !== String(patch.pr)) return false;
+    if (patch.fixedHead !== undefined && row.fixed_head !== (patch.fixedHead === "-" ? "-" : patch.fixedHead)) return false;
+    return true;
+  });
+  return updated;
 }
 
 // ---------------------------------------------------------------------- gates
@@ -730,11 +842,16 @@ function gateField(value, label) {
   return text;
 }
 
+function gatesFromText(text) {
+  if (text === null || text.trim() === "") return [];
+  const parsed = parseGatesMarkdown(text);
+  if (!parsed.ok) throw stateMismatch("gates.md does not match the contract", parsed.errors);
+  return parsed.gates;
+}
+
 export function addGate(root, { id, question, options, fallback }) {
   const paths = rootPaths(root);
-  const gates = readGates(root);
   if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(String(id ?? ""))) throw usage("--id takes [A-Za-z0-9][A-Za-z0-9_-]*");
-  if (gates.some((gate) => gate.id === id)) throw checkFailed(`gate ${id} already exists`);
   const choices = String(options ?? "").split("|").map((choice) => choice.trim()).filter((choice) => choice !== "");
   if (choices.length < 2) throw usage("--options takes at least two choices separated by |");
   const picked = gateField(fallback, "--default");
@@ -746,27 +863,32 @@ export function addGate(root, { id, question, options, fallback }) {
     options: choices.join(" | "),
     default: picked,
   };
-  const next = [...gates, gate];
-  const checked = parseGatesMarkdown(renderGates(next));
-  if (!checked.ok) throw checkFailed("the gate block does not match the contract", checked.errors);
-  atomicWrite(paths.gates, renderGates(next));
+  mutateText(paths.gates, (current) => {
+    const gates = gatesFromText(current);
+    if (gates.some((entry) => entry.id === id)) throw checkFailed(`gate ${id} already exists`);
+    const next = [...gates, gate];
+    const checked = parseGatesMarkdown(renderGates(next));
+    if (!checked.ok) throw checkFailed("the gate block does not match the contract", checked.errors);
+    return renderGates(next);
+  }, (text) => gatesFromText(text).some((entry) => entry.id === gate.id && entry.question === gate.question));
   return gate;
 }
 
 export function resolveGate(root, { id, answer }) {
   const paths = rootPaths(root);
-  const gates = readGates(root);
-  const index = gates.findIndex((gate) => gate.id === id);
-  if (index === -1) throw stateMismatch(`unknown gate ${id}`);
-  if (gates[index].status !== "open") throw checkFailed(`gate ${id} is already ${gates[index].status}`);
-  const resolved = { ...gates[index], status: "resolved", answer: gateField(answer, "--answer") };
-  const next = gates.map((gate, at) => (at === index ? resolved : gate));
-  const checked = parseGatesMarkdown(renderGates(next));
-  if (!checked.ok) throw checkFailed("the gate block does not match the contract", checked.errors);
-  atomicWrite(paths.gates, renderGates(next));
-  return resolved;
+  const resolved = gateField(answer, "--answer");
+  mutateText(paths.gates, (current) => {
+    const gates = gatesFromText(current);
+    const index = gates.findIndex((gate) => gate.id === id);
+    if (index === -1) throw stateMismatch(`unknown gate ${id}`);
+    if (gates[index].status !== "open") throw checkFailed(`gate ${id} is already ${gates[index].status}`);
+    const next = gates.map((gate, at) => (at === index ? { ...gate, status: "resolved", answer: resolved } : gate));
+    const checked = parseGatesMarkdown(renderGates(next));
+    if (!checked.ok) throw checkFailed("the gate block does not match the contract", checked.errors);
+    return renderGates(next);
+  }, (text) => gatesFromText(text).some((entry) => entry.id === id && entry.status === "resolved"));
+  return { id, status: "resolved", answer: resolved };
 }
-
 // ------------------------------------------------------ receipts and validity
 
 // §4.2. A `.json` receipt is validated in full; a `.md` receipt contributes its
