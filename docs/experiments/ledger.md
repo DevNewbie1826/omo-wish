@@ -7,7 +7,11 @@
 
 | ID | 변수 (한 개) | 상태 | 판정 시점 | 계속 조건 | 취소 조건 |
 | --- | --- | --- | --- | --- | --- |
-| C6 | 9단계 최종 리뷰어를 변경 경로 클래스로 라우팅: 모든 변경 경로가 test·docs·CI -> `omo-native-code-reviewer`, production 포함/혼합/미상/빈 diff -> `category: ultrabrain` (분류기 표 버전 c6-2026-10-27) | registered (첫 라우팅 PR 전, 소유자 go 대기) | 라우팅된 PR 12건 (중간 6) | 아래 "C6 취소 기준"의 12건 유지 조건 1~5 | 아래 "C6 취소 기준"의 즉시·6건·12건·도달 실패 조건 |
+| C6 | 9단계 최종 리뷰어를 변경 경로 클래스로 라우팅: 모든 변경 경로가 test·docs·CI -> `omo-native-code-reviewer`, production 포함/혼합/미상/빈 diff -> `category: ultrabrain` (분류기 표 버전 c6-2026-10-27) | parked (리뷰 깊이 축소 — 소유자 지시 2026-10-27) | 라우팅된 PR 12건 (중간 6) | 아래 "C6 취소 기준"의 12건 유지 조건 1~5 | 아래 "C6 취소 기준"의 즉시·6건·12건·도달 실패 조건 |
+
+## 상태
+
+**parked: reduces review depth, owner direction 2026-10-27** — C6 replaces the ultrabrain final reviewer for test/docs/CI-only PRs, so it reduces review depth and who reviews. It is parked: no real-PR measurement, the PR stays open, and the pre-registered cancel criterion above stays unchanged.
 
 ## C6 취소 기준 (사전 등록, `docs/experiments/c6-risk-routing.md` 원문)
 
@@ -43,3 +47,4 @@
 
 - 2026-10-27: 공유 장부 위치(`docs/experiments/`)로 동기화. 취소 기준은 `c6-risk-routing.md` 원문 그대로. 측정 시작 안 함(소유자 go 대기).
 - 2026-10-27: test-code-only REVISE 꼬리 보고 필드를 추가(`rounds.csv` 1개, `measurements.csv` 3개). 취소 기준 불변.
+- 2026-10-27: **parked: reduces review depth, owner direction 2026-10-27** — 실제 PR 측정 시작 안 함, PR #45 열어 둔 채 대기. 취소 기준 불변.
