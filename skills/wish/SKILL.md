@@ -45,7 +45,7 @@ The original request and its companion items are the boundary for every step: di
 - Refactoring and structure changes: when the repository keeps tests for the area, first write a characterization test that pins the current behavior and passes on the unchanged code, then move the structure. This is not a RED-first mandate; other work keeps code first.
 - Evidence capture: capture the command and its output; never retype a SHA or number by hand when a capture holds it; record only what you checked.
 - Test discipline: no sleeps; wait on the event or state change itself.
-- Gate order: never open the PR before step 6 passes and step 7 has run; never merge before the ultrabrain review returns APPROVED.
+- Gate order: never open the PR before step 6 passes and step 7 has run; never merge before the ultrabrain review returns APPROVED. In every round, step 7 may run in parallel with step 6 on the frozen post-step-5 head (step 11's order binds 7 before 8 and 9, not 6 before 7), and a step-6-driven commit turns that round into a delta round.
 
 ## Delegation prompts
 
