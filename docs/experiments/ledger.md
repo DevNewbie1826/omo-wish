@@ -26,6 +26,26 @@ wish 스킬의 최종 리뷰(step 9, `category: ultrabrain`) 단계를 겨냥한
 - **회차 분** = dispatch 시각과 verdict 수신 시각의 차이(초 단위 기록, 분으로 표시).
 - **게이트 행** = fixed / not fixed / no command 수.
 
+## 공유 장부 (5팔 공통)
+
+이 디렉터리가 다섯 팔(C2 #41, E2+C3 #42, C1 #43, E6+E9 #44, C6 #45)의 **단일 기록 장소**입니다. 세 파일이 역할을 나누고, 다른 경로에 사본을 두지 않습니다.
+
+| 파일 | 내용 |
+| --- | --- |
+| `ledger.md` | 실험 등록·취소 기준·판정 기록(권위) |
+| `measurements.csv` | PR 단위 한 행 (아래 열 순서 고정) |
+| `rounds.csv` | 리뷰 회차 단위 한 행 (아래 열 순서 고정) |
+
+`measurements.csv` 열: `pr, repo, arm, common_arms, route_class, size_bucket, stacked_on, opened_at, merged_at, open_to_merge_min, rounds_total, ultrabrain_calls, code_reviewer_calls, architect_calls, content_commits_after_approval, step12_result, post_merge_refix, blind_rereview, invalid_flag, notes`
+
+`rounds.csv` 열: `pr, round_index, round_kind, verdict_head, dispatch_at, verdict_at, minutes, reviewer, reviewer_family, defect_count, defect_axes, counterexample_present, gate_rows_fixed, gate_rows_not_fixed, gate_rows_no_command, c2_split, axis_lines_present, verdict_line_present, verdict_head_match`
+
+- `round_kind`은 `first`, `revise`, `delta`, `gate-blocked` 중 하나입니다. 게이트가 막은 회차는 `dispatch_at`에 `not dispatched`를 적습니다.
+- `common_arms`에는 그 PR에 같이 적용된 공통 기반(예: `E6+E9`)을 적습니다. 리뷰어·게이트 팔은 PR당 하나만 적습니다.
+- `invalid_flag`는 공급자 524, 세션 정지, 리베이스·충돌 해소가 시간 지표를 오염시킨 경우 채우고, 해당 PR은 중앙값에서 제외합니다.
+- `gate_rows_*`는 C1의 표를, `c2_split`은 C2의 합집합 분해(A만/B만/둘 다+계열명)를, `axis_lines_present`·`counterexample_present`는 E2+C3의 준수 필드를, `verdict_line_present`·`verdict_head_match`는 E9를 기록합니다.
+- 측정은 소유자의 배정 승인 뒤에 시작합니다. 그 전까지 두 CSV는 헤더만 둡니다.
+
 ## 공통 측정 (모든 실험)
 
 PR마다: 열림→병합 분, 헤드 최종 push 시각, 최종 리뷰 호출 수, 회차별 dispatch→verdict 분, 회차별 결함 수, 게이트 행(fixed/not fixed/no command), 병합 후 step 12 결과, 병합 뒤 재수정 여부.
