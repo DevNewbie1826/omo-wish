@@ -53,7 +53,7 @@ import {
 } from "./lib/store.mjs";
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, join, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -441,7 +441,8 @@ function verbLedger(parsed, root) {
   }
   if (input.event === undefined) input.event = name;
   // The body's value is attacker-controlled input; report the disagreement, not it.
-  if (input.event !== name) throw usage(`--event ${name} disagrees with the event body's event field`);
+  // Neither the flag value nor the body's is repeated: a caller may have pasted a token.
+  if (input.event !== name) throw usage("--event disagrees with the event body's event field");
   const { plan, planPath } = planFor(root, parsed);
   const context = unitContext(plan);
   const event = {
@@ -577,6 +578,11 @@ async function runDispatchGate(parsed, root) {
   const head = headArg(parsed.get("--head"), identity)
     ?? (identity === "research" ? plan.wish.frozen_head : observed.head);
   if (!head) throw stateMismatch("the gate needs a head: pass --head or freeze a worktree with a commit");
+  // The rows run in this checkout: a head that is not the observed one would bind
+  // PASS evidence to a head whose tree was never executed.
+  if (identity !== "research" && head !== observed.head) {
+    throw stateMismatch(`the gate runs the current worktree: --head ${String(head).slice(0, 7)} is not HEAD ${String(observed.head).slice(0, 7)}`);
+  }
   const tree = identity === "research" ? null : observed.tree;
 
   if (pending.length > 20) {
@@ -660,7 +666,7 @@ async function runDispatchGate(parsed, root) {
       }
       if (current.status === target) continue;
       try {
-        setFinding(root, entry.id, { status: target }, { type: plan.wish.type });
+        setFinding(root, entry.id, { status: target }, findingOptions(plan, events));
       } catch (error) {
         notes.push(entry.id.concat(": ", error?.message ?? "transition refused"));
       }
@@ -926,12 +932,22 @@ function verbPrBody(parsed, root) {
     const paths = rootPaths(root);
     const reserved = [paths.ledger, paths.findings, paths.gaps, paths.gates, paths.lens, paths.ideal,
       paths.resume, paths.lock, planPath];
-    const target = resolve(out);
-    const evidenceDirs = [join(paths.root, "receipts"), join(paths.root, "rounds")];
-    if (reserved.includes(target) || evidenceDirs.some((dir) => target.startsWith(dir + sep))) {
-      throw usage(`--out may not overwrite run state or evidence: ${target}`);
+    // The body may be written inside the evidence root and nowhere else: a path
+    // outside it is a product file, and this module writes no product file. The
+    // check resolves both sides, so a symlink cannot walk out of the root either.
+    const rootReal = realpathSync(paths.root);
+    const requested = resolve(out);
+    const parentReal = existsSync(dirname(requested)) ? realpathSync(dirname(requested)) : dirname(requested);
+    // An existing target is resolved through its own links: a symlink that leaves
+    // the root is the same write as naming a path outside it.
+    const targetReal = existsSync(requested) ? realpathSync(requested) : join(parentReal, basename(requested));
+    const inside = targetReal === rootReal || targetReal.startsWith(rootReal + sep);
+    const evidenceDirs = [join(rootReal, "receipts"), join(rootReal, "rounds")];
+    if (!inside) throw usage(`--out must stay inside the evidence root: ${targetReal}`);
+    if (reserved.includes(targetReal) || evidenceDirs.some((dir) => targetReal === dir || targetReal.startsWith(dir + sep))) {
+      throw usage(`--out may not overwrite run state or evidence: ${targetReal}`);
     }
-    writeFileSync(resolve(out), body);
+    writeFileSync(targetReal, body);
     process.stdout.write(`${resolve(out)}\n`);
   } else process.stdout.write(body);
   return null;

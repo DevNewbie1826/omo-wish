@@ -139,13 +139,24 @@ function scene({ tier = "M", type = "code", unit = "u1", runId = "w-run-20261027
     "--fact", "one fact from the tier triage", ...initExtra,
   ]);
   expect(result.code).toBe(0);
-  return { box, repo, root: box.root, plan: box.plan, runId, tier, type, unit };
+  const labelFlag = (flag) => {
+    const at = initExtra.indexOf(flag);
+    return at >= 0 ? initExtra[at + 1] : null;
+  };
+  return {
+    box, repo, root: box.root, plan: box.plan, runId, tier, type, unit,
+    primary: labelFlag("--primary"), secondary: labelFlag("--secondary"),
+  };
 }
 
 function append(state, body) {
   const file = join(state.box.dir, `event-${Date.now()}-${Math.round(Math.random() * 1e6)}.json`);
-  writeFileSync(file, JSON.stringify(body));
-  return cli(["ledger", "append", "--event", body.event, "--json", file, "--root", state.root]);
+  // A mixed run's events must name both types (the frozen schema says so).
+  const labelled = state.type === "mixed" && state.primary && state.secondary
+    ? { ...body, primary: body.primary ?? state.primary, secondary: body.secondary ?? state.secondary }
+    : body;
+  writeFileSync(file, JSON.stringify(labelled));
+  return cli(["ledger", "append", "--event", labelled.event, "--json", file, "--root", state.root]);
 }
 
 function ledgerEvents(state) {
@@ -254,6 +265,7 @@ function upToBuild(state) {
   ];
   for (const step of steps) {
     const result = append(state, step);
+    if (result.code !== 0) throw new Error(step.event + ": " + result.err);
     expect(result.code).toBe(0);
   }
 }
@@ -779,7 +791,7 @@ describe("freeze and pr-body", () => {
     expect(addFindings(state, [findingRow({ repro_cmd: "bun test", status: "open" })]).code).toBe(0);
     expect(addGaps(state, [gapRow()]).code).toBe(0);
     writeFileSync(join(state.root, "receipts", `before-G1-${state.repo.tree.slice(0, 7)}.png`), "png");
-    const out = join(state.box.dir, "body.md");
+    const out = join(state.root, "body.md");
     const result = cli(["pr-body", "--out", out, "--root", state.root]);
     expect(result.code).toBe(0);
     const body = readFileSync(out, "utf8");
@@ -881,25 +893,32 @@ describe("module-owned verbs", () => {
 });
 
 describe("lock and concurrency", () => {
-  test("a live holder refuses the mutation with a state mismatch and is left in place", () => {
+  test("a live holder blocks the mutation, is left in place, and releases it", () => {
     const state = scene();
-    writeFileSync(join(state.root, "lock"), JSON.stringify({ pid: process.pid }));
+    // The holder is this process: a live ticket numbered ahead of the CLI's.
+    const queue = join(state.root, "lock.queue");
+    mkdirSync(queue, { recursive: true });
+    const held = join(queue, `000000000001-${process.pid}-holder.ticket`);
+    writeFileSync(held, JSON.stringify({ pid: process.pid }));
     const result = append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") });
     expect(result.code).toBe(3);
-    expect(result.err).toContain("another wish process holds");
-    expect(existsSync(join(state.root, "lock"))).toBe(true);
-    rmSync(join(state.root, "lock"));
+    expect(result.err).toContain("still queued");
+    expect(existsSync(held)).toBe(true);
+    rmSync(held);
     expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
   });
 
-  test("a lock left by a dead process is taken over", async () => {
+  test("a ticket left by a dead process is swept", async () => {
     const state = scene();
     const dead = Bun.spawn(["true"]);
     const pid = dead.pid;
     await dead.exited;
-    writeFileSync(join(state.root, "lock"), JSON.stringify({ pid }));
+    const queue = join(state.root, "lock.queue");
+    mkdirSync(queue, { recursive: true });
+    const stale = join(queue, `000000000001-${pid}-gone.ticket`);
+    writeFileSync(stale, JSON.stringify({ pid }));
     expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
-    expect(existsSync(join(state.root, "lock"))).toBe(false);
+    expect(existsSync(stale)).toBe(false);
   });
 
   test("two concurrent appends both land, exactly once each", async () => {
@@ -1086,7 +1105,9 @@ describe("review blockers", () => {
     const dead = Bun.spawn(["true"]);
     const deadPid = dead.pid;
     await dead.exited;
-    writeFileSync(join(state.root, "lock"), JSON.stringify({ pid: deadPid, started_at: "2026-10-27T19:00:00Z" }));
+    // A dead contender's ticket: the queue must sweep it and still admit all eight.
+    mkdirSync(join(state.root, "lock.queue"), { recursive: true });
+    writeFileSync(join(state.root, "lock.queue", `000000000001-${deadPid}-gone.ticket`), JSON.stringify({ pid: deadPid }));
     const runs = Array.from({ length: 8 }, (_, index) => {
       const file = join(state.box.dir, `dead-${index}.tsv`);
       writeFileSync(file, [FINDINGS_COLUMNS.join("\t"),
@@ -1097,7 +1118,7 @@ describe("review blockers", () => {
     expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
     const rows = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out);
     expect(rows.map((row) => row.id).sort()).toEqual(["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"]);
-    expect(existsSync(join(state.root, "lock"))).toBe(false);
+    expect(existsSync(join(state.root, "lock.queue", `000000000001-${deadPid}-gone.ticket`))).toBe(false);
   });
 
   test("a mixed run reads its findings table with the union of both class sets", () => {
@@ -1501,7 +1522,7 @@ describe("final review round 1", () => {
     upToBuild(state);
     ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
     expect(cli(["freeze", "--root", state.root]).code).toBe(0);
-    const out = join(state.box.dir, "body.md");
+    const out = join(state.root, "body.md");
     expect(cli(["pr-body", "--root", state.root, "--out", out]).code).toBe(0);
     const body = readFileSync(out, "utf8");
     expect(body).not.toContain("#null");
@@ -1612,5 +1633,88 @@ describe("final review round 2", () => {
     const before = readFileSync(receipt, "utf8");
     expect(cli(["pr-body", "--root", state.root, "--out", receipt]).code).toBe(2);
     expect(readFileSync(receipt, "utf8")).toBe(before);
+  });
+});
+
+describe("final review round 2 (second pass)", () => {
+  test("pr-body --out stays inside the evidence root, symlinks included", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const product = join(state.box.dir, "product.md");
+    writeFileSync(product, "the product's own file\n");
+    const outside = cli(["pr-body", "--root", state.root, "--out", product]);
+    expect(outside.code).toBe(2);
+    expect(readFileSync(product, "utf8")).toBe("the product's own file\n");
+    // A symlink inside the root that points outside it is the same write.
+    const link = join(state.root, "body.md");
+    symlinkSync(product, link);
+    expect(cli(["pr-body", "--root", state.root, "--out", link]).code).toBe(2);
+    expect(readFileSync(product, "utf8")).toBe("the product's own file\n");
+    const inside = cli(["pr-body", "--root", state.root, "--out", join(state.root, "body-real.md")]);
+    if (inside.code !== 0) throw new Error("inside stderr: " + inside.err + " root=" + state.root);
+    expect(inside.code).toBe(0);
+  });
+
+  test("the dispatch gate refuses a head that is not the checkout", () => {
+    const state = scene();
+    upToBuild(state);
+    const older = state.repo.head;
+    commitFile(state.repo, "third.txt", "three\n");
+    expect(addFindings(state, [findingRow({ repro_cmd: "exit 0" })]).code).toBe(0);
+    const result = cli(["gate", "--round", "2", "--root", state.root, "--head", older]);
+    expect(result.code).toBe(3);
+    expect(result.err).toContain("runs the current worktree");
+  });
+
+  test("a sibling's dispatch gate neither blocks nor clears this unit's", () => {
+    const state = scene();
+    const built = upToBuild(state);
+    void built;
+    // u1's own gate is open: a row still reproduces.
+    expect(addFindings(state, [findingRow({ repro_cmd: "exit 1" })]).code).toBe(0);
+    expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(1);
+    const plan2 = join(state.box.dir, "plan2.md");
+    writePlan(plan2, { runId: "w-run-20261027-1900", tier: "M", type: "code", unit: "u2", worktree: state.repo.dir });
+    expect(cli([
+      "init", "--run-id", "w-run-20261027-1900", "--type", "code", "--tier", "M", "--plan", plan2,
+      "--root", state.root, "--unit", "u2", "--worktree", state.repo.dir, "--fact", "one fact from the tier triage",
+    ]).code).toBe(0);
+    const closeSibling = join(state.box.dir, "sibling-gate.json");
+    writeFileSync(closeSibling, JSON.stringify({
+      event: "gate", type: "code", unit: "u2", program_id: null, plan: plan2, session_id: "senpi:s",
+      started_at: "2026-10-27T16:05:00Z", gate_id: "dispatch", gate_status: "resolved",
+    }));
+    const closed = cli(["ledger", "append", "--event", "gate", "--json", closeSibling, "--root", state.root, "--plan", plan2]);
+    if (closed.code !== 0) throw new Error("append: " + closed.err);
+    expect(closed.code).toBe(0);
+    const view = cli(["status", "--json", "--root", state.root, "--plan", state.plan]);
+    if (view.code !== 0) throw new Error("status: " + view.err);
+    expect(view.code).toBe(0);
+    expect(JSON.parse(view.out).blocking).toContain("gate:dispatch open");
+  });
+
+  test("a failing mixed gate row moves the finding to not-fixed", () => {
+    const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    upToBuild(state);
+    expect(addFindings(state, [findingRow({ repro_cmd: "exit 1" })]).code).toBe(0);
+    expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(1);
+    const rows = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out);
+    expect(rows.find((row) => row.id === "F1").status).toBe("not-fixed");
+  });
+
+  test("a program id with a quote round-trips through the front matter", () => {
+    const box = sandbox();
+    const repo = makeRepo(box);
+    writePlan(box.plan, { runId: "w-run-20261027-1600", tier: "M", type: "code", unit: "u1", worktree: repo.dir });
+    const odd = ' a"b ';
+    const result = cli([
+      "init", "--run-id", "w-run-20261027-1600", "--type", "code", "--tier", "M", "--plan", box.plan,
+      "--root", box.root, "--unit", "u1", "--worktree", repo.dir, "--program", odd, "--fact", "f",
+    ]);
+    if (result.code !== 0) throw new Error("init: " + result.err);
+    expect(result.code).toBe(0);
+    expect(ledgerEvents({ root: box.root }).at(0).program_id).toBe(odd);
   });
 });
