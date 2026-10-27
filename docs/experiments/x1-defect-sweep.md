@@ -100,6 +100,7 @@ grep -cE '^\| *[A-Za-z0-9_-]+ *\| *(blocking|non-blocking)' pr8-agent-sense.md p
 | 꼬리(REVISE ≥4) | 8/104 (7.7%) | 같음 |
 | 열림→병합 중앙 | 92.8분 (REVISE 0: 51.3분 n=62 / ≥1: 171.8분 n=42) | 같음 |
 | 9단계 1회차 소요 | 20~45분 | `workflow-experiments.md` 측정 메모(INFERENCE) |
+| test 전용 REVISE 꼬리(테스트 축 대조) | 병합 104: 회차 13.5%, 파인딩 19.1% / 열린 9 PR: 회차 37.2%, 파인딩 27.3% (#63이 15연속) | `/tmp/oru-revise-tests/report.md` 결론 표(VERIFIED/INFERENCE 표기 그대로) |
 | **라운드당 blocking 결함(이 팔의 1차 품질 지표)** | **2.64** (29/11) | 이 문서 §1.2 — 독립 리뷰 표본 |
 
 ## 2. 스윕 (deliverable 2)

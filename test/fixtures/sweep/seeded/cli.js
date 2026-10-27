@@ -59,8 +59,8 @@ if (command === "send") {
   }
   process.stdout.write(`config: ok ${Object.keys(document).length}\n`);
 } else if (command === "serve") {
-  process.stdout.write("listening\n");
   process.on("SIGTERM", () => {});
+  process.stdout.write("listening\n");
   setInterval(() => {}, 1000);
 } else if (command === "--help") {
   process.stdout.write("usage: cli.js <send|stdin|config|serve>\n  --text <value>\n  --fail\n  --file <path>\n");

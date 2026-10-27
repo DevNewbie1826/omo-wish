@@ -63,8 +63,8 @@ if (command === "send") {
   for (const key of Object.keys(document)) if (!allowed.has(key)) die(`config: unknown key ${key}`);
   process.stdout.write("config: ok\n");
 } else if (command === "serve") {
-  process.stdout.write("listening\n");
   process.on("SIGTERM", () => process.exit(0));
+  process.stdout.write("listening\n");
   setInterval(() => {}, 1000);
 } else if (command === "--help") {
   process.stdout.write("usage: cli.js <send|stdin|config|serve>\n  --text <value>\n  --fail\n  --file <path>\n");

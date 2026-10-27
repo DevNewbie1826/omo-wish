@@ -93,14 +93,15 @@ export function sessionMembers(sessionId) {
         continue;
       }
       const fields = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-      if (Number(fields[3]) === sessionId) members.push(Number(name));
+      // A zombie is already dead; it holds no pipe and must not read as a survivor.
+      if (fields[0] !== "Z" && Number(fields[3]) === sessionId) members.push(Number(name));
     }
     return members;
   } catch {
-    const listed = spawnSync("/bin/sh", ["-c", "ps -A -o sess= -o pid= 2>/dev/null"], { encoding: "utf8" });
+    const listed = spawnSync("/bin/sh", ["-c", "ps -A -o sess= -o pid= -o stat= 2>/dev/null"], { encoding: "utf8" });
     for (const line of (listed.stdout ?? "").split("\n")) {
-      const [session, pid] = line.trim().split(/\s+/);
-      if (Number(session) === sessionId && Number(pid) > 0) members.push(Number(pid));
+      const [session, pid, state] = line.trim().split(/\s+/);
+      if (Number(session) === sessionId && Number(pid) > 0 && !String(state ?? "").startsWith("Z")) members.push(Number(pid));
     }
     return members;
   }
