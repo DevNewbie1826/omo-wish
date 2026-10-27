@@ -8,6 +8,8 @@
 //
 // The checker is not vendored here: its path arrives through the config or the
 // SWEEP_DRAFT_GUARD environment variable, so this file names no install path.
+// Its stderr is never copied into a row: a checker may print a credential while
+// explaining itself, and the receipt is an artifact.
 
 import { gitLines, q, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
@@ -63,7 +65,7 @@ export async function run(config, ctx) {
   if (result.code !== 1) {
     return [row({
       id: "draft-guard", command: cmd, observable: observed, verdict: "INVALID",
-      note: `the checker could not decide (exit ${result.code}): ${result.stderr.trim().split("\n")[0] || "no diagnostic"}`,
+      note: `the checker could not decide (exit ${result.code}); its diagnostic is not copied here, so re-run the declared command to read it`,
     })];
   }
   let findings;

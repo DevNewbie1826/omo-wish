@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
-import { ctxFor, q, runCommand, sessionMembers, sweepBudget } from "../skills/wish/scripts/probes/lib.mjs";
+import { ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget } from "../skills/wish/scripts/probes/lib.mjs";
 import {
   classValid, findingsClassesFor, receiptFilename, validateReceipt, validateReceiptAgainstFilename,
 } from "../skills/wish/scripts/lib/schema.mjs";
@@ -584,6 +584,62 @@ test("a config case name cannot steer a write outside the scratch directory", ()
   expect(row.command).not.toContain("..");
   expect(row.command).toContain("escaped-case");
   expect(run.exit).toBe(0);
+});
+
+test("a checker diagnostic never reaches the receipt or stdout", () => {
+  const dir = stage("design");
+  writeFileSync(join(dir, "leaky.js"), "#!/usr/bin/env bun\nprocess.stderr.write('token=SECRET-abc123\\n');\nprocess.exit(2);\n");
+  writeConfig(dir, { type: "design", probes: { "draft-guard": { checker: "bun leaky.js", targets: ["clean.css"] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE, "--type", "design"]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const row = receipt.rows.find((entry) => entry.id === "draft-guard");
+  expect(row.verdict).toBe("INVALID");
+  expect(row.note).not.toContain("SECRET-abc123");
+  expect(readFileSync(join(dir, "receipt.json"), "utf8")).not.toContain("SECRET-abc123");
+  expect(run.stdout).not.toContain("SECRET-abc123");
+});
+
+test("killSession takes a child that moved into its own process group", async () => {
+  const child = Bun.spawn(["bash", "-c", "set -m; sleep 30 & echo $!; wait"], { stdout: "pipe", stderr: "ignore", detached: true });
+  const decoder = new TextDecoder();
+  let text = "";
+  let moved = null;
+  const reader = child.stdout.getReader();
+  while (moved === null) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    text += decoder.decode(value);
+    const match = /^(\d+)/m.exec(text);
+    if (match) moved = Number(match[1]);
+  }
+  expect(moved).toBeGreaterThan(0);
+  expect(sessionMembers(child.pid)).toContain(moved);
+  killSession(child.pid);
+  expect(sessionMembers(child.pid)).toEqual([]);
+  expect(() => process.kill(moved, 0)).toThrow();
+  await child.exited;
+  await reader.cancel();
+}, 30000);
+
+test("the mutation cap cannot be raised above twelve lines", () => {
+  const dir = stage("clean");
+  const candidates = Array.from({ length: 13 }, (_, index) => ({ file: "cli.js", line: index + 1 }));
+  writeConfig(dir, { probes: { mutation: { testCmd: "true", failMarker: "CHECK FAILED", max: 99, candidates } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const probed = receipt.rows.filter((entry) => entry.id.startsWith("mutation/cli.js")).length;
+  expect(probed).toBe(12);
+  expect(receipt.rows.find((entry) => entry.id === "mutation/limit").note).toContain("12 of 13 added production lines probed");
+});
+
+test("a config that is valid JSON but not an object is a usage error", () => {
+  const dir = stage("clean");
+  for (const body of ["null", "[]", '"text"']) {
+    writeFileSync(join(dir, "odd.json"), body);
+    const run = invoke(dir, ["--root", dir, "--config", "odd.json"]);
+    expect(run.exit).toBe(2);
+    expect(run.stderr).toContain("config must be a JSON object");
+  }
 });
 
 test("the dictionary's code table is exactly M0's code class set", () => {

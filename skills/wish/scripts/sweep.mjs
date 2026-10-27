@@ -172,6 +172,10 @@ async function main(argv) {
     process.stderr.write(`sweep: config not readable: ${configPath}: ${error?.message ?? error}\n`);
     return EXIT_CODES.USAGE;
   }
+  if (config === null || typeof config !== "object" || Array.isArray(config)) {
+    process.stderr.write(`sweep: config must be a JSON object: ${configPath}\n`);
+    return EXIT_CODES.USAGE;
+  }
 
   // M0 §2: a mixed run takes its primary type's identity form, so a
   // research-primary mixed run has an artifact sha256 head and no git tree.

@@ -5,7 +5,7 @@
 // within its budget, or does a handler keep it (and any child) alive?
 
 import { spawn } from "node:child_process";
-import { mapPool, row, sessionMembers, isMain, probeCli } from "./lib.mjs";
+import { killSession, mapPool, row, sessionMembers, isMain, probeCli } from "./lib.mjs";
 
 export const name = "lifecycle";
 export const types = ["code"];
@@ -19,9 +19,10 @@ export const usage = `config:
 
 A case takes "argv", not a shell string, so the signal reaches the program
 itself. The probe waits for "ready" on stdout or stderr, sends "signal"
-(SIGTERM), and requires the whole process group to be gone within "budgetMs".
-FAIL means no readiness line, a group still alive after the child exited, or an
-exit past the budget.`;
+(SIGTERM), and requires the whole process group **and session** to be gone
+within "budgetMs"; a failure tears the whole session down, so a child that moved
+into its own group cannot be left behind. FAIL means no readiness line, a
+survivor after the child exited, or an exit past the budget.`;
 
 // The group is the primary signal; the session read-back also catches a child that
 // moved itself into another group while staying in the same session.
@@ -64,13 +65,7 @@ function runCase(testCase, ctx) {
       settled = true;
       clearTimeout(readyTimer);
       clearTimeout(budgetTimer);
-      if (verdict === "FAIL") {
-        try {
-          process.kill(-child.pid, "SIGKILL");
-        } catch {
-          /* already gone */
-        }
-      }
+      if (verdict === "FAIL") killSession(child.pid);
       resolvePromise([row({
         id: `lifecycle/${testCase.name}`,
         command: testCase.argv.join(" "),
