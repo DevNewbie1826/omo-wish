@@ -16,6 +16,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -268,6 +269,18 @@ describe("help and usage contract", () => {
       expect(one.out.length).toBeGreaterThan(20);
     }
     expect(CLI_VERBS.length).toBe(12);
+  });
+
+  test("runs its verbs when invoked through a symlink", () => {
+    const box = sandbox();
+    const link = join(box.dir, "wish-link.mjs");
+    symlinkSync(CLI, link);
+    for (const runtime of [process.execPath, "node"]) {
+      const result = spawnSync(runtime, [link, "--help"], { encoding: "utf8" });
+      if (result.error) throw result.error;
+      expect(result.status).toBe(0);
+      expect(result.stdout).toContain("resume-plan");
+    }
   });
 
   test("an unknown verb and an unknown flag are usage errors, never check failures", () => {
@@ -1032,6 +1045,136 @@ describe("status derivation against the contract's own example", () => {
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(0);
     expect(existsSync(join(state.box.dir, "pwned"))).toBe(false);
     expect(existsSync(join(state.box.dir, "pwned2"))).toBe(false);
+  });
+});
+
+describe("review blockers", () => {
+  test("concurrent findings adds all land: the lock is exclusive", async () => {
+    const state = scene();
+    const expected = [];
+    for (let round = 0; round < 4; round += 1) {
+      const runs = Array.from({ length: 8 }, (_, index) => {
+        const id = `F${round}x${index}`;
+        expected.push(id);
+        const file = join(state.box.dir, `add-${id}.tsv`);
+        writeFileSync(file, [FINDINGS_COLUMNS.join("\t"),
+          FINDINGS_COLUMNS.map((column) => findingRow({ id, repro_cmd: "exit 0" })[column]).join("\t")].join("\n"));
+        return Bun.spawn([process.execPath, CLI, "findings", "add", "--tsv", file, "--root", state.root], { stdout: "pipe", stderr: "pipe" });
+      });
+      const codes = await Promise.all(runs.map((run) => run.exited));
+      expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    }
+    const rows = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out);
+    expect(rows.map((row) => row.id).sort()).toEqual(expected.sort());
+  });
+
+  test("a dead lock is reclaimed without losing any concurrent write", async () => {
+    const state = scene();
+    const dead = Bun.spawn(["true"]);
+    const deadPid = dead.pid;
+    await dead.exited;
+    writeFileSync(join(state.root, "lock"), JSON.stringify({ pid: deadPid, started_at: "2026-10-27T19:00:00Z" }));
+    const runs = Array.from({ length: 8 }, (_, index) => {
+      const file = join(state.box.dir, `dead-${index}.tsv`);
+      writeFileSync(file, [FINDINGS_COLUMNS.join("\t"),
+        FINDINGS_COLUMNS.map((column) => findingRow({ id: `D${index}`, repro_cmd: "exit 0" })[column]).join("\t")].join("\n"));
+      return Bun.spawn([process.execPath, CLI, "findings", "add", "--tsv", file, "--root", state.root], { stdout: "pipe", stderr: "pipe" });
+    });
+    const codes = await Promise.all(runs.map((run) => run.exited));
+    expect(codes).toEqual([0, 0, 0, 0, 0, 0, 0, 0]);
+    const rows = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out);
+    expect(rows.map((row) => row.id).sort()).toEqual(["D0", "D1", "D2", "D3", "D4", "D5", "D6", "D7"]);
+    expect(existsSync(join(state.root, "lock"))).toBe(false);
+  });
+
+  test("a mixed run reads its findings table with the union of both class sets", () => {
+    const state = scene({ type: "mixed", initExtra: ["--primary", "design", "--secondary", "code"] });
+    expect(addFindings(state, [findingRow({ class: "A1" })]).code).toBe(0);
+    expect(addFindings(state, [findingRow({ id: "F2", class: "S" })]).code).toBe(0);
+    expect(addFindings(state, [findingRow({ id: "F3", class: "untraceable_number" })]).code).toBe(1);
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.blocking).toContain("findings:2 open");
+    expect(cli(["gate", "--round", "2", "--dry-run", "--root", state.root]).code).toBe(0);
+  });
+
+  test("a passing gate row leaves no grandchild behind", async () => {
+    const state = scene();
+    upToBuild(state);
+    expect(addFindings(state, [findingRow({ repro_cmd: "sleep 30 >/dev/null 2>&1 & echo $! > bg.txt; exit 0" })]).code).toBe(0);
+    const result = cli(["gate", "--round", "2", "--timeout", "5", "--root", state.root]);
+    expect(result.code).toBe(0);
+    const pid = Number(readFileSync(join(state.repo.dir, "bg.txt"), "utf8").trim());
+    expect(Number.isInteger(pid)).toBe(true);
+    expect(await gone(pid)).toBe(true);
+  });
+
+  test("another unit's cleanup does not mark this unit done", () => {
+    const state = scene();
+    expect(append(state, { event: "intake", unit: "u2", type: "code", tier: "M", facts: ["second unit"] }).code).toBe(0);
+    expect(append(state, { event: "cleanup", unit: "u2", cleanup: ["branch deleted (exit 0)"] }).code).toBe(0);
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.stage).toBe("intake");
+    expect(reported.json.units.find((unit) => unit.id === "u1").stage).toBe("intake");
+    expect(reported.json.units.find((unit) => unit.id === "u2").stage).toBe("done");
+    expect(reported.json.progress.units_done).toBe(1);
+  });
+
+  test("more than twenty pending rows is refused, never truncated", () => {
+    const state = scene();
+    const rows = Array.from({ length: 21 }, (_, index) => findingRow({ id: `F${index + 1}`, repro_cmd: "exit 0" }));
+    expect(addFindings(state, rows).code).toBe(0);
+    const result = cli(["gate", "--round", "2", "--root", state.root]);
+    expect(result.code).toBe(3);
+    expect(result.err).toContain("capped at 20 rows");
+    expect(existsSync(join(state.root, "receipts"))).toBe(false);
+  });
+
+  test("the contract's own example files are accepted", () => {
+    const state = scene();
+    writeFileSync(join(state.root, "ledger.jsonl"), readFileSync(join(FIXTURES, "ledger-m0.jsonl"), "utf8"));
+    const replayed = cli(["status", "--json", "--plan", state.plan, "--root", state.root]);
+    expect(replayed.code).toBe(0);
+    expect(JSON.parse(replayed.out).stage).toBe("done");
+    expect(JSON.parse(replayed.out).next).toBe("done");
+
+    expect(cli(["findings", "add", "--tsv", join(FIXTURES, "findings-three.tsv"), "--plan", state.plan, "--root", state.root]).code).toBe(0);
+    expect(cli(["gaps", "add", "--tsv", join(FIXTURES, "gaps-two.tsv"), "--plan", state.plan, "--root", state.root]).code).toBe(0);
+    mkdirSync(join(state.root, "receipts"), { recursive: true });
+    copyFileSync(join(FIXTURES, "receipts", "verify_lane-sweep-0123456.json"), join(state.root, "receipts", "verify_lane-sweep-0123456.json"));
+    copyFileSync(join(FIXTURES, "receipts", "before-G1-89abcde.json"), join(state.root, "receipts", "before-G1-89abcde.json"));
+    const withReceipts = cli(["status", "--json", "--plan", state.plan, "--root", state.root]);
+    expect(withReceipts.code).toBe(0);
+    expect(JSON.parse(withReceipts.out).stale_receipts).toContain("verify_lane-sweep-0123456.json");
+  });
+
+  test("an all-digit head stays a string in the front matter", () => {
+    const state = scene();
+    const digits = "1".repeat(40);
+    writeFileSync(state.plan, readFileSync(state.plan, "utf8").replace("  frozen_head: null", `  frozen_head: ${digits}`));
+    const again = cli(["init", "--run-id", state.runId, "--type", "code", "--tier", "M", "--plan", state.plan,
+      "--root", state.root, "--unit", "u1", "--worktree", state.repo.dir, "--fact", "f"]);
+    expect(again.code).toBe(0);
+    expect(readFileSync(state.plan, "utf8")).toContain(`  frozen_head: ${digits}`);
+  });
+
+  test("init refuses a different unit on the same plan", () => {
+    const state = scene();
+    const other = cli(["init", "--run-id", state.runId, "--type", "code", "--tier", "M", "--plan", state.plan,
+      "--root", state.root, "--unit", "u2", "--worktree", state.repo.dir, "--fact", "f"]);
+    expect(other.code).toBe(3);
+    expect(other.err).toContain("belongs to unit u1");
+  });
+
+  test("freeze --check refuses to answer when the worktree is gone", () => {
+    const state = scene();
+    writeFileSync(state.plan, readFileSync(state.plan, "utf8")
+      .replace("  frozen_head: null", `  frozen_head: ${HEAD}`)
+      .replace(state.repo.dir, "/nonexistent/wish-worktree"));
+    const result = cli(["freeze", "--check", "--root", state.root]);
+    expect(result.code).toBe(3);
+    expect(result.err).toContain("cannot observe the worktree");
   });
 });
 

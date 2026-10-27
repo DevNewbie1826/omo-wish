@@ -51,7 +51,7 @@ import {
   writeFrontMatter,
 } from "./lib/store.mjs";
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -238,6 +238,14 @@ function unitContext(plan) {
   return { type: plan.wish.type, unit: plan.wish.unit ?? "u1", programId: plan.wish.program_id ?? null };
 }
 
+// A mixed run's findings table is parsed with the union of its two class sets, so
+// every reader of the table needs the labels that travel on the events.
+function findingOptions(plan, events) {
+  const labels = [...events].reverse().find((event) => typeof event.primary === "string"
+    && typeof event.secondary === "string");
+  return { type: plan.wish.type, primary: labels?.primary, secondary: labels?.secondary };
+}
+
 // M0 §2: for a mixed run the head/tree rules follow the primary type. The labels
 // travel on the events (the front matter has no primary/secondary key).
 function identityOf(plan, events) {
@@ -287,6 +295,9 @@ function verbInit(parsed, root) {
     const existing = existsSync(planPath) ? readPlan(planPath) : null;
     if (existing && existing.wish.run_id !== runId) {
       throw stateMismatch(`the plan belongs to another run: ${existing.wish.run_id}`);
+    }
+    if (existing && existing.wish.unit !== unit) {
+      throw stateMismatch(`the plan belongs to unit ${existing.wish.unit}, not ${unit}`);
     }
     if (existing) {
       // A second init for the same run is a no-op: rewriting the front matter from
@@ -356,8 +367,9 @@ function verbStatus(parsed, root) {
     }
   }
 
-  const { status, unitStates } = computeStatus({ root, planPath, head: head ?? null, tree: tree ?? null });
-  const pr = unitStates[0]?.pr ?? null;
+  const computed = computeStatus({ root, planPath, head: head ?? null, tree: tree ?? null });
+  const { status, unitStates } = computed;
+  const pr = (unitStates.find((entry) => entry.id === (computed.plan.wish.unit ?? "u1")) ?? unitStates[0])?.pr ?? null;
   if (parsed.has("--progress")) {
     process.stdout.write(`${progressLine(status, pr)}\n`);
     return null;
@@ -522,13 +534,16 @@ async function runDispatchGate(parsed, root) {
   }
   const { plan, planPath, events } = planFor(root, parsed);
   const context = unitContext(plan);
-  const rows = readFindings(root, { type: plan.wish.type }) ?? [];
+  const rows = readFindings(root, findingOptions(plan, events)) ?? [];
   const pending = rows.filter((row) => row.blocking === "1"
     && ["open", "not-fixed", "no-command"].includes(row.status)
     && Number(row.round) < target);
   // One observation for head and tree: two calls could straddle a commit and bind
   // the receipt to a head from one state and a tree from another.
   const identity = identityOf(plan, events);
+  if (identity !== "research" && !existsSync(plan.wish.worktree)) {
+    throw stateMismatch(`the worktree ${plan.wish.worktree} does not exist; a row would run in the wrong directory`);
+  }
   const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
   const head = parsed.get("--head") ?? (identity === "research" ? plan.wish.frozen_head : observed.head);
   if (!head) throw stateMismatch("the gate needs a head: pass --head or freeze a worktree with a commit");
@@ -647,6 +662,9 @@ function runRows(rows, { timeoutSeconds, cwd }) {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
+      // INV4: nothing a row started may outlive it, including a grandchild that a
+      // successful command left in the background.
+      killGroup(child);
       resolveRow({ id: row.id, command: row.repro_cmd, ...entry });
     };
     const drain = () => {};
@@ -692,6 +710,9 @@ function verbFreeze(parsed, root) {
   if (check) {
     const frozen = plan.wish.frozen_head;
     if (!frozen) throw stateMismatch("nothing is frozen yet");
+    if (identity !== "research" && !observed.head) {
+      throw stateMismatch(`cannot observe the worktree ${plan.wish.worktree}: no HEAD to compare with the freeze`);
+    }
     if (frozen !== head) throw stateMismatch(`the head moved after the freeze: frozen ${frozen.slice(0, 7)}, now ${head.slice(0, 7)}`);
     if (identity !== "research" && plan.wish.frozen_head && observed.tree) {
       const frozenEvent = [...readLedger(root)].reverse().find((event) => event.event === "freeze");
@@ -734,7 +755,7 @@ function verbPrBody(parsed, root) {
   const frozen = [...events].reverse().find((event) => event.event === "freeze");
   if (!frozen) throw stateMismatch("no freeze event: freeze the head before building the PR body");
   const gaps = readGaps(root) ?? [];
-  const findings = readFindings(root, { type: plan.wish.type }) ?? [];
+  const findings = readFindings(root, findingOptions(plan, events)) ?? [];
   const receipts = listReceipts(root);
   const names = receipts.map((receipt) => receipt.name);
   const defects = gaps.filter((row) => row.kind === "defect");
@@ -1005,8 +1026,7 @@ export function run(argv) {
       return 0;
     }
     if (verb === "reuse-check" || verb === "metrics") {
-      const forwarded = rest.filter((arg) => arg !== "--root" && arg !== "--plan" && arg !== "--session" && arg !== "--json");
-      return delegate(verb, forwarded).exit;
+      return delegate(verb, rest).exit;
     }
     const handler = HANDLERS[verb];
     if (!handler) throw usage(`unknown verb ${verb}`);
@@ -1042,7 +1062,21 @@ function handleFailure(error) {
 
 const invokedDirectly = typeof import.meta.main === "boolean"
   ? import.meta.main
-  : Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  : isDirectInvocation();
+
+// Under node, comparing raw paths misses a symlinked entry point (and
+// `--preserve-symlinks-main` flips which side is unresolved), so both sides are
+// resolved to their real path: a symlinked CLI must still run its verbs.
+function isDirectInvocation() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  const self = fileURLToPath(import.meta.url);
+  try {
+    return realpathSync(entry) === realpathSync(self);
+  } catch {
+    return resolve(entry) === self;
+  }
+}
 
 if (invokedDirectly) {
   const outcome = run(process.argv.slice(2));

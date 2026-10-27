@@ -37,6 +37,7 @@ import {
 import {
   closeSync,
   existsSync,
+  linkSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -165,56 +166,119 @@ function sleepSync(ms) {
   Atomics.wait(cell, 0, 0, ms);
 }
 
-// ledger.md §1 write authority + the dead-pid takeover rule (poteto store.ts):
-// one mutating verb at a time, a lock left by a dead process is taken over, and
-// a live holder is waited on briefly so two concurrent commands both finish
-// instead of one failing spuriously.
-export function withLock(root, fn, { waitMs = 2000, pollMs = 25 } = {}) {
-  const paths = rootPaths(root);
-  ensureDir(paths.root);
-  let release = null;
-  const deadline = Date.now() + waitMs;
-  for (let attempt = 0; attempt < 400 && release === null; attempt += 1) {
+// ledger.md §1 write authority: one mutating verb at a time, with the dead-pid
+// takeover poteto's store.ts needs.
+//
+// Both lock names are created with `link(2)`, which fails with EEXIST instead of
+// returning a second handle, and the bytes are complete *before* the link exists.
+// Writing the pid into a file that `open(..., "wx")` just created leaves a window
+// where a second process reads an empty file, calls the lock stale, and takes it -
+// two writers then hold the same lock and one silently loses the other's rows.
+// Stale-lock reclamation is serialized by a second link-lock so that two takers
+// cannot both reclaim and both win.
+class FileLock {
+  constructor(root) {
+    this.paths = rootPaths(root);
+    this.candidate = `${this.paths.lock}.candidate.${process.pid}.${Date.now()}`;
+    this.takeover = `${this.paths.lock}.takeover`;
+    this.held = false;
+  }
+
+  acquire({ waitMs = 2000, pollMs = 25 } = {}) {
+    ensureDir(this.paths.root);
+    const body = JSON.stringify({ pid: process.pid, started_at: nowIso() });
+    const fd = openSync(this.candidate, "w");
     try {
-      const fd = openSync(paths.lock, "wx");
-      try {
-        writeSync(fd, JSON.stringify({ pid: process.pid, started_at: nowIso() }));
-      } finally {
-        closeSync(fd);
-      }
-      release = () => {
-        try {
-          unlinkSync(paths.lock);
-        } catch {
-          // already gone: another taker won the race after our crash
+      writeSync(fd, body);
+    } finally {
+      closeSync(fd);
+    }
+    const deadline = Date.now() + waitMs;
+    try {
+      for (;;) {
+        if (this.tryLink(this.paths.lock)) {
+          this.held = true;
+          return this;
         }
-      };
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw stateMismatch(`cannot lock ${paths.lock}: ${error?.code ?? error}`);
-      const holder = lockHolder(paths.lock);
-      if (holder === undefined) continue;
-      if (holder !== null && pidAlive(holder)) {
+        const holder = lockHolder(this.paths.lock);
+        if (holder !== undefined && holder !== null && pidAlive(holder)) {
+          if (Date.now() >= deadline) {
+            throw stateMismatch(`another wish process holds ${this.paths.lock} (pid ${holder})`);
+          }
+          sleepSync(pollMs);
+          continue;
+        }
+        if (holder === undefined) continue;
+        this.reclaim();
+        if (this.held) return this;
         if (Date.now() >= deadline) {
-          throw stateMismatch(`another wish process holds ${paths.lock} (pid ${holder})`);
+          throw stateMismatch(`cannot lock ${this.paths.lock}: still held after ${waitMs}ms`);
         }
         sleepSync(pollMs);
-        continue;
       }
+    } finally {
       try {
-        unlinkSync(paths.lock);
+        unlinkSync(this.candidate);
       } catch {
-        // lost the race to another taker; the next attempt sees the new holder
+        // already gone
       }
     }
   }
-  if (release === null) throw stateMismatch(`cannot lock ${paths.lock}: still held after ${waitMs}ms`);
-  try {
-    return fn();
-  } finally {
-    release();
+
+  tryLink(target) {
+    try {
+      linkSync(this.candidate, target);
+      return true;
+    } catch (error) {
+      if (error?.code === "EEXIST") return false;
+      throw stateMismatch(`cannot lock ${target}: ${error?.code ?? error}`);
+    }
+  }
+
+  // One reclaimer at a time: the takeover lock is the only code allowed to
+  // unlink the main lock, so a second taker can never remove the winner's lock.
+  reclaim() {
+    if (!this.tryLink(this.takeover)) return;
+    try {
+      const holder = lockHolder(this.paths.lock);
+      if (holder === null || (holder !== undefined && !pidAlive(holder))) {
+        try {
+          unlinkSync(this.paths.lock);
+        } catch {
+          // someone else finished the job
+        }
+        this.held = this.tryLink(this.paths.lock);
+      }
+    } finally {
+      try {
+        unlinkSync(this.takeover);
+      } catch {
+        // already gone
+      }
+    }
+  }
+
+  release() {
+    if (!this.held) return;
+    this.held = false;
+    const holder = lockHolder(this.paths.lock);
+    if (holder !== null && holder !== process.pid) return;
+    try {
+      unlinkSync(this.paths.lock);
+    } catch {
+      // already gone
+    }
   }
 }
 
+export function withLock(root, fn, options = {}) {
+  const lock = new FileLock(root).acquire(options);
+  try {
+    return fn();
+  } finally {
+    lock.release();
+  }
+}
 // --------------------------------------------------------------------- ledger
 
 // §9: one JSON object per line, append-only. A malformed line is a state error,
@@ -348,12 +412,14 @@ export function splitFrontMatter(text) {
   return { block: null, body: String(text ?? ""), unterminated: true };
 }
 
-function coerceScalar(raw) {
+function coerceScalar(raw, key) {
   const value = raw.trim();
   if (value === "null" || value === "~" || value === "") return null;
   if (value === "true") return true;
   if (value === "false") return false;
-  if (/^-?\d+$/.test(value)) return Number(value);
+  // Only the two numeric keys are numbers: an all-digit SHA in frozen_head or a
+  // numeric-looking run id must stay a string, or the contract rejects it.
+  if ((key === "pr" || key === "round") && /^-?\d+$/.test(value)) return Number(value);
   if ((value.startsWith('"') && value.endsWith('"') && value.length >= 2)
     || (value.startsWith("'") && value.endsWith("'") && value.length >= 2)) {
     return value.slice(1, -1);
@@ -377,7 +443,7 @@ export function parseFrontMatter(text) {
     if (!match || !seenRoot) {
       throw stateMismatch(`the plan front matter line ${index + 2} is not a wish: key`);
     }
-    wish[match[1]] = coerceScalar(match[2]);
+    wish[match[1]] = coerceScalar(match[2], match[1]);
   });
   if (!seenRoot) throw stateMismatch("the plan has no wish: front matter");
   for (const key of Object.keys(wish)) {
@@ -603,7 +669,6 @@ export function setGap(root, id, patch) {
   if (patch.fixedHead !== undefined) {
     row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
   }
-  if (row.status !== "fixed" && row.fixed_head !== "-" && patch.fixedHead === undefined) row.fixed_head = row.fixed_head;
   const checked = parseGapsTsv(renderTsv(GAPS_COLUMNS, rows.map((entry, at) => (at === index ? row : entry))));
   if (!checked.ok) throw checkFailed("the register does not match the contract", checked.errors);
   writeTsv(paths.gaps, GAPS_COLUMNS, checked.rows);
@@ -733,7 +798,7 @@ function parseReceiptMarkdown(text) {
   split.block.forEach((line) => {
     const match = /^([A-Za-z_][A-Za-z0-9_]*):[ ]?(.*)$/.exec(line);
     if (!match) throw new Error(`front matter line is not key: value: ${line}`);
-    value[match[1]] = coerceScalar(match[2]);
+    value[match[1]] = coerceScalar(match[2], match[1]);
   });
   if (typeof value.scope === "string") value.scope = [value.scope];
   value.rows = [];
@@ -799,12 +864,13 @@ function blockingFindings(findings) {
     && ["open", "not-fixed", "no-command"].includes(row.status));
 }
 
-function isDone(events) {
-  return events.some((event) => event.event === "cleanup" && Array.isArray(event.cleanup) && event.cleanup.length > 0);
+function isDone(events, unit) {
+  return events.some((event) => event.unit === unit && event.event === "cleanup"
+    && Array.isArray(event.cleanup) && event.cleanup.length > 0);
 }
 
 export function deriveStage(events, receipts, unit) {
-  if (isDone(events)) return "done";
+  if (isDone(events, unit)) return "done";
   let furthest = -1;
   for (const stage of STAGE_ORDER) {
     if (stageAttempted(stage, events, receipts, unit)) furthest = STAGE_ORDER.indexOf(stage);
@@ -992,7 +1058,7 @@ function stageComplete(stage, context) {
     case "merge": return has("merge");
     case "post_merge": return has("post_merge");
     case "checkpoint": return has("checkpoint", (event) => event.checkpoint_op === "complete");
-    case "cleanup": return isDone(events);
+    case "cleanup": return isDone(events, unit);
     default: return false;
   }
 }
@@ -1010,11 +1076,12 @@ function unitStatus(context) {
   const enriched = { ...context, stage };
   const rounds = roundsOf(context.events, context.unit);
   const last = rounds[rounds.length - 1];
-  const prOpen = [...context.events].reverse().find((event) => event.event === "pr_open" && event.unit === context.unit);
+  const prSources = [...context.events].reverse().filter((event) => event.unit === context.unit
+    && ((event.event === "pr_open" && Number.isInteger(event.pr)) || (event.event === "freeze" && Number.isInteger(event.pr))));
   return {
     id: context.unit,
     stage,
-    pr: prOpen ? prOpen.pr : null,
+    pr: prSources.length > 0 ? prSources[0].pr : null,
     round: last ? last.round : 0,
     switches: switchesOf(context.events, context.unit).length,
     next: deriveNext(stage, enriched),
@@ -1033,7 +1100,12 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
   const sequence = pendingSwitchErrors(events);
   if (sequence.length > 0) throw stateMismatch("the ledger is not a valid sequence", sequence);
   const receipts = listReceipts(root);
-  const findings = readFindings(root, { type: plan.wish.type }) ?? [];
+  // A mixed run's class set is the union of its two types (ledger.md §5.1), and the
+  // labels travel on the events, so the table cannot be parsed without them.
+  const labels = [...events].reverse().find((event) => typeof event.primary === "string"
+    && typeof event.secondary === "string");
+  const findingOptions = { type: plan.wish.type, primary: labels?.primary, secondary: labels?.secondary };
+  const findings = readFindings(root, findingOptions) ?? [];
   const gaps = readGaps(root);
   const gates = readGates(root);
 
