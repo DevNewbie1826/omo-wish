@@ -44,8 +44,8 @@ const PAIRING_ROW = new RegExp(
 );
 const INVARIANT_ROW = /^\s*(?:[-*+]\s+)?\*{0,2}(?:INV[A-Za-z0-9_-]*|INVARIANT)\b/;
 const HEADING = /^(#{1,6})\s+(.*)$/;
-const PATH_TOKEN =
-	/(?<![\w/<.-])((?:skills|scripts|test|tests|docs|prompts|extensions|src|lib|packages)\/[A-Za-z0-9._/-]*[A-Za-z0-9._-]|\b(?:README\.md|package\.json)\b)/g;
+const PATH_TOKEN = /(?<![\w/<.$-])((?:[A-Za-z_][\w.-]*\/)+[\w.-]*[A-Za-z0-9_-]|\b(?:README\.md|package\.json)\b)/g;
+const FILE_EXTENSION = /\.(?:md|mjs|js|ts|json|ya?ml|toml|sh|txt|css|html)$/;
 
 const problems = [];
 const fail = (line, message) => problems.push(`${file}:${line}: ${message}`);
@@ -63,11 +63,12 @@ for (let i = start; i < raw.length; i++) {
 	let code = false;
 	if (fence) {
 		code = true;
-		if (new RegExp(`^ {0,3}${fence}[ \t]*$`).test(text)) fence = null;
+		const close = text.match(/^ {0,3}(`{3,}|~{3,})[ \t]*$/);
+		if (close && close[1][0] === fence.char && close[1].length >= fence.length) fence = null;
 	} else {
 		const open = text.match(/^ {0,3}(`{3,}|~{3,})/);
 		if (open) {
-			fence = open[1];
+			fence = { char: open[1][0], length: open[1].length };
 			code = true;
 		}
 	}
@@ -79,6 +80,9 @@ function tokens(text, pattern) {
 	return [...text.matchAll(new RegExp(pattern.source, "g"))].map((match) => match[0]);
 }
 const normalize = (text) => text.toLowerCase().replace(/\s+/g, " ").trim();
+// `IS-1`, `IS1`, and `IS-A1` are one id family; `QA-1` and `Q1` likewise.
+const canonIs = (id) => id.replace(/^IS-?/, "IS");
+const canonQa = (id) => id.replace(/^QA?[.-]?/, "Q");
 const splitCells = (text) =>
 	text
 		.trim()
@@ -126,7 +130,8 @@ for (let i = 0; i < prose.length; i++) {
 	tables.push({ header, rows, section: sectionAt(prose[i].n) });
 	i = j - 1;
 }
-const isTable = (table) => /\bIS rows?\b/i.test(table.section) || table.header.some((cell) => /deliverable|property/i.test(cell));
+const isTable = (table) =>
+	/\bIS rows?\b/i.test(table.section) || table.header.some((cell) => /deliverable|property|requirement|criterion|description/i.test(cell));
 const qaTable = (table) => /QA scenario|QA check/i.test(table.section) || table.header.some((cell) => /pairing/i.test(cell));
 
 // IS rows: bullet rows and table rows.
@@ -144,9 +149,9 @@ for (const table of tables) {
 	}
 }
 for (const row of isRows) {
-	if (isRows.filter((entry) => entry.id === row.id).length > 1) fail(row.n, `duplicate IS row ${row.id}`);
+	if (isRows.filter((entry) => canonIs(entry.id) === canonIs(row.id)).length > 1) fail(row.n, `duplicate IS row ${row.id}`);
 }
-const isIds = new Set(isRows.map((row) => row.id));
+const isIds = new Set(isRows.map((row) => canonIs(row.id)));
 if (isRows.length === 0) fail(1, "no IS rows found; the plan needs one `IS-<id>` row per delivered property");
 
 // QA scenarios: bullet rows, table rows, and a pairing line anywhere.
@@ -164,9 +169,9 @@ for (const table of tables) {
 	}
 }
 for (const row of qaRows) {
-	if (qaRows.filter((entry) => entry.id === row.id).length > 1) fail(row.n, `duplicate QA scenario ${row.id}`);
+	if (qaRows.filter((entry) => canonQa(entry.id) === canonQa(row.id)).length > 1) fail(row.n, `duplicate QA scenario ${row.id}`);
 }
-const qaIds = new Set(qaRows.map((row) => row.id));
+const qaIds = new Set(qaRows.map((row) => canonQa(row.id)));
 // A comma separates pairing segments only when the part holds several arrows;
 // otherwise the commas belong to the IS list on the left of one arrow.
 function pairSegments(value) {
@@ -178,14 +183,12 @@ function pairSegments(value) {
 	return segments;
 }
 const links = new Set();
-const link = (is, qa) => links.add(`${is} -> ${qa}`);
+const link = (is, qa) => links.add(`${canonIs(is)} -> ${canonQa(qa)}`);
 const resolveQa = (token) =>
-	qaIds.has(token)
-		? [token]
-		: qaRows.filter((row) => row.id.replace(/^QA?[.-]?/, "") === token.replace(/^QA?[.-]?/, "")).map((row) => row.id);
+	qaIds.has(canonQa(token)) ? [canonQa(token)] : qaRows.filter((row) => canonQa(row.id) === canonQa(token)).map((row) => canonQa(row.id));
 
 for (const row of qaRows) {
-	for (const id of expandIds(row.text)) if (isIds.has(id)) link(id, row.id);
+	for (const id of expandIds(row.text)) if (isIds.has(canonIs(id))) link(id, row.id);
 }
 for (const row of isRows) {
 	for (const qa of tokens(row.text, QA_ANY)) for (const resolved of resolveQa(qa)) link(row.id, resolved);
@@ -196,15 +199,16 @@ for (const line of prose) {
 	for (const segment of pairSegments(pairing[1])) {
 		const arrow = segment.indexOf("->");
 		if (arrow === -1) continue;
-		const left = expandIds(segment.slice(0, arrow));
-		const right = tokens(segment.slice(arrow + 2), QA_ANY).flatMap(resolveQa);
-		for (const is of left) if (isIds.has(is)) for (const qa of right) link(is, qa);
+		for (const is of expandIds(segment.slice(0, arrow))) {
+			if (!isIds.has(canonIs(is))) continue;
+			for (const qa of tokens(segment.slice(arrow + 2), QA_ANY).flatMap(resolveQa)) link(is, qa);
+		}
 	}
 }
 const pairedIs = new Set([...links].map((entry) => entry.split(" -> ")[0]));
 const pairedQa = new Set([...links].map((entry) => entry.split(" -> ")[1]));
-for (const row of isRows) if (!pairedIs.has(row.id)) fail(row.n, `${row.id} is not named by any QA scenario`);
-for (const row of qaRows) if (!pairedQa.has(row.id)) fail(row.n, `${row.id} is owned by no IS row`);
+for (const row of isRows) if (!pairedIs.has(canonIs(row.id))) fail(row.n, `${row.id} is not named by any QA scenario`);
+for (const row of qaRows) if (!pairedQa.has(canonQa(row.id))) fail(row.n, `${row.id} is owned by no IS row`);
 
 // Invariants and the guard rows that must cite one of them (or an IS row).
 const invariantIds = new Set();
@@ -227,7 +231,7 @@ for (const line of prose) {
 		continue;
 	}
 	const ref = match[1].slice(0, separator).trim().replace(/^[`*"']+|[`*"']+$/g, "");
-	const cited = [...tokens(ref, IS_ANY), ...tokens(ref, INV_ANY)];
+	const cited = [...tokens(ref, IS_ANY).map(canonIs), ...tokens(ref, INV_ANY)];
 	const ok =
 		cited.some((id) => isIds.has(id)) ||
 		cited.some((id) => invariantIds.has(id)) ||
@@ -248,18 +252,18 @@ for (const line of prose) {
 		continue;
 	}
 	for (const target of expandIds(shape[2])) {
-		if (!isIds.has(target)) fail(line.n, `COMPANION row targets ${target}, which is not a declared IS row`);
+		if (!isIds.has(canonIs(target))) fail(line.n, `COMPANION row targets ${target}, which is not a declared IS row`);
 	}
 }
 
-// Wiring: a `## Wiring` section or an IS table with entry/consumer/owner columns, else inline fields.
+// Wiring: a `## Wiring` section, an IS table with entry/consumer/owner columns, or the fields inline.
 const sectionBody = (heading) => {
 	const next = headings.find((other) => other.n > heading.n && other.level <= heading.level);
 	return prose.filter((line) => line.n > heading.n && line.n < (next ? next.n : Infinity));
 };
 const wiringHeading = headings.find((heading) => /wiring/i.test(heading.title));
 const wiringLines = wiringHeading ? sectionBody(wiringHeading) : [];
-const wiringIds = new Set(expandIds(wiringLines.map((line) => line.text).join("\n")));
+const wiringIds = new Set(expandIds(wiringLines.map((line) => line.text).join("\n")).map(canonIs));
 const wiringTable = tables.find(
 	(table) =>
 		table.header.some((cell) => /entry|file/i.test(cell)) &&
@@ -267,12 +271,12 @@ const wiringTable = tables.find(
 		table.header.some((cell) => /owner/i.test(cell)),
 );
 const wiringTableIds = new Set(
-	(wiringTable?.rows ?? []).map((row) => row.cells[0]).filter((cell) => cell && IS_EXACT.test(cell)),
+	(wiringTable?.rows ?? []).map((row) => row.cells[0]).filter((cell) => cell && IS_EXACT.test(cell)).map(canonIs),
 );
 const inlineWiring = (row) =>
 	/entry[ -]?point|entry:/i.test(row.text) && /consumer/i.test(row.text) && /owner/i.test(row.text);
 for (const row of isRows) {
-	const covered = wiringHeading ? wiringIds.has(row.id) : wiringTableIds.has(row.id) || inlineWiring(row);
+	const covered = wiringIds.has(canonIs(row.id)) || wiringTableIds.has(canonIs(row.id)) || inlineWiring(row);
 	if (!covered) {
 		fail(
 			row.n,
@@ -287,11 +291,27 @@ const pathLines = [
 	...(wiringTable?.rows ?? []).map((row) => ({ n: row.n, text: row.text })),
 	...prose.filter((line) => isRows.some((row) => row.n === line.n && inlineWiring(row))),
 ];
+const looksLikePath = (candidate) =>
+	fs.existsSync(path.join(repo, candidate.split("/")[0])) || FILE_EXTENSION.test(candidate);
+// A path resolves from the repository root or, as plans often write it, under a skill directory.
+function pathExists(candidate) {
+	if (fs.existsSync(path.join(repo, candidate))) return true;
+	const tops = fs.readdirSync(repo, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+	for (const top of tops) {
+		if (fs.existsSync(path.join(repo, top, candidate))) return true;
+		if (top !== "skills") continue;
+		for (const skill of fs.readdirSync(path.join(repo, top))) {
+			if (fs.existsSync(path.join(repo, top, skill, candidate))) return true;
+		}
+	}
+	return false;
+}
 for (const line of pathLines) {
 	for (const token of tokens(line.text, PATH_TOKEN)) {
 		const candidate = token.replace(/[.,;:)\]]+$/, "");
 		if (!candidate || candidate.endsWith("/") || /[<>*${}]/.test(candidate)) continue;
-		if (fs.existsSync(path.join(repo, candidate))) continue;
+		if (!looksLikePath(candidate)) continue;
+		if (pathExists(candidate)) continue;
 		if (isRows.some((row) => row.text.includes(candidate))) continue;
 		fail(line.n, `wiring path "${candidate}" does not exist in ${repo} and no IS row delivers it`);
 	}
@@ -299,21 +319,22 @@ for (const line of pathLines) {
 
 // State or lifetime rows list their transitions.
 const transitionsHeading = headings.find((heading) => /transition/i.test(heading.title));
-const transitionIds = new Set(
-	expandIds(transitionsHeading ? sectionBody(transitionsHeading).map((line) => line.text).join("\n") : ""),
+const transitionTokens = expandIds(
+	transitionsHeading ? sectionBody(transitionsHeading).map((line) => line.text).join("\n") : "",
 );
+const transitionIds = new Set(transitionTokens.map(canonIs));
 for (const line of prose) {
 	if (!/high-risk/i.test(line.text) || !/state|lifetime/i.test(line.text)) continue;
 	for (const id of expandIds(line.text)) {
-		if (!isIds.has(id)) continue;
-		const row = isRows.find((entry) => entry.id === id);
-		if (transitionIds.has(id) || /transition/i.test(row.text)) continue;
+		if (!isIds.has(canonIs(id))) continue;
+		const row = isRows.find((entry) => canonIs(entry.id) === canonIs(id));
+		if (transitionIds.has(canonIs(id)) || /transition/i.test(row.text)) continue;
 		fail(line.n, `${id} is flagged state/lifetime but no transitions are listed for it`);
 	}
 }
 if (transitionsHeading) {
-	for (const id of transitionIds) {
-		if (!isIds.has(id)) fail(transitionsHeading.n, `transitions name ${id}, which is not a declared IS row`);
+	for (const id of transitionTokens) {
+		if (!isIds.has(canonIs(id))) fail(transitionsHeading.n, `transitions name ${id}, which is not a declared IS row`);
 	}
 }
 

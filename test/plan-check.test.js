@@ -306,6 +306,49 @@ test("a guard row may cite an INVARIANT property text or its id", () => {
 	expect(result.code).toBe(0);
 });
 
+test("IS-1 and IS1 are one id family across rows, wiring, and pairing", () => {
+	const plan = mutate(
+		"- IS-1: entry point \`skills/wish/scripts/check-plan.mjs\`",
+		"- IS1: entry point \`skills/wish/scripts/check-plan.mjs\`",
+	).replace("- **QA-1** (IS-1) run the checker", "- **QA-1** (IS1) run the checker");
+	const result = run(plan);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+});
+
+test("inline wiring counts even when a Wiring section exists", () => {
+	const plan = mutate(
+		"- **IS-2** The test proves the checker. Criterion: QA-2.",
+		"- **IS-2** The test proves the checker. Criterion: QA-2.\n- **IS-3** Inline row. Entry point: \`skills/wish/scripts/check-plan.mjs\`; consumer: the author; owner: the plan file. Criterion: QA-3.",
+	).replace("- **QA-2** (IS-2) run the test", "- **QA-2** (IS-2) run the test\n- **QA-3** (IS-3) run the inline row");
+	const result = run(plan);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+});
+
+test("duplicate IS rows and duplicate QA scenarios are complaints", () => {
+	const duplicateIs = run(mutate("- **IS-2**", "- **IS-2** duplicate declaration.\n- **IS-2**"));
+	expect(duplicateIs.code).toBe(1);
+	expect(duplicateIs.err).toContain("duplicate IS row IS-2");
+	const duplicateQa = run(mutate("- **QA-2** (IS-2) run the test", "- **QA-2** (IS-2) run the test\n- **QA-2** duplicate scenario"));
+	expect(duplicateQa.code).toBe(1);
+	expect(duplicateQa.err).toContain("duplicate QA scenario QA-2");
+});
+
+test("a transitions entry that names no IS row is a complaint", () => {
+	const plan = mutate("- **IS-2** The test proves the checker. Criterion: QA-2.", "- **IS-2** The test proves the checker. Criterion: QA-2.\n\n## Transitions\n- IS-9: invented row.");
+	const result = run(plan);
+	expect(result.code).toBe(1);
+	expect(result.err).toContain("transitions name IS-9, which is not a declared IS row");
+});
+
+test("a table whose header names a requirement column is read as IS rows", () => {
+	const plan = TABLE_PLAN.replace("| ID | Deliverable | Production entry point | Consumer | Authoritative owner |", "| ID | Requirement | Entry point | Consumer | Owner |");
+	const result = run(plan);
+	expect(result.err).toBe("");
+	expect(result.code).toBe(0);
+});
+
 test("missing arguments and unreadable plans exit 2", () => {
 	const noArgs = spawnSync("node", [cli], { encoding: "utf8" });
 	expect(noArgs.status).toBe(2);
