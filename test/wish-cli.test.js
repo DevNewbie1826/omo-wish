@@ -1294,3 +1294,208 @@ async function gone(pid) {
 }
 
 void 0;
+// ---------------------------------------------------------------------------
+// Final review round 1: each test below reproduces one finding of the REVISE
+// verdict on 1026664 and fails on the code that produced it.
+// ---------------------------------------------------------------------------
+
+describe("final review round 1", () => {
+  test("a rejected event name never echoes the submitted value", () => {
+    const state = scene();
+    const body = join(state.box.dir, "secret-event.json");
+    const canary = "CANARY_" + "9f3a2b7c1d";
+    writeFileSync(body, JSON.stringify({
+      event: canary, type: "code", unit: "u1", program_id: null, plan: state.plan,
+      session_id: "se-1", started_at: "2026-10-27T16:03:00Z", head: state.repo.head, task: "node-1",
+    }));
+    const result = cli(["ledger", "append", "--event", "build", "--json", body, "--root", state.root]);
+    expect(result.code).toBe(2);
+    expect(result.err).not.toContain(canary);
+    expect(result.out).not.toContain(canary);
+  });
+
+  test("a ledger line that will not parse is reported without its bytes", () => {
+    const state = scene();
+    const canary = "CANARY_" + "5c8e1f04aa";
+    writeFileSync(join(state.root, "ledger.jsonl"), JSON.stringify({ event: "intake" }) + "\n" + canary + "\n");
+    const result = status(state);
+    expect(result.code).toBe(3);
+    expect(result.err).toContain("ledger.jsonl:2");
+    expect(result.err).not.toContain(canary);
+  });
+
+  test("a mixed run writes labeled events and receipts the frozen schema accepts", () => {
+    const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    const labels = { primary: "code", secondary: "design" };
+    append(state, {
+      event: "discover", type: "mixed", unit: "u1", program_id: null, plan: state.plan, session_id: "se-1",
+      started_at: "2026-10-27T16:02:00Z", artifact: join(state.root, "receipts", "discover-explore-0123456.md"),
+      ...labels,
+    });
+    append(state, { event: "plan", type: "mixed", unit: "u1", program_id: null, plan: state.plan, session_id: "se-1", started_at: "2026-10-27T16:02:00Z", artifact: state.plan, ...labels });
+    // The gate writes a receipt for a mixed run: without the labels the frozen
+    // schema rejects it and the verb exits 1 after changing state.
+    const added = addFindings(state, [findingRow({ repro_cmd: "exit 0" })]);
+    expect(added.code).toBe(0);
+    const gate = cli(["gate", "--round", "2", "--root", state.root]);
+    expect(gate.code).toBe(0);
+    const receipt = JSON.parse(readFileSync(join(state.root, "receipts", `gate-dispatch-${state.repo.head.slice(0, 7)}.json`), "utf8"));
+    expect(receipt.primary).toBe("code");
+    expect(receipt.secondary).toBe("design");
+    expect(validateReceipt(receipt).errors).toEqual([]);
+    const gateEvent = ledgerEvents(state).filter((event) => event.event === "gate").pop();
+    expect(gateEvent.primary).toBe("code");
+    expect(gateEvent.secondary).toBe("design");
+    expect(status(state).code).toBe(0);
+  });
+
+  test("an empty dispatch table still writes its receipt", () => {
+    const state = scene();
+    upToBuild(state);
+    const gate = cli(["gate", "--round", "1", "--root", state.root]);
+    if (gate.code !== 0) throw new Error("gate stderr: " + gate.err);
+    expect(gate.code).toBe(0);
+    const file = join(state.root, "receipts", `gate-dispatch-${state.repo.head.slice(0, 7)}.json`);
+    expect(existsSync(file)).toBe(true);
+    expect(JSON.parse(readFileSync(file, "utf8")).rows).toEqual([]);
+  });
+
+  test("freezing an ancestor head records that commit's own tree", () => {
+    const state = scene();
+    const older = state.repo.head;
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    const newer = commitFile(state.repo, "third.txt", "three\n");
+    const frozen = cli(["freeze", "--root", state.root, "--head", older]);
+    if (frozen.code !== 0) throw new Error("freeze stderr: " + frozen.err);
+    expect(frozen.code).toBe(0);
+    const event = ledgerEvents(state).filter((e) => e.event === "freeze").pop();
+    expect(event.head).toBe(older);
+    expect(event.tree).toBe(state.repo.tree);
+    expect(event.tree).not.toBe(newer.tree);
+    // A commit landed after the freeze, so --check must refuse: that is the verb.
+    expect(cli(["freeze", "--root", state.root, "--check"]).code).toBe(3);
+  });
+
+  test("typed receipts satisfy the lane they certify", () => {
+    const typedReceipt = (state, kind) => {
+      const body = {
+        kind, stage: "verify_lane", type: state.type, unit: "u1", program_id: null,
+        ...(kind === "vqa-capture" ? { lane: "capture", pass: "capture" } : {}),
+        ...(kind === "lint" ? { lane: "lint", name: "heading-order" } : {}),
+        head: state.repo.head, tree: state.repo.tree, scope: ["skills/wish/**"],
+        started_at: "2026-10-27T16:00:00Z", ended_at: "2026-10-27T16:01:00Z", status: "PASS",
+        rows: [{ id: kind + "-r", command: "check", observable: "it holds", verdict: "PASS", artifact: null }],
+        artifacts: [], cleanup: [],
+      };
+      expect(validateReceipt(body).errors).toEqual([]);
+      writeFileSync(join(state.root, "receipts", `${kind}-${state.repo.head.slice(0, 7)}.json`), JSON.stringify(body));
+    };
+    const design = scene({ type: "design" });
+    upToBuild(design);
+    mkdirSync(join(design.root, "receipts"), { recursive: true });
+    typedReceipt(design, "vqa-capture");
+    const designView = status(design);
+    expect(designView.code).toBe(0);
+    expect(designView.json.blocking).not.toContain("receipt-missing:capture");
+
+    const audit = scene({ type: "audit" });
+    upToBuild(audit);
+    mkdirSync(join(audit.root, "receipts"), { recursive: true });
+    typedReceipt(audit, "lint");
+    const auditView = status(audit);
+    expect(auditView.code).toBe(0);
+    expect(auditView.json.blocking).not.toContain("receipt-missing:lint");
+  });
+
+  test("an earlier high-risk flag is not retracted by a later unrelated row", () => {
+    const state = scene();
+    upToBuild(state);
+    // A later high-risk row is recorded on its own event; the earlier flag stays.
+    expect(append(state, {
+      event: "build", type: "code", unit: "u1", program_id: null, plan: state.plan, session_id: "senpi:se-1",
+      started_at: "2026-10-27T16:03:00Z", head: state.repo.head, task: "node-2",
+      adversarial_classes: [{ name: "contract change", applicable: true, observable: "the gate exits 3" }],
+    }).code).toBe(0);
+    expect(append(state, {
+      event: "build", type: "code", unit: "u1", program_id: null, plan: state.plan, session_id: "senpi:se-1",
+      started_at: "2026-10-27T16:04:00Z", head: state.repo.head, task: "node-3",
+      adversarial_classes: [{ name: "docs only", applicable: false, observable: "none" }],
+    }).code).toBe(0);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    const view = status(state);
+    expect(view.code).toBe(0);
+    expect(view.json.blocking).toContain("receipt-missing:adversarial");
+  });
+
+  test("init keeps a custom unit when --unit is omitted on the second call", () => {
+    const state = scene({ unit: "v2m1" });
+    const again = cli([
+      "init", "--run-id", state.runId, "--type", "code", "--tier", "M", "--plan", state.plan,
+      "--root", state.root, "--fact", "one fact from the tier triage",
+    ]);
+    expect(again.code).toBe(0);
+    expect(ledgerEvents(state).filter((event) => event.event === "intake").length).toBe(1);
+  });
+
+  test("a program id that reads as YAML null round-trips as a string", () => {
+    const box = sandbox();
+    const repo = makeRepo(box);
+    writePlan(box.plan, { runId: "w-run-20261027-1600", tier: "M", type: "code", unit: "u1", worktree: repo.dir });
+    const result = cli([
+      "init", "--run-id", "w-run-20261027-1600", "--type", "code", "--tier", "M", "--plan", box.plan,
+      "--root", box.root, "--unit", "u1", "--worktree", repo.dir, "--program", "null", "--fact", "f",
+    ]);
+    expect(result.code).toBe(0);
+    expect(readFileSync(box.plan, "utf8")).toContain('program_id: "null"');
+    expect(ledgerEvents({ root: box.root }).at(0).program_id).toBe("null");
+  });
+
+  test("a row whose command backgrounds a child is judged by the shell's exit", () => {
+    const state = scene();
+    upToBuild(state);
+    addFindings(state, [findingRow({ repro_cmd: "sleep 30 & exit 0" })]);
+    const started = Date.now();
+    const gate = cli(["gate", "--round", "2", "--root", state.root]);
+    expect(gate.code).toBe(0);
+    expect(Date.now() - started).toBeLessThan(20_000);
+    const receipt = JSON.parse(readFileSync(join(state.root, "receipts", `gate-dispatch-${state.repo.head.slice(0, 7)}.json`), "utf8"));
+    expect(receipt.rows[0].verdict).toBe("PASS");
+  });
+
+  test("a fix head on a row that is not fixed is normalized, not a false conflict", () => {
+    const state = scene();
+    upToBuild(state);
+    expect(addFindings(state, [findingRow()]).code).toBe(0);
+    const moved = cli(["findings", "set", "--root", state.root, "--id", "F1", "--status", "open", "--fixed-head", state.repo.head]);
+    expect(moved.code).toBe(0);
+    const view = cli(["findings", "list", "--json", "--root", state.root]);
+    const row = JSON.parse(view.out).find((entry) => entry.id === "F1");
+    expect(row.status).toBe("open");
+    expect(row.fixed_head).toBe("-");
+  });
+
+  test("pr-body --out refuses to overwrite run state", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const before = readFileSync(join(state.root, "ledger.jsonl"), "utf8");
+    const result = cli(["pr-body", "--root", state.root, "--out", join(state.root, "ledger.jsonl")]);
+    expect(result.code).toBe(2);
+    expect(readFileSync(join(state.root, "ledger.jsonl"), "utf8")).toBe(before);
+  });
+
+  test("a body without a pull request names no number at all", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    const out = join(state.box.dir, "body.md");
+    expect(cli(["pr-body", "--root", state.root, "--out", out]).code).toBe(0);
+    const body = readFileSync(out, "utf8");
+    expect(body).not.toContain("#null");
+    expect(body).not.toContain("#-");
+    expect(body).toContain("PR: none");
+  });
+});

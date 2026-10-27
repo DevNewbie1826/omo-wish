@@ -320,8 +320,10 @@ export function readLedger(root) {
       const value = JSON.parse(raw);
       if (value === null || typeof value !== "object" || Array.isArray(value)) throw new Error("not an object");
       events.push(value);
-    } catch (error) {
-      throw stateMismatch(`${paths.ledger}:${index + 1} is not a JSON event: ${error?.message ?? error}`);
+    } catch {
+      // JSON.parse quotes the input in its message, and a ledger line may hold a token:
+      // report where it broke, never the bytes.
+      throw stateMismatch(`${paths.ledger}:${index + 1} is not a JSON event`);
     }
   });
   return events;
@@ -481,12 +483,25 @@ export function readPlan(planPath) {
   return { wish: parsed.wish, body: parsed.body, path: planPath };
 }
 
+// A string that would parse back as something else must be quoted: the program id
+// "null", a run id of digits, "true". Otherwise a round trip silently changes the
+// value and the write's own verification never converges.
+function yamlScalar(value) {
+  if (value === null || value === undefined) return "null";
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  const text = String(value);
+  if (/^(?:null|~|true|false|-?\d+)$/.test(text) || text.trim() !== text || text === "") {
+    return JSON.stringify(text);
+  }
+  return text;
+}
+
 export function renderFrontMatter(wish, eol = "\n") {
   const lines = ["---", "wish:"];
   for (const key of FRONT_MATTER_KEYS) {
     if (!(key in wish)) continue;
     const value = wish[key];
-    lines.push(`  ${key}: ${value === null || value === undefined ? "null" : String(value)}`);
+    lines.push(`  ${key}: ${yamlScalar(value)}`);
   }
   lines.push("---");
   return `${lines.join(eol)}${eol}`;
@@ -730,7 +745,12 @@ export function setFinding(root, id, patch, { type, primary, secondary } = {}) {
     if (!row) return false;
     if (patch.status !== undefined && row.status !== patch.status) return false;
     if (patch.blocking !== undefined && row.blocking !== patch.blocking) return false;
-    if (patch.fixedHead !== undefined && row.fixed_head !== (patch.fixedHead === "-" ? "-" : patch.fixedHead)) return false;
+    // The stored head is normalized: anything but a fixed row keeps "-", so the
+    // expected value is the normalized one, never the raw flag.
+    if (patch.fixedHead !== undefined) {
+      const expected = row.status === "fixed" ? (patch.fixedHead === "-" ? "-" : patch.fixedHead) : "-";
+      if (row.fixed_head !== expected) return false;
+    }
     return true;
   });
   return updated;
@@ -1085,14 +1105,26 @@ export function deriveNext(stage, context) {
   return nextLinear(stage, context);
 }
 
+// M0's required-lane table names lanes whose receipt kind is not always "lane": a
+// research claim gate writes kind "claim-gate", a design capture kind "vqa-capture",
+// an audit lint kind "lint". A typed receipt for the same lane is evidence for it.
+const TYPED_LANES = Object.freeze({ capture: "vqa-capture" });
+
+function satisfiesLane(receipt, lane) {
+  const body = receipt.body;
+  if (!body) return false;
+  if (body.kind === "lane") return body.stage === "verify_lane" && body.lane === lane;
+  if (TYPED_LANES[lane] === body.kind) return true;
+  return body.kind === lane;
+}
+
 function laneState(context) {
   const { receipts, requiredLanes, head, tree, reuseEvents, unit, identity } = context;
   const missing = [];
   const stale = [];
   const satisfied = [];
   for (const lane of requiredLanes) {
-    const candidates = receipts.filter((receipt) => receipt.body?.kind === "lane"
-      && receipt.body.stage === "verify_lane" && receipt.body.lane === lane && receipt.body.unit === unit);
+    const candidates = receipts.filter((receipt) => satisfiesLane(receipt, lane) && receipt.body.unit === unit);
     if (candidates.length === 0) {
       missing.push(lane);
       continue;
@@ -1114,17 +1146,17 @@ function laneState(context) {
 
 function buildContext({ root, plan, events, receipts, findings, gaps, gates, head, tree, unit }) {
   const wish = plan.wish;
-  const mixedLabels = [...events].reverse().find((event) => typeof event.primary === "string"
-    && typeof event.secondary === "string");
+  const mixedLabels = [...events].reverse().find((event) => event.unit === unit
+    && typeof event.primary === "string" && typeof event.secondary === "string");
   const primary = mixedLabels?.primary;
   const secondary = mixedLabels?.secondary;
   const identity = identityType(wish.type, primary);
-  const adversarial = [...events].reverse().find((event) => Array.isArray(event.adversarial_classes));
   // design §2.3: an L unit always carries the adversarial lane; below L only a
-  // plan-flagged high-risk row does, and the session records that as
-  // adversarial_classes on the plan or build event (M1 never parses the plan body).
+  // plan-flagged high-risk row does. Any event of this unit that flagged an
+  // applicable class counts: a later, unrelated row must not retract it.
   const highRisk = wish.tier === "L"
-    || Boolean(adversarial && adversarial.adversarial_classes.some((entry) => entry?.applicable === true));
+    || events.some((event) => event.unit === unit && Array.isArray(event.adversarial_classes)
+      && event.adversarial_classes.some((entry) => entry?.applicable === true));
   const requiredLanes = requiredReceiptsFor(wish.type, { primary, secondary, highRisk });
   const context = {
     root, type: wish.type, identity, primary, secondary, head, tree, unit, events, receipts, findings, gaps, gates,
@@ -1349,9 +1381,11 @@ export function progressLine(status, pr) {
 
 // §2.9: the first invalid stage plus the actions that clear it. 'status' says
 // what is true; 'resume-plan' says where to start again.
-export function resumePlan({ status, contexts, unitStates }) {
+export function resumePlan({ status, contexts, unitStates, unit }) {
   void contexts;
-  const state = unitStates[0];
+  // One unit's answer must name that unit's own missing step: a sibling's state is
+  // not a resume instruction.
+  const state = unitStates.find((entry) => entry.id === unit) ?? unitStates[0];
   const firstInvalid = state ? state.firstInvalid : "intake";
   const actions = [];
   for (const reason of status.blocking) {

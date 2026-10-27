@@ -15,6 +15,7 @@ import {
   WORK_TYPES,
   TIERS,
   validateGapReceipts,
+  validateLedgerEvent,
   validateReceipt,
   validateReceiptAgainstFilename,
 } from "./lib/schema.mjs";
@@ -258,11 +259,25 @@ function findingOptions(plan, events) {
 
 // M0 §2: for a mixed run the head/tree rules follow the primary type. The labels
 // travel on the events (the front matter has no primary/secondary key).
+function mixedLabelsOf(plan, events) {
+  if (plan.wish.type !== "mixed") return null;
+  const unit = plan.wish.unit ?? "u1";
+  const labels = [...events].reverse().find((event) => event.unit === unit
+    && typeof event.primary === "string" && typeof event.secondary === "string");
+  if (!labels) throw stateMismatch("a mixed run needs --primary/--secondary on its intake event");
+  return { primary: labels.primary, secondary: labels.secondary };
+}
+
+// Every event and receipt a mixed run writes must name both types: the frozen
+// schema rejects a mixed object without them.
+function withLabels(plan, events, object) {
+  const labels = mixedLabelsOf(plan, events);
+  return labels === null ? object : { ...object, primary: labels.primary, secondary: labels.secondary };
+}
+
 function identityOf(plan, events) {
   if (plan.wish.type !== "mixed") return plan.wish.type;
-  const labels = [...events].reverse().find((event) => typeof event.primary === "string");
-  if (!labels) throw stateMismatch("a mixed run needs --primary/--secondary on its intake event");
-  return identityType(plan.wish.type, labels.primary);
+  return identityType(plan.wish.type, mixedLabelsOf(plan, events).primary);
 }
 
 function planFor(root, parsed) {
@@ -290,7 +305,7 @@ function verbInit(parsed, root) {
   const secondary = parsed.get("--secondary");
   if (type === "mixed" && (!primary || !secondary)) throw usage("a mixed run needs --primary and --secondary");
   if (type !== "mixed" && (primary || secondary)) throw usage("--primary/--secondary are for a mixed run only");
-  const unit = parsed.get("--unit") ?? "u1";
+  const unit = parsed.get("--unit") ?? (existsSync(planArg) ? (readPlan(resolve(planArg)).wish.unit ?? "u1") : "u1");
   const program = parsed.get("--program") ?? null;
   const planPath = resolve(planArg);
   const worktree = resolve(parsed.get("--worktree") ?? process.cwd());
@@ -324,7 +339,7 @@ function verbInit(parsed, root) {
       tier,
       type,
       unit,
-      program_id: program,
+      program_id: program ?? existing?.wish.program_id ?? null,
       worktree,
       branch,
       pr: existing?.wish.pr ?? null,
@@ -340,7 +355,7 @@ function verbInit(parsed, root) {
       event: "intake",
       type,
       unit,
-      program_id: program,
+      program_id: program ?? existing?.wish.program_id ?? null,
       plan: planPath,
       session_id: sessionId(parsed),
       started_at: nowIso(),
@@ -423,7 +438,8 @@ function verbLedger(parsed, root) {
     }
   }
   if (input.event === undefined) input.event = name;
-  if (input.event !== name) throw usage(`--event ${name} disagrees with the event body (${input.event})`);
+  // The body's value is attacker-controlled input; report the disagreement, not it.
+  if (input.event !== name) throw usage(`--event ${name} disagrees with the event body's event field`);
   const { plan, planPath } = planFor(root, parsed);
   const context = unitContext(plan);
   const event = {
@@ -574,7 +590,21 @@ async function runDispatchGate(parsed, root) {
 
   const started = nowIso();
   if (pending.length === 0) {
-    withLock(root, () => recordGate(root, { plan, planPath, context, parsed, started, head, open: false }));
+    const empty = withLabels(plan, events, {
+      kind: "lane", stage: "gate", type: plan.wish.type, unit: context.unit, program_id: context.programId,
+      lane: "dispatch", head, tree, scope: [planPath], started_at: started, ended_at: nowIso(),
+      status: "PASS", rows: [], artifacts: [], cleanup: [],
+    });
+    const emptyName = "gate-dispatch-" + head.slice(0, 7) + ".json";
+    const emptyCheck = validateReceipt(empty);
+    const emptyAnchors = validateReceiptAgainstFilename(empty, emptyName);
+    if (!emptyCheck.ok || !emptyAnchors.ok) {
+      throw checkFailed("the gate receipt would not match the contract", [...emptyCheck.errors, ...emptyAnchors.errors]);
+    }
+    withLock(root, () => {
+      atomicWrite(join(rootPaths(root).receipts, emptyName), JSON.stringify(empty, null, 2) + "\n");
+      recordGate(root, { plan, planPath, context, parsed, started, head, open: false, events });
+    });
     process.stdout.write("gate on " + head.slice(0, 7) + ": PASS (nothing pending)\n");
     return null;
   }
@@ -582,7 +612,7 @@ async function runDispatchGate(parsed, root) {
   const results = await runRows(pending, { timeoutSeconds, cwd: plan.wish.worktree });
   const anyFail = results.some((entry) => entry.verdict !== "PASS");
   const name = "gate-dispatch-" + head.slice(0, 7) + ".json";
-  const receipt = {
+  const receipt = withLabels(plan, events, {
     kind: "lane",
     stage: "gate",
     type: plan.wish.type,
@@ -605,7 +635,7 @@ async function runDispatchGate(parsed, root) {
     })),
     artifacts: [],
     cleanup: [],
-  };
+  });
   const checked = validateReceipt(receipt);
   const anchors = validateReceiptAgainstFilename(receipt, name);
   if (!checked.ok || !anchors.ok) {
@@ -635,7 +665,7 @@ async function runDispatchGate(parsed, root) {
       }
     }
     recordGate(root, {
-      plan, planPath, context, parsed, started, head, open: anyFail,
+      plan, planPath, context, parsed, started, head, open: anyFail, events,
       note: notes.length > 0 ? "skipped: ".concat(notes.join("; ")) : undefined,
     });
   });
@@ -649,8 +679,8 @@ async function runDispatchGate(parsed, root) {
 
 // The dispatch gate is a section 9 'gate' event with the id the contract's own
 // example uses: 'dispatch' + 'open' is what status.blocking reports.
-function recordGate(root, { plan, planPath, context, parsed, started, head, open, note }) {
-  appendEvent(root, {
+function recordGate(root, { plan, planPath, context, parsed, started, head, open, note, events }) {
+  appendEvent(root, withLabels(plan, events, {
     event: "gate",
     type: plan.wish.type,
     unit: context.unit,
@@ -662,7 +692,7 @@ function recordGate(root, { plan, planPath, context, parsed, started, head, open
     gate_status: open ? "open" : "resolved",
     head,
     ...(note ? { note } : {}),
-  }, { plan: planPath, sessionId: sessionId(parsed) });
+  }), { plan: planPath, sessionId: sessionId(parsed) });
 }
 
 // One child per row. The command is the contract's shell line by definition
@@ -693,17 +723,22 @@ function runRows(rows, { timeoutSeconds, cwd }) {
       // INV4: nothing a row started may outlive it, including a grandchild that a
       // successful command left in the background.
       killGroup(child);
+      if (child.pid) LIVE_GROUPS.delete(child.pid);
       resolveRow({ id: row.id, command: row.repro_cmd, ...entry });
     };
     const drain = () => {};
     child.stdout.on("data", drain);
     child.stderr.on("data", drain);
+    if (child.pid) LIVE_GROUPS.add(child.pid);
     timer = setTimeout(() => {
       killGroup(child);
       finish({ verdict: "INVALID", status: "open", note: "timeout after " + timeoutSeconds + "s" });
     }, timeoutSeconds * 1000);
     child.on("error", (error) => finish({ verdict: "INVALID", status: "open", note: "spawn failed: " + (error?.code ?? "error") }));
-    child.on("close", (code, signal) => finish({
+    // "close" waits for every inherited pipe to close, which a background grandchild
+    // can hold open past the row's real end; the shell's own exit status is the row's
+    // verdict, and the group is killed right after it.
+    child.on("exit", (code, signal) => finish({
       verdict: code === 0 ? "PASS" : "FAIL",
       status: code === 0 ? "fixed" : "not-fixed",
       note: code === 0 ? "exit 0" : signal ? "signal " + signal : "exit " + String(code),
@@ -743,13 +778,15 @@ function verbFreeze(parsed, root) {
     }
     if (frozen !== head) throw stateMismatch(`the head moved after the freeze: frozen ${frozen.slice(0, 7)}, now ${head.slice(0, 7)}`);
     if (identity !== "research" && plan.wish.frozen_head && observed.tree) {
-      const frozenEvent = [...readLedger(root)].reverse().find((event) => event.event === "freeze");
+      const frozenEvent = [...readLedger(root)].reverse().find((event) => event.event === "freeze"
+        && event.unit === (plan.wish.unit ?? "u1"));
       if (frozenEvent && frozenEvent.tree && frozenEvent.tree !== observed.tree) {
         throw stateMismatch(`the tree moved after the freeze: frozen ${frozenEvent.tree.slice(0, 7)}, now ${observed.tree.slice(0, 7)}`);
       }
     }
     if (observed.dirty === true) throw checkFailed("the worktree has uncommitted changes after the freeze");
-    const lastRound = [...readLedger(root)].reverse().find((event) => event.event === "round");
+    const lastRound = [...readLedger(root)].reverse().find((event) => event.event === "round"
+      && event.unit === (plan.wish.unit ?? "u1"));
     if (lastRound && lastRound.head !== frozen) {
       throw checkFailed(`the last round judged ${String(lastRound.head).slice(0, 7)}, not the frozen head ${frozen.slice(0, 7)}`);
     }
@@ -757,12 +794,20 @@ function verbFreeze(parsed, root) {
     return null;
   }
   if (observed.dirty === true) throw checkFailed("the worktree has uncommitted changes; freeze would not describe a commit");
+  // A supplied head may be an ancestor of HEAD: its tree is that commit's tree, and
+  // pairing another commit's tree with its sha would certify a state that never existed.
+  let treeForHead = identity === "research" ? null : observed.tree;
+  if (identity !== "research" && given && observed.head && given !== observed.head) {
+    const resolved = git(plan.wish.worktree, ["rev-parse", `${given}^{tree}`]);
+    if (resolved === null) throw stateMismatch(`the head ${given.slice(0, 7)} has no tree in ${plan.wish.worktree}`);
+    treeForHead = resolved;
+  }
   const pr = parsed.has("--pr") ? Number(parsed.get("--pr")) : null;
   if (parsed.has("--pr") && (!Number.isInteger(pr) || pr < 1)) throw usage("--pr takes a PR number");
   return withLock(root, () => {
-    mergeFrontMatter(planPath, { frozen_head: head, pr: pr ?? plan.wish.pr ?? null });
-    appendEvent(root, {
+    const freezeEvent = withLabels(plan, events, {
       event: "freeze",
+      stage: "freeze",
       type: plan.wish.type,
       unit: plan.wish.unit ?? "u1",
       program_id: plan.wish.program_id ?? null,
@@ -770,17 +815,24 @@ function verbFreeze(parsed, root) {
       session_id: sessionId(parsed),
       started_at: nowIso(),
       head,
-      tree: identity === "research" ? null : observed.tree,
+      tree: treeForHead,
       pr: pr ?? plan.wish.pr ?? null,
-    }, { plan: planPath, sessionId: sessionId(parsed) });
-    process.stdout.write(`frozen ${head.slice(0, 7)}${observed.tree ? ` (tree ${observed.tree.slice(0, 7)})` : ""}\n`);
+    });
+    // Validate before touching the plan: a rejected event used to leave the front
+    // matter frozen at a head no ledger event records.
+    const preChecked = validateLedgerEvent(freezeEvent);
+    if (!preChecked.ok) throw checkFailed("the freeze event does not match the contract", preChecked.errors);
+    mergeFrontMatter(planPath, { frozen_head: head, pr: pr ?? plan.wish.pr ?? null });
+    appendEvent(root, freezeEvent, { plan: planPath, sessionId: sessionId(parsed) });
+    process.stdout.write(`frozen ${head.slice(0, 7)}${treeForHead ? ` (tree ${treeForHead.slice(0, 7)})` : ""}\n`);
     return null;
   });
 }
 
 function verbPrBody(parsed, root) {
   const { plan, planPath, events } = planFor(root, parsed);
-  const frozen = [...events].reverse().find((event) => event.event === "freeze");
+  const unit = plan.wish.unit ?? "u1";
+  const frozen = [...events].reverse().find((event) => event.event === "freeze" && event.unit === unit);
   if (!frozen) throw stateMismatch("no freeze event: freeze the head before building the PR body");
   const gaps = readGaps(root) ?? [];
   const findings = readFindings(root, findingOptions(plan, events)) ?? [];
@@ -827,7 +879,7 @@ function verbPrBody(parsed, root) {
   const lines = [
     `# ${plan.wish.run_id} - ${plan.wish.type} (${plan.wish.tier})`,
     "",
-    ...(pr === null ? [] : [`PR: #${pr}`]),
+    ...(pr === null || pr === "-" ? ["PR: none"] : [`PR: #${pr}`]),
     `Frozen head: ${String(frozen.head)}  tree: ${frozen.tree ?? "null"}`,
     `Evidence root: ${root}`,
     "",
@@ -865,6 +917,15 @@ function verbPrBody(parsed, root) {
   const body = lines.join("\n");
   const out = parsed.get("--out");
   if (out) {
+    // The caller chooses the path, but the run's own state is not a valid choice: a
+    // typo there used to overwrite the append-only ledger (or the findings table)
+    // with a PR body, outside the lock.
+    const paths = rootPaths(root);
+    const reserved = [paths.ledger, paths.findings, paths.gaps, paths.gates, paths.lens, paths.ideal,
+      paths.resume, paths.lock, planPath];
+    if (reserved.includes(resolve(out))) {
+      throw usage(`--out may not overwrite run state: ${resolve(out)}`);
+    }
     writeFileSync(resolve(out), body);
     process.stdout.write(`${resolve(out)}\n`);
   } else process.stdout.write(body);
@@ -910,7 +971,7 @@ function verbSwitch(parsed, root) {
   if (kinds.includes(kind) && !allUsed) {
     throw checkFailed(`switch kind ${kind} repeats before every applicable kind is used (${applicable.join(", ")})`);
   }
-  const event = withLock(root, () => appendEvent(root, {
+  const event = withLock(root, () => appendEvent(root, withLabels(plan, readLedger(root), {
     event: "switch",
     type: plan.wish.type,
     unit,
@@ -923,7 +984,7 @@ function verbSwitch(parsed, root) {
     premise,
     new_approach: approach,
     head: target.head,
-  }, { plan: planPath, sessionId: sessionId(parsed) }));
+  }), { plan: planPath, sessionId: sessionId(parsed) }));
   process.stdout.write(`${JSON.stringify(event)}\n`);
   return null;
 }
@@ -937,7 +998,7 @@ function verbResumePlan(parsed, root) {
   const { status, contexts, unitStates } = computeStatus({
     root, planPath, head: observed.head, tree: identity === "research" ? null : observed.tree,
   });
-  const resume = resumePlan({ status, contexts, unitStates });
+  const resume = resumePlan({ status, contexts, unitStates, unit: plan.wish.unit ?? "u1" });
   const lines = [
     `wish resume - run ${status.run_id}`,
     `current stage: ${status.stage}   next: ${status.next}   first invalid stage: ${resume.firstInvalid}`,
@@ -1087,6 +1148,28 @@ function handleFailure(error) {
   process.stderr.write(`wish: internal error: ${error?.message ?? error}\n`);
   if (process.env.WISH_DEBUG === "1" && error?.stack) process.stderr.write(`${error.stack}\n`);
   return EXIT_CODES.CHECK_FAILED;
+}
+
+// A cancelled CLI must not leave a reproduction running: the children are detached
+// into their own process groups, so the group has to be killed on the way out.
+const LIVE_GROUPS = new Set();
+
+function killAllGroups() {
+  for (const pid of LIVE_GROUPS) {
+    try {
+      process.kill(-pid, "SIGKILL");
+    } catch {
+      // already gone
+    }
+  }
+  LIVE_GROUPS.clear();
+}
+
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"]) {
+  process.on(signal, () => {
+    killAllGroups();
+    process.exit(130);
+  });
 }
 
 const invokedDirectly = typeof import.meta.main === "boolean"
