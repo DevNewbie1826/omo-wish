@@ -486,6 +486,36 @@ test("a --head that is not this checkout's HEAD is a state mismatch", () => {
   expect(existsSync(join(dir, "receipt.json"))).toBe(false);
 });
 
+test("prose and test files are never mutation candidates", () => {
+  const dir = stage("clean");
+  const guard = lineOf(dir, "cli.js", "upstream rejected");
+  writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", max: 5, candidates: [{ file: "usage.md", line: 2 }, { file: "cli.js", line: guard }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id.startsWith("mutation/usage.md"))).toBe(false);
+  expect(verdictOf(receipt, `mutation/cli.js:${guard}`)).toBe("PASS");
+  expect(receipt.rows.some((entry) => entry.id === "mutation/limit")).toBe(false);
+  expect(run.exit).toBe(0);
+});
+
+test("the error scan skips test files and prose", () => {
+  const dir = stage("seeded");
+  writeFileSync(join(dir, "checks.test.js"), "function wrap(e) {\n  return new Error(e.message);\n}\n");
+  const rewrap = lineOf(dir, "cli.js", "new Error(error.message)");
+  writeConfig(dir, {
+    probes: {
+      errors: {
+        strict: true,
+        lines: [{ file: "cli.js", line: rewrap }, { file: "checks.test.js", line: 2 }, { file: "usage.md", line: 2 }],
+      },
+    },
+  });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  expect(receipt.rows.filter((entry) => entry.id === "errors" || entry.id.startsWith("errors/")).map((entry) => entry.id)).toEqual([`errors/rewrapped-message:cli.js:${rewrap}`]);
+  expect(run.exit).toBe(1);
+});
+
 test("the dictionary's code table is exactly M0's code class set", () => {
   const doc = readFileSync(join(repo, "skills/wish/references/defect-classes.md"), "utf8");
   const section = doc.split("## 4. Code classes")[1].split("## 5.")[0];

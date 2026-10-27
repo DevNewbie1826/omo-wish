@@ -27,8 +27,11 @@ copy of the tree and the suite is re-run:
   INVALID the mutation did not compile, or the run failed without a failure
           marker; INVALID is never a kill.
 "candidates" replaces the diff-derived list (fixtures, or a diff already merged).
-At most "max" lines are probed; the rest are reported as one WARN row so an
-unprobed line can never read as covered.`;
+Only added production source lines are candidates: prose and test files are never
+mutated, because a doc line would demand a test that pins prose and a test line
+would demand a test of its own fixtures. "testGlobs" and "codeExtensions"
+override that filter. At most "max" lines are probed; the rest are reported as
+one WARN row so an unprobed line can never read as covered.`;
 
 const SKIP_DIRS = new Set([".git", "node_modules", ".omo", "dist", "build", ".next", "target"]);
 
@@ -51,7 +54,7 @@ export async function run(config, ctx) {
   const raw = config.candidates?.length
     ? config.candidates
     : addedLines({ root: ctx.root, base: config.base, paths: config.paths });
-  const production = productionLines(raw, { testGlobs: config.testGlobs });
+  const production = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions });
   const candidates = production.slice(0, config.max ?? 12);
   if (candidates.length === 0) {
     return [...checks, row({ id: "mutation", verdict: "SKIP", observable: "one added production line is a candidate", cls, note: "no candidate production lines in the diff" })];

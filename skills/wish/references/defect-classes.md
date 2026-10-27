@@ -78,6 +78,12 @@ The slop replay (`remove-ai-slops`' ten categories read over the diff) is **not*
 report-only lane in M5's prompts, because judging a category needs a reader. `draft-guard` is the one design
 probe that is machine-decidable end to end, because its decision is an exit code.
 
+`errors` and `mutation` look at **added production source lines** only: a line whose file matches the test
+globs, or whose extension is not a source extension, is skipped (`testGlobs` and `codeExtensions` in the
+config override both). Two reasons, both measured by this module's own first sweep: mutating a documentation
+line demands a test that pins prose (which the flow forbids, and prose lines were consuming the mutation cap),
+and scanning a test file reports its fixture needles as production wraps.
+
 `draft-guard` takes its checker from `probes.draft-guard.checker` or `SWEEP_DRAFT_GUARD`, so this file names
 no install path. Its rules must follow the omo `frontend` draft-guard contract: exit 0 clean, 1 findings, 2
 usage or an unreadable target, and a JSON findings array on stdout. A rule id outside M0's design class set

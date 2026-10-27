@@ -315,6 +315,23 @@ export function addedLines({ root, base, paths }) {
 
 export const DEFAULT_TEST_GLOBS = ["**/*_test.go", "**/*.test.js", "**/*.test.ts", "**/test/**", "**/tests/**"];
 
+// What a probe may mutate or scan: source files. Prose and data are excluded by
+// default for two measured reasons: mutating a documentation line demands a test
+// that pins prose (which the flow forbids), and scanning a test file reports its
+// fixture needles as production defects.
+export const DEFAULT_CODE_EXTENSIONS = Object.freeze([
+  "js", "mjs", "cjs", "jsx", "ts", "tsx", "mts", "cts", "py", "go", "rs", "rb", "java", "kt", "kts",
+  "swift", "c", "h", "cc", "cpp", "hpp", "cs", "php", "sh", "bash", "zsh", "sql", "css", "scss",
+  "less", "html", "vue", "svelte", "astro", "lua", "ex", "exs", "erl", "hs", "ml", "scala", "clj",
+  "dart", "zig", "nim", "pl", "r", "jl", "tf", "rego", "sol",
+]);
+
+export function isCodeFile(file, extensions = DEFAULT_CODE_EXTENSIONS) {
+  const name = String(file);
+  const dot = name.lastIndexOf(".");
+  return dot !== -1 && extensions.includes(name.slice(dot + 1).toLowerCase());
+}
+
 function isNoise(candidate, testGlobs) {
   if (testGlobs.some((glob) => glob.test(candidate.file))) return true;
   const text = candidate.text;
@@ -327,16 +344,16 @@ function isNoise(candidate, testGlobs) {
   return false;
 }
 
-// The candidate lines a mutation or an error scan may look at: declaration,
-// comment, import and continuation noise dropped.
-export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS } = {}) {
+// The candidate lines a mutation or an error scan may look at: added production
+// source lines, with declaration, comment, import and continuation noise dropped.
+export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS } = {}) {
   const globs = testGlobs.map(globToRegExp);
-  return raw.filter((candidate) => !isNoise(candidate, globs));
+  return raw.filter((candidate) => isCodeFile(candidate.file, codeExtensions) && !isNoise(candidate, globs));
 }
 
 // The probe's work list: production lines, capped at `max`.
-export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, max = 12 } = {}) {
-  return productionLines(raw, { testGlobs }).slice(0, max);
+export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, max = 12 } = {}) {
+  return productionLines(raw, { testGlobs, codeExtensions }).slice(0, max);
 }
 
 export function lineBody(ctx, entry) {
