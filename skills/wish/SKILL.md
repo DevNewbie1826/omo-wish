@@ -11,7 +11,7 @@ One `/wish` invocation is one authorized request plus authorization to plan, bui
 
 wish v2 runs **on top of omo**. Every stage is executed by an omo feature — a category, a native agent, `mass-ulw`, `ulw-loop`, `ulw-plan`, a monitor — never by a replacement for one. The scripts under `scripts/` are helpers those roles call: they lint a plan, run probes, check a verdict and generate state.
 
-Speed comes from moving work earlier, never from reviewing less: the same final review, the same lanes, the same blocker definition — one head instead of a serial chain, and a register built before the plan instead of rediscovered every round. Review quality is a floor, not a variable.
+Speed comes from moving work earlier, never from reviewing less: the same review, the same lanes, the same blocker definition. Review quality is a floor, not a variable.
 
 Resolve every path relative to this file's directory. `/wish` arms ultrawork: never re-arm, reset or disarm it, and open no goal or notepad at bootstrap — the plan file holds the notes until `goal` registers one goal per unit through ulw-loop. A genuine owner decision (irreversible, destructive, a spend, or a contract-level LIMIT) is asked through the question tool and parked in `gates.md`; nothing else is a question.
 
@@ -23,19 +23,19 @@ Resolve every path relative to this file's directory. `/wish` arms ultrawork: ne
 | --- | --- | --- | --- |
 | 0 | `intake` | ultrawork tier triage; `todo` carries the playbook steps | `intake` event (`wish.mjs init`) |
 | 1 | `lens` | `mass-ulw` run `wish-<run>-lens`: harvest → extract → reduce nodes | `lens` event + `<ER>/lens.md`; `skip: no corpus` otherwise |
-| 2 | `discover` | `explore` 2–4 read-only lanes ∥ `librarian` for outside sources | `discover` event + `receipts/discover-<lane>.md` |
+| 2 | `discover` | `explore` 2–4 read-only lanes ∥ `librarian` for outside sources | `discover` event + `discover-<lane>.md` |
 | 3 | `ideal` | session, seeded from the `visual-qa` checklist and `frontend` rules | `ideal` event + `<ER>/ideal.md` |
 | 4 | `gap` | session merges the lanes: `remove-ai-slops` report-only, `frontend` draft-guard lint | `gap` events + `<ER>/gaps.tsv`, each defect row written once with its capture |
-| 5 | `before` | session records the captures; a read-only lane may drive them | `before` event + `receipts/before-<gap>-<tree7>.*` via ulw-loop `recordEvidence` |
-| 6 | `plan` | session writes it in ulw-plan's checkbox grammar | `plan` event (artifact = the plan) |
-| 7 | `plan_lint` | `scripts/check-plan.mjs` from the session or a `quick` node | `plan_lint` event, exit 0 |
+| 5 | `before` | session records the captures; a read-only lane may drive them | `before` event + `before-<gap>-<tree7>.*`; the SDK write follows stage 9 |
+| 6 | `plan` | session writes it in ulw-plan's checkbox grammar | `plan` event (the plan) |
+| 7 | `plan_lint` | `check-plan.mjs` from the session or a `quick` node | `plan_lint` event, exit 0; `--register` only when stage 4 wrote one, else 2 |
 | 8 | `plan_review` | `category: architect` once; `plan-reviewer` only when the plan gate is open | `plan_review-architect-<head7>.md`, `OKAY` or blockers each with a fix |
-| 9 | `goal` | `ulw-loop` goals; ulw-execute Boulder state as format only | `goal` event carrying the goal id |
-| 10 | `build` | `mass-ulw` run `wish-<run>-build`; the commit node loads `git-master` | `build` events + `receipts/build-<node>.json` |
-| 11 | `verify_lane` | one `task` batch at one head: `quick` tests+mutation and sweep, `omo-native-qa-executor`, `omo-native-code-reviewer` (+`remove-ai-slops`, `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
+| 9 | `goal` | `ulw-loop` goals; ulw-execute Boulder state as format only | `goal` event with the goal id |
+| 10 | `build` | `mass-ulw` run `wish-<run>-build`; the commit node loads `git-master` | `build` events + `build-<node>.json` |
+| 11 | `verify_lane` | one `task` batch per head (design adds a capture batch): `quick` tests+mutation and sweep, `omo-native-qa-executor`, `omo-native-code-reviewer` (+`remove-ai-slops`, `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
 | 12 | `triage` | session | `triage` event + `findings.tsv` rows |
-| 13 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; `reuse-check.mjs` re-runs only stale lanes | `fix` + `reuse` events |
-| 14 | `freeze` | `wish.mjs freeze`, then `wish.mjs pr-body` | `freeze` event: `head`, `tree`, `pr` |
+| 13 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; `reuse-check.mjs` re-runs stale lanes | `fix` + `reuse` events |
+| 14 | `freeze` | `wish freeze`, then `wish pr-body` | `freeze` event: `head`, `tree`, `pr` |
 | 15 | `pr_open` | `gh pr create` with the generated body; `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
 | 16 | `round` | `wish.mjs gate`, then `category: ultrabrain` (r1 full, r2+ delta+regression), then `check-verdict.mjs` | `final-r<n>-<head7>.md` + `round`, `verdict` events |
 | — | `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscover | `switch` event: `round`, `kind`, `premise`, `new_approach` |
@@ -66,6 +66,7 @@ A tier is never lowered: a HEAVY fact found mid-run raises it at once. `status` 
 | `audit` | `playbooks/audit.md` | `lint`, `spot`, `register-schema` |
 | `mixed` | the primary type's playbook | the primary's and secondary's lanes united; `wish init` and `sweep.mjs` take `--type mixed --primary … --secondary …` |
 
+A step names one of these lanes, and a variant sweep may re-run only a lane in this table; only `code` has `sweep`.
 The primary type owns the deliverable and the end condition; the secondary adds lanes and dictionary entries. A program (one request, several units, one PR each) adds `playbooks/program.md`.
 ## The round rule — a cap is a switch, never an exit
 
@@ -109,7 +110,7 @@ The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `
 | `references/plan-format.md` | the plan grammar, `DEVICE:` rows per type, the linter's rules |
 | `references/ledger.md` | every machine shape: receipts, events, findings, gaps, `wish status --json`, CLI |
 | `references/prompts.md` | every delegation prompt with its frame, TIMEBOX and FORBIDDEN |
-| `references/defect-classes.md` | the class dictionary per type, the probes, and the review axes |
+| `references/defect-classes.md` | the class dictionary, probes and review axes |
 | `references/metrics.md` | the measurement columns, `pr-watch`, the targets and the quality guards |
 
 ## Finish
