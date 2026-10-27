@@ -905,7 +905,10 @@ export function listReceipts(root) {
   }
   return names.sort().map((name) => {
     const parsed = parseReceiptFilename(name);
-    if (!parsed.ok) return { name, ok: false, parsed, body: null, errors: parsed.errors };
+    // A file whose name is not a receipt name is an artifact, not evidence about a
+    // lane: the contract's filename grammar decides what a receipt is, and calling
+    // every capture in `receipts/` a stale receipt buries the real ones.
+    if (!parsed.ok) return null;
     const file = join(dir, name);
     const extension = name.slice(name.lastIndexOf(".") + 1);
     if (extension !== "json" && extension !== "md") {
@@ -929,7 +932,7 @@ export function listReceipts(root) {
     const anchors = validateReceiptAgainstFilename(body, name);
     const errors = [...shape.errors, ...anchors.errors];
     return { name, ok: errors.length === 0, parsed, body, errors };
-  });
+  }).filter(Boolean);
 }
 
 function parseReceiptMarkdown(text) {

@@ -474,6 +474,17 @@ describe("status", () => {
     expect(result.err).toContain("no longer contains");
   });
 
+  test("a capture in receipts/ is an artifact, not a stale receipt", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    writeFileSync(join(state.root, "receipts", "tests-abcdef0.log"), "log\n");
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.stale_receipts).toEqual([]);
+    expect(reported.json.valid_receipts).toHaveLength(4);
+  });
+
   test("a .md lane receipt is judged by its front matter", () => {
     const state = scene();
     upToBuild(state);
