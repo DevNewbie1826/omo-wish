@@ -21,6 +21,8 @@ const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/;
 const GAP = /^G[1-9][0-9]*$/;
 const ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 const RULE_ID = /^[a-z][a-z0-9._-]*$/;
+const GATE_ID = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const COUNT = /^(0|[1-9][0-9]*)$/;
 const SESSION = /^senpi:.+$/;
 const RUN_ID = /^w-[a-z0-9]+(?:-[a-z0-9]+)*-\d{8}-\d{4}$/;
 
@@ -93,7 +95,7 @@ export const REQUIRED_RECEIPTS = Object.freeze({
 export const CONDITIONAL_RECEIPTS = Object.freeze({ adversarial: "high-risk" });
 
 // A §C.1 last row / §B10: the same strings across M3's dictionary and M5's axes.
-const CODE_CLASSES = ["S", "C", "D", "O", "T", "W", "SEC", "DOC", "CFG", "PANIC", "C4"];
+const CODE_CLASSES = ["S", "C", "D", "O", "T", "W", "SEC", "DOC", "CFG", "PANIC", "REGRESS"];
 const VQA_ITEM_IDS = [
   "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
   "B1", "B2", "B3", "B4", "B5", "B6", "B7",
@@ -116,7 +118,7 @@ const RESEARCH_CLASSES = [
   "subject_changed", "scope_widened", "hedge_dropped", "certainty_added",
   "causality_added", "direction_flipped", "population_changed",
   "evidence_grade_raised", "other",
-  "claim_unverified", "claim_refuted",
+  "claim_unresolved", "claim_refuted",
 ];
 export const FINDINGS_CLASSES = Object.freeze({
   code: Object.freeze(CODE_CLASSES),
@@ -152,8 +154,8 @@ export const PROGRESS_PATTERN = new RegExp(PROGRESS_PATTERN_SOURCE);
 export const DEVICE_PATTERN_SOURCES = Object.freeze({
   code: [/^guard [A-Za-z0-9][A-Za-z0-9._-]* -> [A-Za-z0-9][A-Za-z0-9._-]*$/,
          /^qa .+ => .+$/],
-  design: [/^vqa .+ @ .+ pair [A-Za-z0-9][A-Za-z0-9._-]*$/],
-  research: [/^claim C[1-9][0-9]* gate\(primary, domains>=\d+, counter-search\)$/],
+  design: [/^vqa .+ @ .+ pair [A-Za-z0-9._-]+-[A-Za-z0-9._-]+-[0-9]+-(?:light|dark)$/],
+  research: [/^claim C[1-9][0-9]* gate\(primary, domains>=[2-9][0-9]*, counter-search\)$/],
   audit: [/^lint .+ exit 0$/, /^spot [1-9][0-9]* rows reproduce$/],
 });
 
@@ -178,6 +180,9 @@ export const V2_MEASUREMENTS_SUFFIX = Object.freeze([
 ]);
 export const V2_ROUNDS_SUFFIX = Object.freeze(["type", "unit", "program_id", "switch_count", "switch_kinds"]);
 
+const STAGE_NAMES = Object.freeze([...LEDGER_EVENTS, "done"]);
+export { STAGE_NAMES };
+
 // ------------------------------------------------------------------ helpers
 
 function fail(errors, path, message) {
@@ -189,9 +194,7 @@ function fail(errors, path, message) {
 const T = {
   str: (v, p, e) => { if (!isStr(v)) fail(e, p, "expected a non-empty string"); },
   kebab: (v, p, e) => { if (!isStr(v) || !KEBAB.test(v)) fail(e, p, "expected lowercase kebab-case"); },
-  id: (v, p, e) => { if (!isStr(v) || !ID.test(v)) fail(e, p, "expected [A-Za-z0-9][A-Za-z0-9._-]*"); },
   gap: (v, p, e) => { if (!isStr(v) || !GAP.test(v)) fail(e, p, "expected a gap id G<n>, n >= 1"); },
-  hex7: (v, p, e) => { if (!isStr(v) || !HEX7.test(v)) fail(e, p, "expected 7 lowercase hex"); },
   hex40: (v, p, e) => { if (!isStr(v) || !HEX40.test(v)) fail(e, p, "expected a full 40-hex commit SHA"); },
   hex64: (v, p, e) => { if (!isStr(v) || !HEX64.test(v)) fail(e, p, "expected a 64-hex sha256"); },
   hex: (v, p, e) => { if (!isStr(v) || !HEX.test(v)) fail(e, p, "expected a 40- or 64-hex id"); },
@@ -259,7 +262,7 @@ const RECEIPT_SPEC = {
   cleanup: T.arr(T.str),
 };
 const RECEIPT_KEYS = [
-  ...Object.keys(RECEIPT_SPEC), "stage", "gap", "name", "pass", "note", "primary", "secondary",
+  ...Object.keys(RECEIPT_SPEC), "stage", "gap", "name", "pass", "note", "primary", "secondary", "env_sha",
 ];
 const RECEIPT_OPTIONAL_SPEC = {
   note: T.opt(T.str),
@@ -269,9 +272,10 @@ const RECEIPT_OPTIONAL_SPEC = {
   stage: T.opt(T.enumOf(LEDGER_EVENTS)),
   primary: T.opt(T.enumOf(PRIMARY_TYPES)),
   secondary: T.opt(T.enumOf(PRIMARY_TYPES)),
+  env_sha: T.opt(T.nullable(T.hex64)),
 };
 
-const UNIT_SPEC = { id: T.str, stage: T.str, pr: T.nullable(T.int(1)), round: T.int(0), switches: T.int(0) };
+const UNIT_SPEC = { id: T.str, stage: T.enumOf(STAGE_NAMES), pr: T.nullable(T.int(1)), round: T.int(0), switches: T.int(0) };
 const PROGRESS_VALUES_SPEC = {
   units_done: T.int(0), units_total: T.int(0),
   gaps_fixed: T.int(0), gaps_total: T.nullable(T.int(0)),
@@ -280,10 +284,10 @@ const PROGRESS_VALUES_SPEC = {
   waiting: T.str,
 };
 const STATUS_SPEC = {
-  run_id: T.str, stage: T.str, type: T.enumOf(WORK_TYPES), tier: T.enumOf(TIERS),
+  run_id: T.str, stage: T.enumOf(STAGE_NAMES), type: T.enumOf(WORK_TYPES), tier: T.enumOf(TIERS),
   head: T.nullable(T.hex), tree: T.nullable(T.hex), round: T.int(0),
   valid_receipts: T.arr(T.str), stale_receipts: T.arr(T.str), blocking: T.arr(T.str),
-  next: T.str, units: T.arr(T.obj(UNIT_SPEC), 1),
+  next: T.enumOf(STAGE_NAMES), units: T.arr(T.obj(UNIT_SPEC), 1),
   wave: T.obj({ k: T.int(1), n: T.int(1) }),
   progress: T.obj(PROGRESS_VALUES_SPEC),
 };
@@ -304,13 +308,13 @@ const LEDGER_EVENT_EXTRAS = {
   before: { gap_id: T.gap, artifact: T.str },
   plan: { artifact: T.str },
   plan_review: { verdict: T.enumOf(["OKAY", "BLOCKERS"]) },
-  plan_lint: { verdict: T.opt(T.enumOf(ROUND_VERDICTS)) },
+  plan_lint: { verdict: T.opt(T.enumOf([...ROUND_VERDICTS, ...RECEIPT_STATUSES])) },
   goal: { artifact: T.str },
   discover: { artifact: T.str },
   build: { task: T.str },
   verify_lane: { lane: T.kebab, verdict: T.enumOf(RECEIPT_STATUSES) },
   triage: {},
-  fix: { round: T.int(1) },
+  fix: { round: T.int(0) },
   reuse: { reuse: T.obj({ receipt: T.str, verdict: T.enumOf(["VALID", "STALE"]), reason: T.str }) },
   freeze: { tree: T.str, pr: T.nullable(T.int(1)) },
   pr_open: { pr: T.int(1) },
@@ -332,14 +336,14 @@ const LEDGER_OPTIONAL = [
   "checkpoint_opened_at", "category", "agent", "model_family", "verdict", "round", "reuse",
   "tier", "gate_id", "gate_status", "checkpoint_op", "pr", "sha", "merged_at", "note",
   "primary", "secondary", "facts", "progress", "gap_id", "gap_status", "kind", "premise",
-  "new_approach", "rules_total", "lane", "task",
+  "new_approach", "rules_total", "lane", "task", "adversarial_classes",
 ];
 const LEDGER_KEYS = [...new Set([...Object.keys(LEDGER_COMMON_SPEC), ...LEDGER_OPTIONAL])];
 const ADVERSARIAL_SPEC = { name: T.str, applicable: T.bool, observable: T.str };
 const LEDGER_OPTIONAL_SPEC = {
   commands: T.arr(T.str), artifact: T.nullable(T.str), cleanup: T.arr(T.str), attempt: T.int(1),
   checkpoint_opened_at: T.iso, category: T.str, agent: T.str, model_family: T.str,
-  verdict: T.enumOf([...ROUND_VERDICTS, ...RECEIPT_STATUSES, "OKAY", "BLOCKERS"]), round: T.int(1),
+  verdict: T.enumOf([...ROUND_VERDICTS, ...RECEIPT_STATUSES, "OKAY", "BLOCKERS"]), round: T.int(0),
   reuse: T.obj({ receipt: T.str, verdict: T.enumOf(["VALID", "STALE"]), reason: T.str }),
   tier: T.enumOf(TIERS), gate_id: T.str, gate_status: T.enumOf(["open", "resolved"]),
   checkpoint_op: T.enumOf(["open", "complete", "blocked"]), pr: T.nullable(T.int(1)),
@@ -348,9 +352,11 @@ const LEDGER_OPTIONAL_SPEC = {
   gap_status: T.enumOf(GAP_STATUSES), kind: T.enumOf(SWITCH_KINDS), premise: T.str,
   new_approach: T.str, rules_total: T.int(0), lane: T.kebab, task: T.str,
   adversarial_classes: T.arr(T.obj(ADVERSARIAL_SPEC)),
+  ended_at: T.iso,
   duration_s: (v, p, e) => { if (!(typeof v === "number" && v >= 0)) fail(e, p, "expected a number >= 0"); },
 };
 const HEAD_REQUIRED = ["build", "verify_lane", "fix", "reuse", "freeze", "pr_open", "round", "verdict", "merge", "post_merge"];
+const TREE_REQUIRED = ["verify_lane", "post_merge"];
 
 // --------------------------------------------------------------- functions
 
@@ -375,8 +381,7 @@ export function classValid(type, value, options = {}) {
   if (type === "audit") return RULE_ID.test(value);
   if (type === "mixed") {
     const named = [options.primary, options.secondary].filter((entry) => PRIMARY_TYPES.includes(entry));
-    if (named.includes("audit")) return RULE_ID.test(value);
-    return named.some((entry) => findingsClassesFor(entry).includes(value));
+    return named.some((entry) => classValid(entry, value));
   }
   return findingsClassesFor(type).includes(value);
 }
@@ -387,7 +392,7 @@ export function blockingStatus(status) {
 
 export function requiredReceiptsFor(type, { primary, secondary, highRisk = false } = {}) {
   const pick = (named) => (REQUIRED_RECEIPTS[named] ?? [])
-    .filter((lane) => lane !== "adversarial" || highRisk);
+    .filter((lane) => CONDITIONAL_RECEIPTS[lane] !== "high-risk" || highRisk);
   if (type === "mixed") return [...new Set([...pick(primary), ...pick(secondary)])];
   return [...pick(type)];
 }
@@ -411,6 +416,9 @@ export function validateReceipt(value) {
       && Date.parse(value.ended_at) < Date.parse(value.started_at)) {
     fail(errors, "receipt.ended_at", "must not precede started_at");
   }
+  if (value.type === "mixed" && !(PRIMARY_TYPES.includes(value.primary) && PRIMARY_TYPES.includes(value.secondary))) {
+    fail(errors, "receipt.primary", "a mixed receipt names a primary and a secondary type");
+  }
   if (value.kind === "lane" && !LEDGER_EVENTS.includes(value.stage)) {
     fail(errors, "receipt.stage", "a lane receipt names a ledger event as its stage");
   }
@@ -419,6 +427,12 @@ export function validateReceipt(value) {
   }
   if (value.kind === "lint" && !(isStr(value.name) && KEBAB.test(value.name))) {
     fail(errors, "receipt.name", "a lint receipt names the lint in kebab-case");
+  }
+  if (String(value.kind).startsWith("vqa-")) {
+    const expected = String(value.kind).slice(4);
+    if (value.pass !== expected) fail(errors, "receipt.pass", `kind ${value.kind} requires pass ${expected}`);
+  } else if (value.pass !== undefined) {
+    fail(errors, "receipt.pass", "only a vqa receipt names a pass");
   }
   if (Array.isArray(value.rows)) {
     value.rows.forEach((row, index) => {
@@ -446,7 +460,8 @@ export function parseReceiptFilename(name) {
     if (!match) continue;
     if (kind === "vqa") return { ok: true, kind: `vqa-${match[1]}`, pass: match[1], head7: match[2], errors };
     if (kind === "lint") return { ok: true, kind, name: match[1], tree7: match[2], errors };
-    return { ok: true, kind, gap: match[1], ...(kind === "claim-gate" ? { sha7: match[1] } : { tree7: match[2] }), errors };
+    if (kind === "claim-gate") return { ok: true, kind, sha7: match[1], errors };
+    return { ok: true, kind, gap: match[1], tree7: match[2], errors };
   }
   const lane = /^([a-z][a-z0-9_]*)-([a-z0-9]+(?:-[a-z0-9]+)*)-([0-9a-f]{7})\.(json|md)$/.exec(name);
   if (lane && LEDGER_EVENTS.includes(lane[1])) {
@@ -471,6 +486,10 @@ export function validateReceiptAgainstFilename(receipt, name) {
   if (parsed.head7 && !(isStr(anchor) && anchor.startsWith(parsed.head7))) {
     fail(errors, "receipt.head", `filename head7 ${parsed.head7} does not prefix the receipt head`);
   }
+  if (parsed.sha7 && !(isStr(anchor) && anchor.startsWith(parsed.sha7))) {
+    fail(errors, "receipt.head", `filename sha7 ${parsed.sha7} does not prefix the receipt head`);
+  }
+  if (parsed.pass && receipt.pass !== parsed.pass) fail(errors, "receipt.pass", `filename says ${parsed.pass}`);
   if (parsed.tree7 && !(isStr(receipt.tree) && receipt.tree.startsWith(parsed.tree7))) {
     fail(errors, "receipt.tree", `filename tree7 ${parsed.tree7} does not prefix the receipt tree`);
   }
@@ -510,8 +529,16 @@ export function validateLedgerEvent(value) {
   if (value.tree !== undefined && value.tree !== null && isStr(value.tree) && !HEX.test(value.tree)) {
     fail(errors, "event.tree", "expected null or a 40/64-hex git tree id");
   }
-  if (value.event === "round" && ("terminal" in value || JSON.stringify(value).includes('"[~]"'))) {
-    fail(errors, "event.terminal", "a round has no terminal state: a cap triggers a switch, and review runs until APPROVED");
+  if (TREE_REQUIRED.includes(value.event)) {
+    if (value.tree === undefined) fail(errors, "event.tree", `${value.event} is bound to a tree`);
+    else if (value.type !== "research" && value.tree === null) {
+      fail(errors, "event.tree", `${value.event} is bound to the git tree`);
+    }
+  }
+  if (JSON.stringify(value).includes('"[~]"') || value.terminal === true) {
+    fail(errors, "event.terminal", value.event === "round"
+      ? "a round has no terminal state: a cap triggers a switch, and review runs until APPROVED"
+      : "no event carries a terminal marker; review ends at APPROVED");
   }
   return { ok: errors.length === 0, errors };
 }
@@ -545,10 +572,14 @@ export function validateLedgerSequence(events) {
     const kinds = [];
     for (const item of events.filter((other) => other.unit === unit && other.event === "switch")) {
       const target = rounds.find(({ event }) => event.round === item.round);
-      if (!target || target.event.verdict !== "REVISE") {
+      if (!target || target.event.verdict !== "REVISE" || target.index > events.indexOf(item)) {
         fail(errors, `unit ${unit} round ${item.round}`, "a switch follows a REVISE round");
       }
-      if (kinds.includes(item.kind)) fail(errors, `unit ${unit} round ${item.round}`, `switch kind ${item.kind} repeats`);
+      const applicable = SWITCH_KINDS.filter((kind) => kind !== "split" || isStr(item.program_id));
+      const allUsed = applicable.every((kind) => kinds.includes(kind));
+      if (kinds.includes(item.kind) && !allUsed) {
+        fail(errors, `unit ${unit} round ${item.round}`, `switch kind ${item.kind} repeats before every applicable kind is used`);
+      }
       kinds.push(item.kind);
     }
   }
@@ -558,7 +589,6 @@ export function validateLedgerSequence(events) {
 function parseTsv(text, columns, rowCheck) {
   const errors = [];
   const lines = String(text ?? "").replace(/\r\n?/g, "\n").replace(/\n+$/, "").split("\n");
-  if (lines.length === 0) return { ok: false, rows: [], errors: [{ path: "tsv", message: "empty table" }] };
   if (lines[0] !== columns.join("\t")) {
     return { ok: false, rows: [], errors: [{ path: "tsv.header", message: `expected ${columns.join("\t")}` }] };
   }
@@ -585,7 +615,7 @@ const INT_OR_DASH = (v, min) => v === "-" || (/^[0-9]+$/.test(v) && Number(v) >=
 export function parseFindingsTsv(text, { type, primary, secondary } = {}) {
   return parseTsv(text, FINDINGS_COLUMNS, (row, path, errors) => {
     if (!ID.test(row.id)) fail(errors, `${path}.id`, "expected [A-Za-z0-9][A-Za-z0-9._-]*");
-    if (!/^[0-9]+$/.test(row.round)) fail(errors, `${path}.round`, "expected an integer >= 0");
+    if (!COUNT.test(row.round)) fail(errors, `${path}.round`, "expected an integer >= 0");
     if (!FINDINGS_SOURCES.includes(row.source)) fail(errors, `${path}.source`, "unknown source");
     if (type !== undefined && !classValid(type, row.class, { primary, secondary })) fail(errors, `${path}.class`, `not a ${type} class`);
     if (!FINDINGS_SEVERITIES.includes(row.severity)) fail(errors, `${path}.severity`, "unknown severity");
@@ -696,6 +726,7 @@ export function validatePlanFrontMatter(value) {
   rejectUnknown(value.wish, Object.keys(FRONT_MATTER_SPEC), "frontmatter.wish", errors);
   if (!errors.length) {
     if (!RUN_ID.test(value.wish.run_id)) fail(errors, "frontmatter.wish.run_id", "expected w-<slug>-<yyyymmdd>-<hhmm>");
+    if (!/^(\/|[A-Za-z]:[\\/])/.test(value.wish.worktree)) fail(errors, "frontmatter.wish.worktree", "expected an absolute path");
     if (value.wish.frozen_head !== null && !(HEX40.test(value.wish.frozen_head) || HEX64.test(value.wish.frozen_head))) {
       fail(errors, "frontmatter.wish.frozen_head", "expected null, a 40-hex commit or a 64-hex artifact sha256");
     }
@@ -729,6 +760,7 @@ export function parseProgressLine(line) {
   const errors = [];
   if (value.units_done > value.units_total) errors.push({ path: "units_done", message: "exceeds units_total" });
   if (gaps && gaps.fixed > gaps.total) errors.push({ path: "gaps_fixed", message: "exceeds gaps_total" });
+  if (value.wave_k < 1 || value.wave_k > value.wave_n) errors.push({ path: "wave_k", message: "expected 1 <= k <= n" });
   return { ok: errors.length === 0, value, errors };
 }
 
@@ -759,8 +791,14 @@ export function parseGatesMarkdown(text) {
       fields.set(match[1], match[2]);
     }
     if (!id) fail(errors, `gate[${index}]`, "missing id");
+    else if (!GATE_ID.test(id)) fail(errors, `gate[${index}]`, "id must match [A-Za-z0-9][A-Za-z0-9_-]*");
     if (ids.has(id)) fail(errors, `gate[${index}]`, `duplicate id ${id}`);
     ids.add(id);
+    for (const key of fields.keys()) {
+      if (!["Status", "Question", "Options", "Default", "Answer"].includes(key)) {
+        fail(errors, `gate[${index}]`, `unknown field ${key}`);
+      }
+    }
     const status = fields.get("Status");
     const question = fields.get("Question");
     const options = fields.get("Options");
@@ -865,7 +903,7 @@ export function validateExamples(markdown) {
 
 function dispatchExample(tag, text) {
   if (tag === "wish:receipt") return validateReceipt(JSON.parse(text));
-  if (tag === "wish:findings-tsv") return parseFindingsTsv(text);
+  if (tag === "wish:findings-tsv") return parseFindingsTsv(text, { type: "code" });
   if (tag === "wish:gaps-tsv") return parseGapsTsv(text);
   if (tag === "wish:lens") return parseLensRows(text);
   if (tag === "wish:ledger") {

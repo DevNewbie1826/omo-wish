@@ -120,7 +120,7 @@ Body fields (D §2.8 + A §C.4):
 | `rows` | array of `{id, command, observable, verdict, artifact, class?, note?}` | one row per check; `verdict` adds `INVALID` for a probe row that could not decide | D §2.8, O `exp/x1` sweep summary |
 | `artifacts` | array of paths | captures under `<ER>` | D §2.8 |
 | `cleanup` | array of strings | teardown receipts for resources the lane started | D §2.8 |
-| `gap`, `name`, `pass` | per kind | `before`/`after` name their gap; `lint` names the lint; vqa kinds name their pass | A §B3/§C.4 |
+| `gap`, `name`, `pass`, `env_sha` | per kind / optional | `before`/`after` name their gap; `lint` names the lint; a `vqa-*` receipt sets `pass` to its own suffix (`passA`, `passB`, `capture`); `env_sha` is the 64-hex surface/build artifact hash — a changed value makes the receipt STALE (M4) | A §B3/§C.4, D §2.7, A §F M4 |
 
 Every row's `command` is the literal command (or `no command` for a read-through row), `observable` is the
 one binary observation that decided it, and `artifact` is a path or `null`.
@@ -183,9 +183,9 @@ One alphabet per type; M3's dictionary key, M5's axis name and this column are t
 
 | Type | Values | Source |
 | --- | --- | --- |
-| `code` | `S` (state/lifetime/cancel/ownership), `C` (input, IO, error boundary), `D` (reconstructed instead of the original), `O` (real shipping path missing), `T` (a test that passes when wrong, including a vacuous guard), `W` (write/ownership boundary), `SEC` (secret in logs/artifacts), `DOC` (code and docs disagree), `CFG` (config accepted/rejected wrongly), `PANIC` (crash on a contract input), `C4` (a prior fix regressed) | D §1.2 measured classes S/C/D/O/T/W (343 findings) plus the independent-review rows SEC/T/DOC/CFG/PANIC/C4 (PR #47 table); `SEC`→C, `PANIC`→C and guard-survival→T are the measured groupings |
+| `code` | `S` (state/lifetime/cancel/ownership), `C` (input, IO, error boundary), `D` (reconstructed instead of the original), `O` (real shipping path missing), `T` (a test that passes when wrong, including a vacuous guard), `W` (write/ownership boundary), `SEC` (secret in logs/artifacts), `DOC` (code and docs disagree), `CFG` (config accepted/rejected wrongly), `PANIC` (crash on a contract input), `REGRESS` (a prior fix regressed — named `REGRESS`, not `C4`, because `C4` is visual-qa's truncation item) | D §1.2 measured classes S/C/D/O/T/W (343 findings) plus the independent-review rows SEC/T/DOC/CFG/PANIC/C4 (PR #47 table); the `REGRESS` rename is M0's collision fix |
 | `design` | the 69 `visual-qa` item ids `A1`–`J2`, the draft-guard and accent-stripe rule ids (`edge-stripe`, `pseudo-bar`, `inset-shadow-stripe`, `gradient-stripe`, `accent-outline`, `promo-copy`, `emoji-icon`, `decorative-badge`, `vanity-stat`), and `taste` | A §C.1, O `visual-qa:128-218`, O `frontend/scripts/perfection/{draft-guard,accent-stripes}/findings.ts` |
-| `research` | the gate codes (`untraceable_number`, `value_mismatch`, `quote_not_verbatim`, `unbound_sentence`, `meaning_drift_confirmed`, `meaning_drift_warn`, `fidelity_unresolved`), the nine `drift_kind` values (`subject_changed`, `scope_widened`, `hedge_dropped`, `certainty_added`, `causality_added`, `direction_flipped`, `population_changed`, `evidence_grade_raised`, `other`), and the claim states `claim_unverified`, `claim_refuted` | A §C.1/§B10, O `ulw-research:168,427,439` |
+| `research` | the gate codes (`untraceable_number`, `value_mismatch`, `quote_not_verbatim`, `unbound_sentence`, `meaning_drift_confirmed`, `meaning_drift_warn`, `fidelity_unresolved`), the nine `drift_kind` values (`subject_changed`, `scope_widened`, `hedge_dropped`, `certainty_added`, `causality_added`, `direction_flipped`, `population_changed`, `evidence_grade_raised`, `other`), and the claim states `claim_unresolved`, `claim_refuted` (M0's names for ulw-research's `unresolved`/`refuted`) | A §C.1/§B10, O `ulw-research:168,427,439` |
 | `audit` | the audited rule corpus' own ids, `^[a-z][a-z0-9._-]*$` (open set by design) | A §C.1 ("규칙 id") |
 | `mixed` | the union of `primary` and `secondary` | A §C.2 |
 
@@ -303,11 +303,13 @@ The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A
 | `gap` | `gap_id`, `gap_status` | A §B2/§C.4 |
 | `before` | `gap_id`, `artifact` (the before receipt) | A §B3 |
 | `plan` | `artifact` (the plan) | D §2.2 |
+| `plan_lint` | — (`artifact` is the lint receipt; `verdict` optional) | M2 |
 | `plan_review` | `verdict`: `OKAY` \| `BLOCKERS` | D §2.2 |
 | `goal` | `artifact` (goal id) | D §2.2, A §B8 |
 | `build` | `task` (node id), `head` | D §2.2 |
 | `verify_lane` | `lane`, `verdict`, `head`, `tree` | D §2.2 |
-| `fix` | `round`, `head` | D §2.2 |
+| `triage` | — | D §2.2 |
+| `fix` | `round` ≥ 0 (`0` = the pre-PR TRIAGE+FIX of D §2.2 step 7), `head` | D §2.2 |
 | `reuse` | `reuse: {receipt, verdict: VALID\|STALE, reason}`, `head` | D §2.7 |
 | `freeze` | `head`, `tree`, `pr` (integer or `null` before the PR) | D §2.6 |
 | `pr_open` | `pr` | D §2.2 |
@@ -331,12 +333,11 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 `validateLedgerSequence` enforces:
 
 1. `round` events for a unit are `1, 2, 3, …` with no gap.
-2. Nothing follows an `APPROVED` round for that unit.
+2. No further `round` follows an `APPROVED` round for that unit.
 3. A third-or-later `REVISE` round requires a `switch` event for the same round — otherwise the review
    stopped without approval, which is not an outcome.
-4. A `switch` follows a `REVISE` round of the same round number, and its `kind` never repeats for the unit
-   (one more kind per later REVISE, A §C.6.1).
-5. No event carries `[~]` or a truthy `terminal` field.
+4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.
+5. No event carries `[~]` or a terminal marker.
 
 `switch.kind` values (A §C.6.2): `premise` (the architect premise review has not run), `family` (the fix
 node moves to a model family different from the one that produced the failed fix), `strategy` (a
@@ -368,7 +369,7 @@ accepts the base header or the base plus its exact suffix.
 
 | Key | Type | Meaning | Source |
 | --- | --- | --- | --- |
-| `run_id` | `w-<slug>-<yyyymmdd>-<hhmm>` | run identity | D §2.2 |
+| `run_id` | `w-<slug>-<yyyymmdd>-<hhmm>` | run identity (M0 addition to the D §4 / A §C.4 key list; the format is D §2.2's) | D §2.2 |
 | `stage` | §9.1 name or `done` | furthest stage whose required receipts are valid | D §4 |
 | `type`, `tier` | work type, `S`/`M`/`L` | from the plan | A §C.4, D §2.3 |
 | `head`, `tree` | §2 or `null` | the state described | D §4 |
@@ -376,7 +377,7 @@ accepts the base header or the base plus its exact suffix.
 | `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt | D §4/§2.7 |
 | `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>` | D §4 |
 | `next` | §9.1 name or `done` | the only stage the session may dispatch; `blocking` says why it is blocked | D §4 |
-| `units` | `[{id, stage, pr, round, switches}]` | per-unit state (program mode) | A §C.4 |
+| `units` | `[{id, stage, pr, round, switches}]`, where `stage` is a §9.1 name or `done` | per-unit state (program mode) | A §C.4 |
 | `wave` | `{k, n}` | current wave of a program | A §B5/§C.4 |
 | `progress` | §11 values | the counters the PROGRESS line prints | A §B7/§C.4 |
 
@@ -541,7 +542,7 @@ A research claim gate (`head` is the artifact sha256, `tree` is null):
       "observable": "claim C1 is supported by a primary source from a second distinct domain",
       "verdict": "PASS",
       "artifact": "/evidence/w-u3-20261027-1630/receipts/claim-gate-0123456.json",
-      "class": "claim_unverified"
+      "class": "claim_unresolved"
     }
   ],
   "artifacts": ["/evidence/w-u3-20261027-1630/receipts/claim-gate-0123456.json"],
@@ -587,7 +588,7 @@ The ledger, including a third-round REVISE that switches approach and a fourth-r
 {"event":"build","stage":"build","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:14:00Z","task":"node-1","head":"0123456789abcdef0123456789abcdef01234567"}
 {"event":"verify_lane","stage":"verify_lane","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:20:00Z","lane":"tests","verdict":"PASS","head":"0123456789abcdef0123456789abcdef01234567","tree":"89abcdef0123456789abcdef0123456789abcdef"}
 {"event":"triage","stage":"triage","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:25:00Z"}
-{"event":"fix","stage":"fix","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:40:00Z","round":3,"head":"0123456789abcdef0123456789abcdef01234567"}
+{"event":"fix","stage":"fix","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:40:00Z","round":0,"head":"0123456789abcdef0123456789abcdef01234567"}
 {"event":"freeze","stage":"freeze","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:50:00Z","head":"0123456789abcdef0123456789abcdef01234567","tree":"89abcdef0123456789abcdef0123456789abcdef","pr":null}
 {"event":"pr_open","stage":"pr_open","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:55:00Z","pr":51,"head":"0123456789abcdef0123456789abcdef01234567"}
 {"event":"gate","stage":"gate","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:00:00Z","gate_id":"dispatch","gate_status":"resolved"}
