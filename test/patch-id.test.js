@@ -29,8 +29,12 @@ function commit(message) {
   return git("rev-parse", "HEAD");
 }
 
-function run(args) {
-  const result = spawnSync(process.execPath, [script, ...args], { encoding: "utf8", cwd: fixture });
+function run(args, env) {
+  const result = spawnSync(process.execPath, [script, ...args], {
+    encoding: "utf8",
+    cwd: fixture,
+    env: env === undefined ? process.env : { ...process.env, ...env },
+  });
   return { code: result.status, stdout: result.stdout, stderr: result.stderr };
 }
 
@@ -129,6 +133,19 @@ describe("patch-id CLI", () => {
     }));
     expect(result.code).toBe(3);
     expect(result.stderr).toContain("cannot write the interdiff");
+  });
+
+  test("an unusable temp root exits 3 instead of crashing", () => {
+    const result = run(argsFor({
+      oldBase: base,
+      oldHead: patchHead,
+      newBase: base,
+      newHead: whitespaceHead,
+      interdiff: join(fixture, "unused-delta.patch"),
+    }), { TMPDIR: join(fixture, "no-such-tmp") });
+    expect(result.code).toBe(3);
+    expect(result.stderr).toContain("cannot create the interdiff workspace");
+    expect(result.stderr).not.toContain("    at ");
   });
 
   test("a revision that cannot be diffed exits 3", () => {

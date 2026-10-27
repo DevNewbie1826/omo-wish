@@ -89,15 +89,9 @@ export function patchIdFor({ repo, base, head }) {
   if (diff.stdout.trim() === "") {
     return { ok: false, reason: `empty patch: ${base}...${head} has no changes to compare` };
   }
-  const hashed = runGit(repo, ["patch-id", "--verbatim"], { input: diff.stdout });
-  if (!hashed.ok) {
-    return { ok: false, reason: `git patch-id failed: ${firstLine(hashed.stderr)}` };
-  }
-  const [patchId] = hashed.stdout.trim().split(/\s+/);
-  if (!PATCH_ID.test(patchId ?? "")) {
-    return { ok: false, reason: "git patch-id printed no patch id" };
-  }
-  return { ok: true, patchId, diff: diff.stdout };
+  const hashed = patchIdOfDiff(diff.stdout, repo);
+  if (!hashed.ok) return hashed;
+  return { ok: true, patchId: hashed.patchId, diff: diff.stdout };
 }
 
 // The id of a patch whose text is supplied directly (used by callers that already
@@ -130,10 +124,19 @@ export function comparePatchIds({ repo, oldBase, oldHead, newBase, newHead, inte
 // Both are written under fixed names inside a private temp dir, so the emitted
 // headers (`a/old.patch`, `b/new.patch`) are stable and no temp path leaks out.
 export function writeInterdiff(oldDiff, newDiff, target) {
-  const directory = mkdtempSync(join(tmpdir(), "wish-patch-id-"));
+  let directory;
   try {
-    writeFileSync(join(directory, "old.patch"), oldDiff);
-    writeFileSync(join(directory, "new.patch"), newDiff);
+    directory = mkdtempSync(join(tmpdir(), "wish-patch-id-"));
+  } catch (error) {
+    return { ok: false, reason: `cannot create the interdiff workspace: ${error.code ?? "mkdir failed"}` };
+  }
+  try {
+    try {
+      writeFileSync(join(directory, "old.patch"), oldDiff);
+      writeFileSync(join(directory, "new.patch"), newDiff);
+    } catch (error) {
+      return { ok: false, reason: `cannot write the interdiff workspace: ${error.code ?? "write failed"}` };
+    }
     const compared = runGit(directory, ["diff", "--no-color", "--no-ext-diff", "--no-index", "--", "old.patch", "new.patch"]);
     if (!compared.ok && compared.status !== 1) {
       return { ok: false, reason: `cannot build the interdiff: ${firstLine(compared.stderr)}` };
