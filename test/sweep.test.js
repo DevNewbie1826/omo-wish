@@ -558,6 +558,34 @@ test("a mixed run takes its primary type's identity form", () => {
   expect(run.exit).toBe(1);
 });
 
+test("a symlinked candidate is invalid and its target is untouched", () => {
+  const dir = stage("clean");
+  const outside = join(dir, "..", `outside-${process.pid}.js`);
+  writeFileSync(outside, "const untouched = 1;\n");
+  Bun.spawnSync(["ln", "-s", outside, join(dir, "linked.js")]);
+  writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", candidates: [{ file: "linked.js", line: 1 }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const linked = receipt.rows.find((entry) => entry.id === "mutation/linked.js:1");
+  expect(linked.verdict).toBe("INVALID");
+  expect(linked.note).toContain("symlink");
+  expect(readFileSync(outside, "utf8")).toBe("const untouched = 1;\n");
+  rmSync(outside, { force: true });
+  expect(run.exit).toBe(0);
+});
+
+test("a config case name cannot steer a write outside the scratch directory", () => {
+  const dir = stage("clean");
+  writeConfig(dir, { probes: { config: { cases: [{ name: "../../../escaped-case", cmd: "bun cli.js config --file {tmp}", file: { text: "hello" }, expect: "accept" }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const row = receipt.rows.find((entry) => entry.id.startsWith("config/"));
+  expect(row.verdict).toBe("PASS");
+  expect(row.command).not.toContain("..");
+  expect(row.command).toContain("escaped-case");
+  expect(run.exit).toBe(0);
+});
+
 test("the dictionary's code table is exactly M0's code class set", () => {
   const doc = readFileSync(join(repo, "skills/wish/references/defect-classes.md"), "utf8");
   const section = doc.split("## 4. Code classes")[1].split("## 5.")[0];

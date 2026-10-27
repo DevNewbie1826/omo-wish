@@ -4,7 +4,7 @@
 // the #63 REVISE chain. The probe deletes one added production line in a
 // throwaway copy and requires the declared suite to fail.
 
-import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { addedLines, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
@@ -34,6 +34,14 @@ override that filter. At most "max" lines are probed; the rest are reported as
 one WARN row so an unprobed line can never read as covered.`;
 
 const SKIP_DIRS = new Set([".git", "node_modules", ".omo", "dist", "build", ".next", "target"]);
+
+function insideCopy(tree, target) {
+  try {
+    return realpathSync(target).startsWith(`${realpathSync(tree)}${sep}`);
+  } catch {
+    return false;
+  }
+}
 
 export async function run(config, ctx) {
   const cls = ctx.classFor("T");
@@ -91,6 +99,12 @@ export async function run(config, ctx) {
         return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate path escapes the throwaway copy; nothing was written" });
       }
       if (!existsSync(target)) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "file not found in the copy" });
+      if (lstatSync(target).isSymbolicLink()) {
+        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate is a symlink, so writing it would edit its target outside the copy" });
+      }
+      if (!insideCopy(tree, target)) {
+        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate resolves outside the throwaway copy through a linked directory; nothing was written" });
+      }
       const lines = readFileSync(target, "utf8").split("\n");
       const index = candidate.line - 1;
       if (lines[index] === undefined) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "line no longer exists" });

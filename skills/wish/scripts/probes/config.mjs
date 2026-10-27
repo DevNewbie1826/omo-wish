@@ -25,6 +25,13 @@ path. "expect" is "accept" (the run must exit 0) or "reject" (it must not).
 FAIL means the program did the opposite. The scratch directory is removed and
 its removal is recorded in the receipt's cleanup.`;
 
+// A case name only labels the output and names the scratch file, and it may carry
+// path or shell characters. It is reduced to a safe stem, so a case name can never
+// steer a write outside the scratch directory.
+function stem(name) {
+  return String(name).replace(/[^A-Za-z0-9._-]/g, "_").split("..").join("_").slice(0, 60) || "case";
+}
+
 export async function run(config, ctx) {
   const cls = ctx.classFor("CFG");
   const cases = config.cases ?? [];
@@ -37,7 +44,7 @@ export async function run(config, ctx) {
     for (const testCase of cases) {
       let cmd = testCase.cmd;
       if (testCase.file !== undefined) {
-        const file = join(scratch, `${testCase.name}.json`);
+        const file = join(scratch, `${stem(testCase.name)}.json`);
         writeFileSync(file, typeof testCase.file === "string" ? testCase.file : JSON.stringify(testCase.file, null, 2));
         cmd = cmd.split("{tmp}").join(q(file));
       }

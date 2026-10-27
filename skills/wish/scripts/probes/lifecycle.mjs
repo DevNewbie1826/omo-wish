@@ -5,7 +5,7 @@
 // within its budget, or does a handler keep it (and any child) alive?
 
 import { spawn } from "node:child_process";
-import { mapPool, row, isMain, probeCli } from "./lib.mjs";
+import { mapPool, row, sessionMembers, isMain, probeCli } from "./lib.mjs";
 
 export const name = "lifecycle";
 export const types = ["code"];
@@ -23,13 +23,18 @@ itself. The probe waits for "ready" on stdout or stderr, sends "signal"
 FAIL means no readiness line, a group still alive after the child exited, or an
 exit past the budget.`;
 
-function groupAlive(pid) {
+// The group is the primary signal; the session read-back also catches a child that
+// moved itself into another group while staying in the same session.
+function survivors(pid) {
+  const alive = [];
   try {
     process.kill(-pid, 0);
-    return true;
+    alive.push(`group ${pid}`);
   } catch {
-    return false;
+    /* the group is gone */
   }
+  for (const member of sessionMembers(pid)) alive.push(`pid ${member}`);
+  return alive;
 }
 
 function runCase(testCase, ctx) {
@@ -98,7 +103,8 @@ function runCase(testCase, ctx) {
     child.on("close", (code, exitSignal) => {
       if (!seenReady) return finish("FAIL", "exited before the readiness signal");
       const latency = Date.now() - signalStart;
-      if (groupAlive(child.pid)) return finish("FAIL", `the direct child exited in ${latency} ms but the process group is still alive`);
+      const alive = survivors(child.pid);
+      if (alive.length > 0) return finish("FAIL", `the direct child exited in ${latency} ms but ${alive.join(", ")} still lives`);
       finish(latency <= budgetMs ? "PASS" : "FAIL", `exited in ${latency} ms (${exitSignal ?? `code ${code}`}), budget ${budgetMs} ms`);
     });
   });
