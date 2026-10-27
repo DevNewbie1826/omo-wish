@@ -6,7 +6,7 @@
 
 import { cpSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, sep } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { addedLines, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
 export const name = "mutation";
@@ -86,7 +86,10 @@ export async function run(config, ctx) {
           return !SKIP_DIRS.has(first);
         },
       });
-      const target = join(tree, candidate.file);
+      const target = resolve(tree, candidate.file);
+      if (!target.startsWith(`${tree}${sep}`)) {
+        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate path escapes the throwaway copy; nothing was written" });
+      }
       if (!existsSync(target)) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "file not found in the copy" });
       const lines = readFileSync(target, "utf8").split("\n");
       const index = candidate.line - 1;

@@ -516,6 +516,17 @@ test("the error scan skips test files and prose", () => {
   expect(run.exit).toBe(1);
 });
 
+test("a candidate path that escapes the throwaway copy is invalid and writes nothing", () => {
+  const dir = stage("clean");
+  writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", candidates: [{ file: "../escaped.js", line: 1 }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(join(dir, "receipt.json"), "utf8"));
+  const escaped = receipt.rows.find((entry) => entry.id === "mutation/../escaped.js:1");
+  expect(escaped.verdict).toBe("INVALID");
+  expect(escaped.note).toContain("escapes the throwaway copy");
+  expect(run.exit).toBe(0);
+});
+
 test("the dictionary's code table is exactly M0's code class set", () => {
   const doc = readFileSync(join(repo, "skills/wish/references/defect-classes.md"), "utf8");
   const section = doc.split("## 4. Code classes")[1].split("## 5.")[0];
