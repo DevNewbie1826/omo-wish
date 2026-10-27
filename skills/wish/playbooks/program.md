@@ -33,7 +33,7 @@ PROGRAM=p-<slug>     BASE=wish-v2
 - [ ] 1. INTAKE: run the audit half first — an `audit` unit produces `<ER>/gaps.tsv` and the report; that register is the program's denominator [omo: `playbooks/audit.md`] [receipt: the audit unit's `cleanup` event, register on disk]
 - [ ] 2. IDEAL + GAP: the register is complete before any unit is planned; every `defect` row is `open` with a `unit` assigned [omo: session] [receipt: `ideal` and `gap` events + every row carrying a `unit`]
 - [ ] 3. GOAL: one goal per unit, one paragraph each, criteria = that unit's gap rows (`scenario` = its `before` device, `expectedEvidence` = its `after` artifact); `steer({kind:"revise_criterion"})` once PLAN fixes the devices [omo: `ulw-loop` goals] [receipt: `goal` event per unit]
-- [ ] 4. BEFORE: every `defect` row gets its pre-edit capture before the **first** edit anywhere in the program, and the row is inserted exactly once with that `before_artifact` (`gaps set` cannot add one later and `gaps add` refuses a duplicate id); a unit's capture belongs to the tree it was taken on [omo: session + a capture lane] [receipt: `before` events, one per defect row]
+- [ ] 4. BEFORE: every `defect` row gets its pre-edit capture before the **first** edit anywhere in the program, and the row is inserted exactly once with that `before_artifact` (`../SKILL.md` stage 4); a unit's capture belongs to the tree it was taken on [omo: session + a capture lane] [receipt: `before` events, one per defect row]
 - [ ] 5. PLAN: one plan per unit, each with its wave, its `unit`, its own `IS`/`DEVICE` rows, and a `LIMIT` for anything it deliberately leaves to another unit [omo: session + `check-plan.mjs` per unit] [receipt: `plan` and `plan_lint` events per unit]
 - [ ] 6. WAVE BUILD: one `mass-ulw` run for the wave, whose nodes are per-unit changes with the unit's worktree pin [omo: `mass-ulw`] [receipt: `build` events per node]
 - [ ] 7. WAVE VERIFY: one `task` batch, unit × lane, at each unit's own head — plus the extra capture batch a `design` unit needs before its two visual passes; a lane never judges another unit's scope [omo: the type playbook's lanes] [receipt: `verify_lane` receipts per unit and lane]
@@ -44,7 +44,7 @@ PROGRAM=p-<slug>     BASE=wish-v2
 
 ## Rules that keep a program honest
 
-- A unit's `IS` rows are its contract; a reviewer of unit A cannot demand unit B's delivery, and a
+- A unit's `IS` rows are its contract (`../SKILL.md`); a reviewer of unit A cannot demand unit B's delivery, and a
   register row that moved to another unit is not "missing" from this PR.
 - Completeness lives in the register, quality lives in each unit's review. Do not trade one for the
   other.

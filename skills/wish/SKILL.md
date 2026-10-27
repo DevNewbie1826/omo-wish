@@ -17,16 +17,16 @@ Resolve every path relative to this file's directory. `/wish` arms ultrawork: ne
 
 ## Stages — the omo feature that runs each one
 
-`wish status` names the next stage and the receipt blocking it; tier S may start PLAN-REVIEW with BUILD, and a program registers GOAL before PLAN. `<ER>` is `agentToolkit.status().result.evidenceRoot`, outside the repository.
+`wish status` names the next stage and the receipt blocking it; tier S may start PLAN-REVIEW with BUILD, a program registers GOAL before PLAN. `<ER>` is the ulw-loop evidenceRoot, outside the repository.
 
 | # | stage | omo feature that runs it | receipt `status` requires |
 | --- | --- | --- | --- |
-| 0 | `intake` | ultrawork tier triage; `todo` carries the playbook steps | `intake` event (`wish.mjs init`) |
+| 0 | `intake` | ultrawork tier triage; `todo` carries the playbook steps | `intake` event (`wish.mjs init`, which creates the plan: never pre-create it) |
 | 1 | `lens` | `mass-ulw` run `wish-<run>-lens`: harvest → extract → reduce nodes | `lens` event + `<ER>/lens.md`; `skip: no corpus` otherwise |
 | 2 | `discover` | `explore` 2–4 read-only lanes ∥ `librarian` for outside sources | `discover` event + `discover-<lane>.md` |
 | 3 | `ideal` | session, seeded from the `visual-qa` checklist and `frontend` rules | `ideal` event + `<ER>/ideal.md` |
-| 4 | `gap` | session merges the lanes: `remove-ai-slops` report-only, `frontend` draft-guard lint | `gap` events + `<ER>/gaps.tsv`, each defect row written once with its capture |
-| 5 | `before` | session records the captures; a read-only lane may drive them | `before` event + `before-<gap>-<tree7>.*`; the SDK write follows stage 9 |
+| 4 | `gap` | session merges the lanes: `remove-ai-slops` report-only, `frontend` draft-guard lint | `gap` events + `<ER>/gaps.tsv`: a defect row is written once, after its capture (a rule × surface with no instance of it is `N/A`, never `PASS`) |
+| 5 | `before` | session records the captures | `before` event + `before-<gap>-<tree7>.*`, captured before the first edit; the SDK `recordEvidence` write runs at the GOAL step, never here |
 | 6 | `plan` | session writes it in ulw-plan's checkbox grammar | `plan` event (the plan) |
 | 7 | `plan_lint` | `check-plan.mjs` from the session or a `quick` node | `plan_lint` event, exit 0; `--register` only when stage 4 wrote one, else 2 |
 | 8 | `plan_review` | `category: architect` once; `plan-reviewer` only when the plan gate is open | `plan_review-architect-<head7>.md`, `OKAY` or blockers each with a fix |
@@ -35,7 +35,7 @@ Resolve every path relative to this file's directory. `/wish` arms ultrawork: ne
 | 11 | `verify_lane` | one `task` batch per head (design adds a capture batch): `quick` tests+mutation and sweep, `omo-native-qa-executor`, `omo-native-code-reviewer` (+`remove-ai-slops`, `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
 | 12 | `triage` | session | `triage` event + `findings.tsv` rows |
 | 13 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; `reuse-check.mjs` re-runs stale lanes | `fix` + `reuse` events |
-| 14 | `freeze` | `wish freeze`, then `wish pr-body` | `freeze` event: `head`, `tree`, `pr` |
+| 14 | `freeze` | `wish freeze`, then `wish pr-body` | `freeze` event: `head`, `tree`, `pr` — the deliverable is committed and the tree clean first, or freeze refuses |
 | 15 | `pr_open` | `gh pr create` with the generated body; `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
 | 16 | `round` | `wish.mjs gate`, then `category: ultrabrain` (r1 full, r2+ delta+regression), then `check-verdict.mjs` | `final-r<n>-<head7>.md` + `round`, `verdict` events |
 | — | `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscover | `switch` event: `round`, `kind`, `premise`, `new_approach` |
@@ -74,18 +74,18 @@ Review has no round ceiling. `APPROVED` is the only end.
 
 1. Two consecutive REVISE rounds on the same component **or** the same defect class stop the patch loop and force one `architect` premise review of the assumption the failed fixes shared.
 2. A **third-or-later** REVISE round forces an approach switch, and every REVISE after it uses one more kind it has not used yet: `premise`, `family` (a model family other than the failed fix's), `strategy` (a `SWITCH:` row that redesigns the component), `split` (program only), `rediscover` — meanings in `references/ledger.md` §9.4.
-3. After the switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain reviewer on the delta plus the prior findings that must not reproduce.
+3. After the switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain reviewer on the delta and the prior findings.
 4. The owner is never asked whether to keep reviewing; only for a decision that is theirs — and while a gate is open, other units keep running.
 
 `references/contract.md` §6 and `references/ledger.md` §9.4 are the binding statements; `playbooks/revise.md` runs them.
 
 ## The finite contract — what may block
 
-The plan's `IS` and `COMPANION` rows are the request, its `INVARIANT` rows what must keep holding, its `LIMIT` rows what it knowingly does not handle. Only a row not delivered or a listed invariant shown violated by a failing test (or a `no-test` row's failing QA scenario) blocks; everything else is a note or a follow-up, and every reviewer prompt carries the verbatim rule of `references/contract.md` §5. `WARN` never blocks; a `FAIL` receipt is a claim the session reproduces first. A unit's contract is its own `IS` rows; PLAN-REVIEW is where a hole in it is caught.
+The plan's `IS` and `COMPANION` rows are the request, `INVARIANT` what must keep holding, `LIMIT` what is knowingly not handled. Only a row not delivered or a listed invariant shown violated by a failing test (or a `no-test` row's failing QA) blocks; everything else is a note, and every reviewer prompt carries the verbatim rule of `references/contract.md` §5. `WARN` never blocks; a `FAIL` receipt is a claim the session reproduces first. A unit's contract is its own `IS` rows.
 
 ## Evidence, state, and what scripts may not do
 
-The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `lens.md`, `ideal.md`, `gates.md` and `resume.md`; a lane writes only its own receipt; a script validates and computes and authors nothing. Evidence lives under `<ER>`, never in the repository, so evidence never moves a reviewed head. A receipt is valid while its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its `patch_id` matches; `reuse-check` names the lanes a fix invalidated, and a `before` capture is never stale. Nothing commits after the freeze: a memo goes to `<ER>`, never the branch.
+The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `lens.md`, `ideal.md`, `gates.md`, `resume.md`; a lane writes only its own receipt; a script authors nothing. Evidence lives under `<ER>`, never in the repository, so evidence never moves a reviewed head. A receipt is valid while its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its `patch_id` matches; `reuse-check` names the lanes a fix invalidated, and a `before` capture is never stale. Nothing commits after the freeze: a memo goes to `<ER>`, never the branch.
 
 `playbooks/revise.md` and `playbooks/resume.md` are the two paths that leave the linear stage list. Every reviewer lane runs under `review-work`'s rules: a locked read-only review worktree, a QA row that names its artifact, and a new reviewer for each re-review rather than the same child continued.
 
@@ -93,7 +93,7 @@ The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `
 
 | Playbook | When |
 | --- | --- |
-| `playbooks/code.md` | code work: a patch, a feature, a refactor (a characterization test comes first) |
+| `playbooks/code.md` | code work: a patch, a feature, a refactor |
 | `playbooks/design.md` | rendered surfaces: `frontend` builds, `visual-qa` verifies |
 | `playbooks/research.md` | investigation; `ulw-research` runs the phases and wish adds the contract |
 | `playbooks/audit.md` | a complete register and report, no BUILD |
@@ -111,7 +111,7 @@ The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `
 | `references/ledger.md` | every machine shape: receipts, events, findings, gaps, `wish status --json`, CLI |
 | `references/prompts.md` | every delegation prompt with its frame, TIMEBOX and FORBIDDEN |
 | `references/defect-classes.md` | the class dictionary, probes and review axes |
-| `references/metrics.md` | the measurement columns, `pr-watch`, the targets and the quality guards |
+| `references/metrics.md` | columns, `pr-watch`, targets and quality guards |
 
 ## Finish
 
