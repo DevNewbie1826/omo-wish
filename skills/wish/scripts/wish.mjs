@@ -839,6 +839,31 @@ function verbFreeze(parsed, root) {
   });
 }
 
+// Every file the evidence root holds is protected, at any depth: a hard link to a
+// nested artifact is the same inode as the artifact. Directory symlinks are not
+// followed (a cycle would hang the walk), and an unreadable evidence directory is a
+// state error rather than an empty set, so the guard never fails open.
+function walkEvidence(dir, depth = 0) {
+  if (depth > 8) return [];
+  let entries;
+  try {
+    entries = readdirSync(dir, { withFileTypes: true });
+  } catch (error) {
+    if (error?.code === "ENOENT") return [];
+    throw stateMismatch(`cannot read ${dir}: ${error?.code ?? error}`);
+  }
+  const files = [];
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkEvidence(full, depth + 1));
+      continue;
+    }
+    files.push(full);
+  }
+  return files;
+}
+
 function verbPrBody(parsed, root) {
   const { plan, planPath, events } = planFor(root, parsed);
   const unit = plan.wish.unit ?? "u1";
@@ -955,15 +980,7 @@ function verbPrBody(parsed, root) {
     if (existsSync(targetReal)) {
       const targetStat = statSync(targetReal);
       const guarded = reserved.slice();
-      for (const dir of evidenceDirs) {
-        let names = [];
-        try {
-          names = readdirSync(dir);
-        } catch {
-          names = [];
-        }
-        for (const name of names) guarded.push(join(dir, name));
-      }
+      for (const dir of evidenceDirs) guarded.push(...walkEvidence(dir));
       for (const guard of guarded) {
         let guardStat;
         try {

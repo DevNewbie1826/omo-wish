@@ -1780,6 +1780,24 @@ test("a hard link to a lane receipt cannot be overwritten", () => {
     expect(readFileSync(target, "utf8")).toBe(before);
   });
 
+test("nested evidence is protected at any depth", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    for (const area of ["receipts", "rounds"]) {
+      const deep = join(state.root, area, "nested", "deeper");
+      mkdirSync(deep, { recursive: true });
+      const evidence = join(deep, "evidence.txt");
+      writeFileSync(evidence, "the artifact\n");
+      const hard = join(state.root, `innocent-${area}.md`);
+      linkSync(evidence, hard);
+      const result = cli(["pr-body", "--root", state.root, "--out", hard]);
+      expect(result.code).toBe(2);
+      expect(readFileSync(evidence, "utf8")).toBe("the artifact\n");
+    }
+  });
+
   test("an --out path that cannot be written is a usage error", () => {
     const state = scene();
     upToBuild(state);
