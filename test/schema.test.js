@@ -186,6 +186,7 @@ test("status --json carries type, units, wave and progress", () => {
   const example = docExamples.find((entry) => entry.tag === "wish:status-json");
   const value = JSON.parse(example.text);
   expect(validateStatusJson(value).ok).toBe(true);
+  expect(typeof value.next).toBe("string");
   for (const key of ["type", "units", "wave", "progress"]) {
     const broken = { ...value };
     delete broken[key];
@@ -258,7 +259,7 @@ test("required receipts union for mixed and add adversarial only for high risk",
   expect(requiredReceiptsFor("code")).toEqual(["tests", "qa", "sweep", "code-review"]);
   expect(requiredReceiptsFor("code", { highRisk: true })).toContain("adversarial");
   expect(requiredReceiptsFor("mixed", { primary: "design", secondary: "code" }))
-    .toEqual(["draft-guard", "capture", "vqa-passA", "vqa-passB", "code-review", "tests", "qa", "sweep"]);
+    .toEqual(["draft-guard", "capture", "vqa-passA", "vqa-passB", "code-review", "qa", "tests", "sweep"]);
   expect(requiredReceiptsFor("nope")).toEqual([]);
 });
 

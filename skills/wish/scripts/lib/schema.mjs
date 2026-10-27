@@ -85,7 +85,7 @@ export const ROUND_VERDICTS = Object.freeze(["APPROVED", "REVISE"]);
 // `adversarial` is required only for a plan that flags a high-risk row (D §2.3).
 export const REQUIRED_RECEIPTS = Object.freeze({
   code: Object.freeze(["tests", "qa", "sweep", "code-review", "adversarial"]),
-  design: Object.freeze(["draft-guard", "capture", "vqa-passA", "vqa-passB", "code-review"]),
+  design: Object.freeze(["draft-guard", "capture", "vqa-passA", "vqa-passB", "code-review", "qa"]),
   research: Object.freeze(["fact-verify", "claim-gate", "skeptic", "execution-verify", "delivery-gate"]),
   audit: Object.freeze(["lint", "spot", "register-schema"]),
   mixed: Object.freeze([]),
@@ -262,7 +262,6 @@ const RECEIPT_KEYS = [
   ...Object.keys(RECEIPT_SPEC), "stage", "gap", "name", "pass", "note", "primary", "secondary",
 ];
 
-const NEXT_SPEC = { stage: T.str, blocked_by: T.arr(T.str) };
 const UNIT_SPEC = { id: T.str, stage: T.str, pr: T.nullable(T.int(1)), round: T.int(0), switches: T.int(0) };
 const PROGRESS_VALUES_SPEC = {
   units_done: T.int(0), units_total: T.int(0),
@@ -275,7 +274,7 @@ const STATUS_SPEC = {
   run_id: T.str, stage: T.str, type: T.enumOf(WORK_TYPES), tier: T.enumOf(TIERS),
   head: T.nullable(T.hex), tree: T.nullable(T.hex), round: T.int(0),
   valid_receipts: T.arr(T.str), stale_receipts: T.arr(T.str), blocking: T.arr(T.str),
-  next: T.obj(NEXT_SPEC), units: T.arr(T.obj(UNIT_SPEC), 1),
+  next: T.str, units: T.arr(T.obj(UNIT_SPEC), 1),
   wave: T.obj({ k: T.int(1), n: T.int(1) }),
   progress: T.obj(PROGRESS_VALUES_SPEC),
 };

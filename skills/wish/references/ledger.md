@@ -89,7 +89,7 @@ A type must produce these lane receipts before `status.next` may leave VERIFY-WA
 | Type | Required lanes | Source |
 | --- | --- | --- |
 | `code` | `tests`, `qa`, `sweep`, `code-review`; `adversarial` when the plan flags a high-risk row | A §C.1, D §2.3/§2.5 |
-| `design` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review` | A §C.1, O `frontend:62`, O `visual-qa:232,286` |
+| `design` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` | A §C.1, O `frontend:62`, O `visual-qa:232,286` |
 | `research` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` | A §C.1, O `ulw-research:415-437` |
 | `audit` | `lint`, `spot`, `register-schema` | A §C.1 |
 | `mixed` | the union of `primary` and `secondary` | A §C.2 |
@@ -375,7 +375,7 @@ accepts the base header or the base plus its exact suffix.
 | `round` | integer ≥ 0 | current ultrabrain round | D §4 |
 | `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt | D §4/§2.7 |
 | `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>` | D §4 |
-| `next` | `{stage, blocked_by[]}` | the only dispatchable stage and why it is blocked | D §4 |
+| `next` | §9.1 name or `done` | the only stage the session may dispatch; `blocking` says why it is blocked | D §4 |
 | `units` | `[{id, stage, pr, round, switches}]` | per-unit state (program mode) | A §C.4 |
 | `wave` | `{k, n}` | current wave of a program | A §B5/§C.4 |
 | `progress` | §11 values | the counters the PROGRESS line prints | A §B7/§C.4 |
@@ -619,7 +619,7 @@ The ledger, including a third-round REVISE that switches approach and a fourth-r
   "valid_receipts": ["verify_lane-tests-0123456.json", "verify_lane-sweep-0123456.json"],
   "stale_receipts": ["verify_lane-qa-1111111.json"],
   "blocking": ["receipt:verify_lane-qa-1111111.json", "findings:2 open"],
-  "next": {"stage": "triage", "blocked_by": ["receipt:verify_lane-qa-1111111.json"]},
+  "next": "triage",
   "units": [
     {"id": "u1", "stage": "verify_lane", "pr": null, "round": 0, "switches": 0},
     {"id": "u2", "stage": "pr_open", "pr": 51, "round": 2, "switches": 1}
