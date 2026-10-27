@@ -18,6 +18,10 @@ Both branches must pass before the PR (gate order: SKILL.md, Rules).
 
 Run `omo-native-code-reviewer` once per round, before the PR. The reviewer must load and apply the `remove-ai-slops` skill and the `programming` skill, and state in its report whether that check ran. It reports findings by severity CRITICAL, HIGH, MEDIUM, LOW. Severity ranks a finding; it does not decide whether it blocks. Apply the finite-contract blocker rule of Step 10. Fix every reproduced in-contract code blocker once, then continue without a second code-review pass. All other findings remain notes. In a REVISE round the reviewer sees only the delta diff since the last reviewed commit. Its prompt follows SKILL.md, Delegation prompts.
 
+## Step 7b: Pre-review defect-class sweep
+
+After step 7 and before step 8, run the defect-class sweep over the finished diff, and have one `category: quick` pass apply the same class list to the claims a script cannot judge. Fix every `FAIL` and rerun; an `INVALID` result is repaired, not counted as a kill, and a `SKIP` goes to the checklist pass with its reason written down. The sweep adds work and removes no reviewer: step 9 still dispatches on the swept head. Probes, the config shape, and the measured class list are in `references/sweep.md`. This is the last step where a fix is free: a fix after step 8 invalidates the step-6 captures and the head step 9 judges.
+
 ## Step 8: Open the PR
 
 One PR to the repository's main branch. The body states the behavior delivered, the tests and QA run with their capture paths, and the real limits. Claims stay within what the captures hold; never retype a number or SHA that a capture already holds.
@@ -26,7 +30,7 @@ Take the head SHA, commands, exit codes, counts, and the base each result is att
 
 ## Step 9: Final review
 
-One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Its prompt follows SKILL.md, Delegation prompts.
+One review with `category: ultrabrain`, after the PR exists. It reports every CODE defect of the PR in one verdict, never stopping at the first defect, and ends APPROVED or REVISE. Its prompt carries the step-7b receipt and checklist paths as claims to verify, never as a substitute for its own reading, and says so. Its prompt follows SKILL.md, Delegation prompts.
 
 ## Step 10: Evidence problems
 

@@ -1,13 +1,13 @@
 ---
 name: wish
-description: "Runs one user-authorized /wish request end to end: discovery, one plan with a single architect review, a goal-bound mass-ulw run with an injection check in each node, two-branch pre-PR verification, one code-reviewer round, a PR, one ultrabrain final review, merge, post-merge verification, and cleanup. Use when the /wish command or the user names this skill."
+description: "Runs one user-authorized /wish request end to end: discovery, one plan with a single architect review, a goal-bound mass-ulw run with an injection check in each node, two-branch pre-PR verification, one code-reviewer round, a pre-review defect-class sweep, a PR, one ultrabrain final review, merge, post-merge verification, and cleanup. Use when the /wish command or the user names this skill."
 metadata:
   short-description: Light 13-step authorized-request flow on mass-ulw
 ---
 
 # wish
 
-A `/wish` invocation is one authorized request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract; the three references detail the steps.
+A `/wish` invocation is one authorized request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract; the four references detail the steps.
 
 Resolve every reference path in this skill relative to the directory of this SKILL.md.
 
@@ -22,8 +22,9 @@ Resolve every reference path in this skill relative to the directory of this SKI
 5. Run the plan with mass-ulw: a worktree per task, parallel nodes with disjoint write scopes, one node owning a change and its proof, an injection check inside the node (recreate the regression, capture the failing test, restore, capture the passing test), one adversarial review inside each node that owns a high-risk row (a model family other than the author's, one pass), and serialized commits after each verified unit. Details: `references/run.md`.
 6. Pre-PR verification in two parallel branches: (a) a node runs the repository tests and the mutation check (one mutation per guard row of the plan, in a throwaway copy, recording killed or survived per row); (b) `omo-native-qa-executor` runs the QA scenarios on the real surface, recording per scenario the command, observable, PASS/FAIL, output, and cleanup receipt. Branch (b) also runs the first-use and resume paths through the shipped build, including process exit and cleanup of resources it started; a missing surface is a FAIL, and external authentication or platforms that can't be reached are marked unverified. Details: `references/review.md`.
 7. `omo-native-code-reviewer` once per round before the PR: findings by severity CRITICAL/HIGH/MEDIUM/LOW. Its prompt must require the reviewer to load and apply the `remove-ai-slops` and `programming` skills and to state in its report whether that check ran. Fix every reproduced in-contract code blocker once, regardless of severity; every other finding is a note. That round gets no second code-review pass. In a REVISE round it reviews only the delta diff. Details: `references/review.md`.
+7b. Pre-review defect-class sweep, after step 7 and before the PR opens: declare one probe per defect class the change touches, run `scripts/sweep.mjs` over the finished diff, fix every FAIL, and have one `category: quick` pass apply the same class list to what a script cannot judge. It adds work before the final review and removes no reviewer: step 9 still dispatches. Details: `references/sweep.md`.
 8. Open the PR: behavior delivered, tests and QA run, real limits. Take the head SHA, commands, exit codes, counts, and the base each result is attributed to from their captures; label claims about earlier heads as history, separate from final-head claims, and keep the source reports until step 13 cleanup. Details: `references/review.md`.
-9. One ultrabrain final review (`category: ultrabrain`): reports every CODE defect of the PR in one verdict. Details: `references/review.md`.
+9. One ultrabrain final review (`category: ultrabrain`): reports every CODE defect of the PR in one verdict. Its prompt carries the step-7b receipt as a claim to verify, never as a substitute for its own reading. Details: `references/review.md`.
 10. Evidence problems are never a REVISE reason, and a finding blocks only inside the plan's finite contract: a listed invariant shown violated, or an IS or COMPANION row not delivered; every other finding is a note or a follow-up. Every reviewer prompt carries the rule verbatim from Delegation prompts below. Each memo comes back to you: check it and fix the evidence yourself, with no re-review. Details: `references/review.md`.
 11. APPROVED: merge the PR yourself. REVISE (code problems only): go back to step 1 and run steps 2, 5-9 again for the cited problems, in the same worktree and same PR with more commits, in that order: step 9 starts only after step 7's reproduced in-contract code blockers are fixed, verified, committed, and pushed, so the final review judges the final head. When the same component gets REVISE in two consecutive rounds, stop patching it: write the one-sentence premise every failed fix assumed, run one architect review (`category: architect`) of the cause and that premise, then fix. A verdict covers a patch: when the head moved only by a rebase, equal `git patch-id` values for the verdict head and the new head keep the verdict, and a differing patch gets the delta review. `omo-native-gate-reviewer` runs only when the loop final checkpoint requires a quality-gate record, bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and follows rule 10. Details: `references/review.md`.
 12. After merge, one full verification on the merged result: `omo-native-qa-executor` runs all QA scenarios, plus the repository test suite, typecheck, and build where they exist. Details: `references/review.md`.
@@ -45,7 +46,7 @@ The original request and its companion items are the boundary for every step: di
 - Refactoring and structure changes: when the repository keeps tests for the area, first write a characterization test that pins the current behavior and passes on the unchanged code, then move the structure. This is not a RED-first mandate; other work keeps code first.
 - Evidence capture: capture the command and its output; never retype a SHA or number by hand when a capture holds it; record only what you checked.
 - Test discipline: no sleeps; wait on the event or state change itself.
-- Gate order: never open the PR before step 6 passes and step 7 has run; never merge before the ultrabrain review returns APPROVED.
+- Gate order: never open the PR before step 6 passes, step 7 has run, and step 7b's sweep is clean; never merge before the ultrabrain review returns APPROVED.
 
 ## Delegation prompts
 

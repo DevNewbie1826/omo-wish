@@ -1,0 +1,1 @@
+pr,round_index,round_kind,verdict_head_sha,dispatch_at,verdict_at,minutes,reviewer,reviewer_family,defect_count,blocking_count,defects_by_class,covered_class_blocking,sweep_receipt_seen,counterexample_present,verdict_line_present_and_head_match
