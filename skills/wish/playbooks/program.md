@@ -17,10 +17,14 @@ PROGRAM=p-<slug>     BASE=wish-v2
   the plan when it does not exist; never pre-create an empty file; the run id is required and unique per
   unit). Its contract
   is its own `IS` rows only — never another unit's gap (`../references/contract.md` §2).
+- A **mixed** unit is the one unit whose type is not concrete: it passes `--type mixed --primary <type>
+  --secondary <type>` to `wish init` and the same pair to every `sweep.mjs` call. A concrete `--type`
+  would quietly drop the secondary's lanes, so the union `status` requires would never be satisfied.
 - A **wave** holds the units whose write scopes do not overlap. Wave size is `min(host model slots,
   non-overlapping units)`; never more. Capacity is shared: at most two `mass-ulw` runs and one wish
-  program per session, five lanes per batch. "Maximum parallelism" means up to the slots, never past
-  them.
+  program per session, and at most five workers in one batch — so the six lanes a `design` unit requires
+  run as two batches, and none of them is skipped. "Maximum parallelism" means up to the slots, never
+  past them.
 - A unit whose scope overlaps a running unit waits for the next wave. After a wave merges, rebase the
   next one and let `bun $WT/skills/wish/scripts/reuse-check.mjs <receipt> --head <H2> --base-impact <old>..<new>` prove which receipts survived.
 
