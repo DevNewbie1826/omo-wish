@@ -25,8 +25,7 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 
 Before an `ultrabrain` dispatch, a CI wait or an owner gate, write `<ER>/resume.md` — intent, current
 stage, valid receipts, the one next action — and make sure nothing is uncommitted that the resume
-would lose. A `wip:` commit is allowed **before** the freeze only; after a freeze the branch does not
-move for any reason.
+would lose. A `wip:` commit is allowed **before** the freeze only (`../SKILL.md` stage 14).
 
 ## Failure modes and their one retry
 

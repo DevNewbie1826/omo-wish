@@ -23,7 +23,7 @@ exist and the body is appended at this playbook's step 7.
 - [ ] 3. DISCOVER: `explore` lanes steered by the lens questions, one lane per surface group, plus `librarian` for an outside design source; each lane returns surfaces, states and current behavior, never a fix [omo: `explore` ∥ `librarian`, read-only] [receipt: `discover` event + `receipts/discover-<lane>.md`]
 - [ ] 4. IDEAL: `skip: single surface`; otherwise write `<ER>/ideal.md` — one paragraph per surface naming the lens rules it must instantiate and what the ideal state looks like [omo: session] [receipt: `ideal` event + `<ER>/ideal.md`]
 - [ ] 5. GAP: `skip: single surface`; otherwise every rule × surface pair gets a verdict, and for each violation you take the pre-edit capture first and then insert ONE row — `wish gaps add --tsv -` with `kind: defect|taste`, `rule: L<n>|skill:<skill>:<code>` and `before_artifact` set (`../SKILL.md` stage 4) [omo: session merging the `remove-ai-slops` report-only lane and the `frontend` draft-guard lint] [receipt: `gap` events + `<ER>/gaps.tsv`]
-- [ ] 6. BEFORE: record every capture from step 5 as a `before` event with its `gap_id` (`../SKILL.md` stage 5). The SDK write is `../SKILL.md` stage 5's [omo: `capture-lane` prompt; a TUI captures through the xterm.js web terminal, never a pane dump] [receipt: one `before-<gap>-<tree7>` capture and JSON per defect gap — `before` is exempt from reuse checks]
+- [ ] 6. BEFORE: record every capture from step 5 as a `before` event with its `gap_id` (`../SKILL.md` stage 5). The SDK write is `../SKILL.md` stage 5's [omo: `capture-lane` prompt; a TUI captures through the xterm.js web terminal, never a pane dump] [receipt: one `before-<gap>-<tree7>` capture and JSON per defect gap]
 - [ ] 7. PLAN: write `$PLAN` with the two sections the linter requires, `## Todos` (`- [ ] <N>. <title>`) and `## Final verification wave` (`- [ ] F<n>. <title>`), then one `SCREEN:` row per surface (the frontend brief: the one primary action, priorities 1–3, what a generated version would add and this one will not, every required input and label, the `Layout:` line), `IS`/`COMPANION`/`INVARIANT`/`LIMIT` rows, `QA-n` rows that drive a real interaction and end in `run:`, and one `DEVICE: vqa <item ids> @ <matrix cells> pair <case>-<state>-<width>-<theme>` per IS [omo: session; grammar from `../references/plan-format.md` §4.6 and §5.2] [receipt: `plan` event]
 - [ ] 8. PLAN-LINT: `bun $WT/skills/wish/scripts/check-plan.mjs $PLAN [--register $ER/gaps.tsv]` must exit 0 (register rule: `../SKILL.md` stage 7) — a `code` device on a `design` plan is a complaint [omo: `check-plan.mjs`] [receipt: `plan_lint` event, exit 0]
 - [ ] 9. PLAN-REVIEW: one `category: architect` review of the contract (does each `SCREEN` row promise what the request needs, is every limit real); `plan-reviewer` only when the ulw-plan gate is open [omo: `category: architect`] [receipt: `receipts/plan_review-architect-<head7>.md` + `plan_review` event]
@@ -43,11 +43,11 @@ exist and the body is appended at this playbook's step 7.
 
 ## What the design type enforces
 
-- Every defect row carries a `before` capture from the pre-edit build and an `after` capture from the post-edit build; no pair, no `fixed` (`../SKILL.md` stage 5).
-- A capture older than the last edit is not evidence; a re-review after a fix is a **fresh** double oracle, never a re-read of the old images.
-- `taste` never blocks; a reviewer that treats taste as a defect is wrong, and the finding is filed as `note`.
+- The `before`/`after` pair per defect row is `../SKILL.md` stage 5's.
+- A capture older than the last edit is not evidence; a re-review after a fix is a **fresh** double oracle (`../SKILL.md`, review rule).
+- `taste` never blocks; a reviewer that treats taste as a defect is wrong, and the finding is filed as `note` (`../references/defect-classes.md` §5).
 - A TUI is captured through a real terminal renderer; a pane dump is not visual evidence.
 
 ## Forbidden
 
-Editing production code without a `before` capture; letting one pass review its own fix; dispatching a pass with no fresh captures; treating an unreachable platform as a pass; putting evidence in the repository.
+Letting one pass review its own fix; dispatching a pass with no fresh captures; treating an unreachable platform as a pass.repository.

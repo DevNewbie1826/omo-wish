@@ -25,21 +25,11 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 
 ## What the loop may never do
 
-- **Never exit to the owner to stop reviewing.** "Should we keep going?" is not a question. The loop
-  ends at `APPROVED`, an `unverified` area the platform blocks, or a withdrawn request.
-- **Never treat a budget as approval.** A `TIMEBOX` or round-budget expiry returns the result it holds
-  plus every unexamined item; an unexamined area is not a pass, and the next reviewer takes only that
-  area.
-- **Never reuse an approval.** An approval covers one `patch_id`; a rebase with an identical patch id
-  keeps it, a different patch gets a delta round.
-- **Never let a memo move the branch.** After the freeze, evidence corrections go to `<ER>` only.
+`../SKILL.md`'s round rule and evidence rules, and `../references/prompts.md` §1.2, are the binding list.
 
-## The owner's questions, and only these
+## The owner's questions
 
-Park a gate (`wish gate add --id <id> --question <text> --options <a|b> --default <a>`) when, and only
-when, the decision is theirs: the fix would be irreversible or destructive, it spends money, or the
-defect is the contract itself so a `LIMIT` needs accepting. While a gate is open, other units keep
-running. A gate open longer than 15 minutes is recorded so `status` reports the wait.
+`wish gate add --id <id> --question <text> --options <a|b> --default <a>`. The scope of an owner decision is `../SKILL.md`; a gate open longer than 15 minutes is recorded so `status` reports the wait.
 
 ## The omo caps this playbook wraps (without editing those skills)
 

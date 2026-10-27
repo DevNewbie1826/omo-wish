@@ -1,8 +1,6 @@
 # audit — the wish v2 playbook for a complete register
 
-Type `audit`: enumerate every surface, judge every rule against it, and report. **There is no BUILD** —
-`status` skips `build` for this type. The register and the report are the deliverable, and the verify
-wave proves the register **correct** rather than proving a fix.
+Type `audit`: enumerate every surface, judge every rule against it, and report. There is no BUILD (`../SKILL.md` stage 10 names the type it skips). The register and the report are the deliverable, and the verify wave proves the register **correct** rather than proving a fix.
 
 The audit is also the front half of any program: an audit unit answers "what is wrong and where", and
 the fix units follow as their own PRs.
