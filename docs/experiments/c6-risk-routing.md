@@ -52,6 +52,37 @@
 - 품질 가드(C1 장부와 같음): 병합 후 12단계 실패, 병합 뒤 같은 PR 재수정 커밋/PR, 블록당 무작위 5건 blind 재리뷰에서 계약 내 코드 결함 발견, 꼬리(최종 리뷰 ≥4회).
 - 비교: 같은 창의 production PR(ultrabrain)과 위 표의 라우팅 대상 기준선.
 
+## 결과 보고: 테스트 코드 전용 REVISE 꼬리
+
+측정 출처: `/tmp/oru-revise-tests/report.md` (2026-10-27). 이 절은 결과 보고 전용이며 아래 취소 기준을 바꾸지 않습니다.
+
+정의(보고서와 동일):
+
+- 회차 = 리뷰가 REVISE/REQUEST_CHANGES/BLOCKERS 계열 판정을 반환한 한 번. QA 시나리오 FAIL은 리뷰 축이 아니므로 제외합니다.
+- test-code-only 회차 = 그 회차의 모든 블로킹 파인딩이 테스트 산물(테스트 경로, mutation/guard/QA fixture, 검사 추가·강화)의 수정을 요구하고, 생산 코드 결함이 재현되지 않은 회차. 생산 코드 파인딩이 하나라도 있으면 아닙니다. 계획/계약·문서 파인딩은 별도(PLAN/DOCS)로 세고 test-code-only에 넣지 않습니다.
+- test-only tail = 연속된 test-code-only 회차의 마지막 구간. 길이(회차 수)와 시간(첫 회차 dispatch→마지막 회차 verdict)을 기록합니다.
+
+기록:
+
+- 회차 단위: `docs/experiments/rounds.csv`의 `test_code_only` (true/false).
+- PR 단위: `docs/experiments/measurements.csv`의 `test_only_rounds`, `test_only_tail_length`, `test_only_tail_hours`.
+- 팔 결과(판정 시): 라우팅군의 test-code-only 회차 비중, 꼬리 길이 분포, 같은 창의 production/대조군과 비교.
+
+기준선(보고서):
+
+- genie 병합 104: 10/74 회차(13.5%), 13/68 파인딩(19.1%) — INFERENCE(기계 분류+20건 수검).
+- genie 열린 9: 16/43 회차(37.2%), 27/99 파인딩(27.3%) — VERIFIED; #63은 15연속 test-only, 약 20시간.
+- agent-sense: 7/22 회차(31.8%), 10/73 파인딩(13.7%) — VERIFIED.
+- 해석: 병합 기저의 약 1/5이 테스트 코드입니다. C6의 라우팅 대상은 test/docs/CI-only이므로 test-code-only 꼬리가 이 팔에서 특히 중요합니다.
+
+꼬리 감소 판정(결과 보고 전용, 취소 기준 아님): 라우팅 12 PR 판정 시 아래를 별도로 보고합니다.
+
+- `yes`: 라우팅군에서 test-only tail 길이 ≥2인 PR이 0건이고, 라우팅군 test-code-only 회차 비중이 병합 기저 13.5% 이하.
+- `no`: 위를 만족하지 않음.
+- `insufficient`: 라우팅 PR이 12건 미만.
+
+이 결과는 유지/취소 결정에 쓰지 않습니다. 유지/취소는 아래 사전 등록 기준만 따릅니다.
+
 ## 취소 기준 (사전 등록)
 
 - 표본: 라우팅된 PR 12건. 중간 판정 6건.

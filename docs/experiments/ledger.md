@@ -23,12 +23,23 @@
 - 12건이 30일 또는 병합 120건 안에 모이지 않으면 "도달 실패"로 취소합니다(레버가 너무 작음).
 - 취소 시: 라우팅 커밋을 revert하고, 이 파일의 결과 표에 수치와 이유를 기록한 뒤 다음 실험으로 넘어갑니다.
 
+## 결과 보고: test-code-only REVISE 꼬리
+
+`/tmp/oru-revise-tests/report.md` (2026-10-27)의 측정 규칙을 따릅니다. 결과 보고 전용이며 취소 기준은 바꾸지 않습니다.
+
+- test-code-only 회차 = 그 회차의 모든 블로킹 파인딩이 테스트 산물(테스트 경로, mutation/guard/QA fixture, 검사 추가·강화) 수정을 요구하고 생산 코드 결함이 재현되지 않은 회차. PLAN/DOCS는 별도로 셉니다.
+- test-only tail = 연속된 test-code-only 회차의 마지막 구간(길이·시간).
+- 기록: `rounds.csv`의 `test_code_only`; `measurements.csv`의 `test_only_rounds`, `test_only_tail_length`, `test_only_tail_hours`.
+- 팔 결과(12 PR 판정 시): 라우팅군의 test-code-only 회차 비중과 꼬리 길이를 별도 보고하고, 꼬리 감소를 `yes`/`no`/`insufficient`로 적습니다. 유지/취소에는 쓰지 않습니다.
+- 기준선: genie 병합 104 10/74회차(13.5%) INFERENCE; genie 열린 9 16/43(37.2%) VERIFIED, #63 15연속·약 20시간; agent-sense 7/22(31.8%) VERIFIED.
+
 ## 측정 스키마
 
-- PR 단위: `docs/experiments/measurements.csv` — 3.3의 공통 필드 19개(배정 팔과 공통 적용 팔을 `arm`/`common_arms`로 분리, 경로 분류는 `path_class`).
-- 회차 단위: `docs/experiments/rounds.csv` — 3.3의 공통 필드 14개(결함 수·축을 `defect_count`/`defect_axes`로 분리).
+- PR 단위: `docs/experiments/measurements.csv` — 3.3의 공통 필드 19개(배정 팔과 공통 적용 팔을 `arm`/`common_arms`로 분리, 경로 분류는 `path_class`) + C6 보고 확장 3개(`test_only_rounds`, `test_only_tail_length`, `test_only_tail_hours`).
+- 회차 단위: `docs/experiments/rounds.csv` — 3.3의 공통 필드 14개(결함 수·축을 `defect_count`/`defect_axes`로 분리) + C6 보고 확장 1개(`test_code_only`).
 - 아직 라우팅된 PR이 없으므로 두 CSV는 헤더만 있습니다. 소유자 go 전에는 실제 PR 측정 행을 추가하지 않습니다.
 
 ## 이력
 
 - 2026-10-27: 공유 장부 위치(`docs/experiments/`)로 동기화. 취소 기준은 `c6-risk-routing.md` 원문 그대로. 측정 시작 안 함(소유자 go 대기).
+- 2026-10-27: test-code-only REVISE 꼬리 보고 필드를 추가(`rounds.csv` 1개, `measurements.csv` 3개). 취소 기준 불변.
