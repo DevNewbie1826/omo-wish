@@ -101,9 +101,13 @@ Every child prompt opens with these, before the frame:
 ### 1.4 Evidence locators
 
 Every prompt names, in this order: `<worktree>` (absolute path, every command prefixed `cd <worktree> &&` or
-`git -C <worktree>`), `<head>` (40 lowercase hex; a 7-character SHA is never accepted), `<tree>`
-(`git rev-parse HEAD^{tree}`), `<ER>` (the evidence root from `agentToolkit.status().result.evidenceRoot`,
-outside the repository), and the receipt path the lane must write.
+`git -C <worktree>`), `<head>`, `<tree>` (`git rev-parse HEAD^{tree}`), `<ER>` (the evidence root from
+`agentToolkit.status().result.evidenceRoot`, outside the repository), and the receipt path the lane must write.
+
+`<head>` is the identity `ledger.md` §2 defines: 40 lowercase hex for `code`, `design` and `audit`; the 64-hex
+artifact sha256 for `research`; a `mixed` unit takes its `primary` type's form. A seven-character SHA is never
+accepted. `<tree>` is the git tree, and it is `null` for a research unit. A `freeze` binds the git tree, or
+`null` with the sha256 as `head` for a research-primary unit.
 
 A lane receipt is `<stage>-<lane>-<head7>.json` with `head7 = head.slice(0, 7)`. Its body carries `kind`,
 `type`, `unit`, `program_id`, `lane`, `stage`, `head`, `tree`, `scope`, `started_at`, `ended_at`, `status`,
@@ -295,8 +299,13 @@ Kinds, from `ledger.md` §9.4 — pick one that differs from the kinds already u
   routes this node to another category and records `model_family`.
 - `strategy` — the plan gets a `SWITCH: <failed premise> -> <new approach>` row; redesign the component
   rather than patch it.
-- `split` — program mode only: the failing component becomes its own unit and PR; its gap row stays `open`.
+- `split` — program mode only: the failing component becomes its own unit and PR; its gap row stays `open`,
+  and the `switch` event carries `program_id` (the contract rejects a split without it).
 - `rediscover` — re-run DISCOVER for the component with the lens and sweep variants of the class.
+
+Record the `switch` **before the next review round is dispatched**. `ledger.md` §9.4 accepts a third-or-later
+REVISE's switch only in the window before the next `round` event for that unit: a switch recorded after the
+next round leaves the review continuing without a change of approach, which the contract rejects.
 
 Review continues after the switch with no round ceiling. Only `APPROVED` ends it. The owner is asked only
 when the decision is theirs (irreversible, destructive, a spend, or accepting a contract `LIMIT`).
@@ -574,6 +583,11 @@ The prompt also carries, pasted in full:
 7. The TIMEBOX sentence below, verbatim.
 
 > TIMEBOX: reach a verdict on the plan's finite contract within 45 minutes of dispatch, judged from the evidence provided (the diff, the test and QA captures, the mutation records). Do not expand the scope by re-deriving the whole PR: build no new probe and run no repository check beyond the plan's axes. At expiry, return the verdict held so far, APPROVED or REVISE, and list every open item it leaves unexamined as an explicit note in that same verdict; the obligation to report every CODE defect the evidence shows in one verdict does not change.
+
+§12's verdict pattern accepts a 40-hex head, and coverage compares it with the head the session passes. A
+`research`-primary unit's `head` is the 64-hex artifact sha256 (§2), which that pattern cannot carry: the
+session records the full sha256 in the receipt and treats the resulting coverage failure as a contract gap to
+raise with the M0 owner. It never shortens the sha, substitutes a commit, or reports the round as approved.
 
 ### 4.3.1 Extra inputs per work type
 
