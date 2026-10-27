@@ -53,7 +53,7 @@ grep -cE '^\| *[A-Za-z0-9_-]+ *\| *(blocking|non-blocking)' pr8-agent-sense.md p
 | --- | --- | --- | --- |
 | C1 민감 데이터가 오류·로그로 샘 (자격 증명, 하류 원문) | 8 | 7 | `secrets` (카나리) |
 | C2 잘못된 입력에서 패닉 | 1 | 1 | `boundary` (크래시 표식) |
-| C3 취소·핸들러 수명 (컨텍스트 무시, 파이프·고루틴 잔류, 종료 순서, `errors.Is` 상실) | 10 | 7 | `race` + `lifecycle` |
+| C3 취소·핸들러 수명 (컨텍스트 무시, 파이프·고루틴 잔류, 종료 순서, `errors.Is` 상실) | 10 | 7 | `race` + `lifecycle` + `errors` |
 | C4 경계·홀수 입력 (빈 값, 잘못된 UTF-8, 4096 경계, 음수 id, 옵션처럼 보이는 피연산자, 극단 정수, 마크업 분할) | 18 | 11 | `boundary` |
 | C5 가드 제거에 살아남는 테스트 (변이 생존, 공허한 단언, 등록 우회) | 8 | 1 | `mutation` |
 | C6 문서가 코드와 어긋남 | 5 | 0 | `docs`(존재) + `quick` 체크리스트(의미) |
@@ -111,6 +111,7 @@ grep -cE '^\| *[A-Za-z0-9_-]+ *\| *(blocking|non-blocking)' pr8-agent-sense.md p
 | C1 | `secrets` | 선언한 오류 경로마다 환경에 **카나리 자격 증명**을 넣고 실행 → stdout·stderr·선언한 로그 파일에서 카나리 검색 | 카나리가 출력에 도달했다 = 서식·절단·저장 전에 가려야 한다 |
 | C2·C4 | `boundary` | 선언한 각 케이스 + **빈 stdin / 잘못된 UTF-8 / 4096 경계+끝의 잘못된 바이트** 변형을 실행 | 크래시 표식(`panic:`, `RangeError`, `slice bounds out of range`, `Traceback` 등) 또는 선언한 종료 코드 밖의 종료 |
 | C3 | `race` + `lifecycle` | 변경 패키지에 race 검출기 1회 + 준비 신호를 기다렸다가 시그널을 보내고 종료까지 시간 측정, 프로세스 그룹 잔류 확인 | race 진단, 자식이 끝났는데 그룹이 살아 있음, 예산 초과 종료 |
+| C3(오류 사슬) | `errors` | 추가된 생산 줄에서 원인을 감추는 재포장(`fmt.Errorf`의 `%v`/`%s`, `new Error(err.message)`, 빈 catch) 검색 | `errors.Is`/`errors.As`가 관통할 수 없는 재포장. 기본은 `WARN`, `strict: true`면 `FAIL` |
 | C4 | `boundary`(선언 케이스) | `--`, 옵션형 피연산자, 음수 id, 극단 정수, 경로 이탈 등 케이스를 계획이 선언 | 잘못된 입력을 받아들임, 또는 크래시 |
 | C5 | `mutation` | `git diff <base>...HEAD`의 **추가된 생산 코드 줄**을 임시 복사본에서 하나씩 지우고 선언한 테스트 명령 실행 | `SURVIVED` = 그 줄이 없어도 스위트가 초록 |
 | C6 | `docs` | 변경 문서의 `--flag` 토큰이 `--help` 출력 또는 선언한 known 목록에 있는지 | 문서가 약속한 플래그가 코드에 없음 |
@@ -119,7 +120,7 @@ grep -cE '^\| *[A-Za-z0-9_-]+ *\| *(blocking|non-blocking)' pr8-agent-sense.md p
 
 - 스크립트가 판단할 수 없는 나머지: **`category: quick` 체크리스트 1회**. 같은 클래스 목록으로 완성된 diff를 읽고 `CLASS | clean | finding | fixed` 한 줄씩 남깁니다. 산문이 약속한 행동(C6의 의미 부분), 와이어 스키마, 상태 전이의 주인은 여기서만 걸립니다.
 - 안전 한계(소유자 지시 준수): 명령은 각 1회, 재시도·대기 루프·sleep 없음, 병렬 ≤ 8, 명령 타임아웃 ≤ 300초. `INVALID`(컴파일 실패 변이 등)는 살상으로 세지 않고 고칠 대상이며, `SKIP`은 이유를 적어 체크리스트로 넘깁니다.
-- 픽스처가 계약을 고정합니다: `test/sweep.test.js`는 깨끗한 픽스처에서 7개 탐침 전부 PASS(오탐 0)를, 심은 픽스처에서 클래스마다 자기 탐침만 FAIL을 확인합니다(§8).
+- 픽스처가 계약을 고정합니다: `test/sweep.test.js`는 깨끗한 픽스처에서 8개 탐침 전부 PASS(오탐 0)를, 심은 픽스처에서 클래스마다 자기 탐침만 FAIL을 확인합니다(§8).
 
 ### 2.2 스킬 텍스트에 삽입한 단계 (정확한 위치)
 
@@ -217,8 +218,8 @@ base = origin/main `cbbfbf8`, 줄 번호는 base 파일 기준입니다.
 
 | QA | 방법 | 결과 |
 | --- | --- | --- |
-| QA1 깨끗한 픽스처 | `bun test test/sweep.test.js` — clean 픽스처에서 탐침 7개 전부 PASS, `summary` = PASS 7 | PASS (오탐 0) |
-| QA2 심은 결함 | 같은 시험 — seeded 픽스처에서 secrets·boundary·race·mutation·docs·config·lifecycle 각각 FAIL, 검사 id까지 일치 | PASS (7/7 클래스 검출) |
+| QA1 깨끗한 픽스처 | `bun test test/sweep.test.js` — clean 픽스처에서 탐침 8개 전부 PASS, `summary` = PASS 8 | PASS (오탐 0) |
+| QA2 심은 결함 | 같은 시험 — seeded 픽스처에서 secrets·boundary·race·mutation·docs·config·lifecycle·errors 각각 FAIL, 검사 id까지 일치 | PASS (8/8 클래스 검출) |
 | QA3 경계 변형 | seeded의 `boundary/stdin:boundary-4096` FAIL 상세에 `slice bounds out of range` 포함, `declared` 변형은 PASS | PASS |
 | QA4 상한·INVALID | `parallel: 99 → 8`, `timeoutMs: 999999 → 300000`, 없는 줄 변이 → `INVALID`(살상 아님) | PASS |
 | QA5 저장소 시험·로더 | `timeout 300 bun test`, `timeout 300 bun scripts/verify.mjs .` | 아래 §9 기록 |
@@ -235,8 +236,8 @@ HEAD 7430e40c708f508211f7cab24c56d03c3110b5a8
 $ timeout 300 bun test
  11 pass
  0 fail
- 105 expect() calls
- Ran 11 tests across 2 files. [7.46s]
+ 108 expect() calls
+ Ran 11 tests across 2 files. [7.33s]
 
 $ timeout 300 bun scripts/verify.mjs .
  (실제 senpi 로더로 스킬·프롬프트·확장 발견)
@@ -249,7 +250,7 @@ $ grep -rn "three references" skills README.md
  (출력 없음: 참조 4개 문구로 갱신됨)
 ```
 
-- `test/sweep.test.js` 5 케이스가 위 11개에 포함됩니다: clean 픽스처 7탐침 전부 PASS(오탐 0), seeded 픽스처 7클래스 각각 자기 탐침 FAIL, 상한 클램프(99→8, 999999→300000)와 없는 줄 변이 INVALID(살상 아님), 설정 없는 영수증 7 SKIP 및 설정 파일 부재 시 exit 2, 변이 상한이 남긴 미탐색 줄 수 보고와 help 명령이 없을 때 docs SKIP.
+- `test/sweep.test.js` 5 케이스가 위 11개에 포함됩니다: clean 픽스처 8탐침 전부 PASS(오탐 0), seeded 픽스처 8클래스 각각 자기 탐침 FAIL, 상한 클램프(99→8, 999999→300000)와 없는 줄 변이 INVALID(살상 아님), 설정 없는 영수증 7 SKIP 및 설정 파일 부재 시 exit 2, 변이 상한이 남긴 미탐색 줄 수 보고와 help 명령이 없을 때 docs SKIP.
 - 클래스 표 재계산: 원자료 표에서 행을 기계적으로 파싱하고 아래 부록의 id→클래스 매핑을 적용해 **52행 / blocking 29 / 라운드당 2.64**를 다시 얻었습니다(불일치 0건). 매핑이 없거나 표에 없는 id가 있으면 스크립트가 문제로 보고하도록 했고, 그 검사에서 `pr21`의 `AS21-1 / residual AS8-1`(id 칸에 공백·슬래시가 있는 행)이 처음에 누락되어 51행으로 나왔으므로 파서를 고친 뒤 52행으로 확인했습니다.
 
 ## 부록: id → 클래스 매핑 (52행)

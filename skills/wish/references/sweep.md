@@ -24,10 +24,13 @@ bun <skill-dir>/scripts/sweep.mjs --config .wish-sweep.json --json <evidenceRoot
 | Credentials in errors and logs (9 / 7) | `secrets`: run each declared error path with a canary credential in the environment, then scan stdout, stderr and every declared log file | the canary reached output: redact before it is formatted, truncated or persisted |
 | Panic on invalid input (1 / 1) | `boundary`: every declared case runs as declared plus empty stdin, invalid UTF-8 and a 4096-byte boundary with an invalid trailing byte | crash marker in the output, or an exit code outside the declared set |
 | Cancellation and handler lifecycle (10 / 7) | `race` plus `lifecycle`: the race detector over the changed packages, and one start-cancel case that waits for a readiness line, sends the signal and measures the exit | a race diagnostic, a process group surviving its child, or an exit past the budget |
+| Error chain dropped while wrapping (2 rows inside the class above) | `errors`: scan the added production lines for a re-wrap that hides the original error (`fmt.Errorf` with `%v`/`%s`, `new Error(err.message)`, an empty catch) | a wrapping site that `errors.Is`/`errors.As` cannot see through; `strict: true` makes it a `FAIL`, otherwise it reports `WARN` |
 | Boundary and odd input (17 / 11) | `boundary` with declared cases for option-shaped operands, `--`, negative ids, oversize values and paths | accepted invalid input, or a crash |
 | Tests that survive guard removal (8 / 1) | `mutation`: delete each added production line in a throwaway copy and require the declared suite to fail | `SURVIVED`: the suite stayed green without that line |
 | Documentation contradicting code (5 / 0) | `docs`: every flag the changed docs promise must appear in the help output or in the declared known list; the semantic claims go to the quick checklist pass | a documented flag does not exist |
 | Config keys accepted wrongly (1 / 1) | `config`: each declared accept case must exit 0 and each reject case must exit non-zero | a closed schema accepted an unknown key, or rejected a documented one |
+
+`WARN` is a hit that needs a human read: the pattern matched but the context may justify it.
 
 `INVALID` is not a kill: a mutation that fails to compile, or a check that could not run, is recorded and repaired. A probe that cannot be configured is `SKIP`, and its class goes to the checklist pass with the reason written down. The runner executes each command once, caps parallelism at 8, caps every command at 300 seconds, and never retries or sleeps.
 
@@ -48,6 +51,7 @@ bun <skill-dir>/scripts/sweep.mjs --config .wish-sweep.json --json <evidenceRoot
       "cases": [{ "name": "send-stdin", "cmd": "bin send --stdin", "stdin": "hello", "expectExit": [0, 1] }]
     },
     "race": { "cmd": "go test -race ./internal/..." },
+    "errors": { "strict": true },
     "mutation": { "testCmd": "go test ./internal/...", "failMarker": "--- FAIL:", "max": 12 },
     "docs": { "helpCmd": "bin --help", "docs": ["docs/**/*.md"], "known": [] },
     "config": {

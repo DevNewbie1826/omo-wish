@@ -22,6 +22,10 @@ function stage(name) {
   return dir;
 }
 
+function seededRewrapLine(dir) {
+  return readFileSync(join(dir, "cli.js"), "utf8").split("\n").findIndex((line) => line.includes("new Error(error.message)")) + 1;
+}
+
 function guardLine(dir) {
   return readFileSync(join(dir, "cli.js"), "utf8").split("\n").findIndex((line) => line.includes("upstream rejected")) + 1;
 }
@@ -47,6 +51,7 @@ function configFor(dir, overrides = {}) {
         failMarker: "CHECK FAILED",
       },
       docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"] },
+      errors: { strict: true, lines: [{ file: "cli.js", line: guardLine(dir) }] },
       config: {
         cases: [
           { name: "known-key", cmd: "bun cli.js config --file {tmp}", file: { text: "hello" }, expect: "accept" },
@@ -85,7 +90,7 @@ test("clean fixture: every probe passes and the receipt exits 0", async () => {
   expect(run.stderr).toBe("");
   expect(run.exit).toBe(0);
   expect(run.receipt.version).toBe("x1-sweep/1");
-  expect(run.receipt.summary).toEqual({ PASS: 7, FAIL: 0, SKIP: 0, INVALID: 0 });
+  expect(run.receipt.summary).toEqual({ PASS: 8, FAIL: 0, SKIP: 0, INVALID: 0, WARN: 0 });
   for (const probe of run.receipt.probes) expect(probe.status).toBe("PASS");
   expect(statusOf(run.receipt, "boundary", "boundary/stdin:invalid-utf8")).toBe("PASS");
   expect(statusOf(run.receipt, "boundary", "boundary/stdin:boundary-4096")).toBe("PASS");
@@ -95,7 +100,9 @@ test("clean fixture: every probe passes and the receipt exits 0", async () => {
 
 test("seeded fixture: each seeded defect class fails its own probe", async () => {
   const dir = stage("seeded");
-  const run = sweep(dir);
+  const run = sweep(dir, {
+    probes: { ...configFor(dir).probes, errors: { strict: true, lines: [{ file: "cli.js", line: seededRewrapLine(dir) }] } },
+  });
   expect(run.exit).toBe(1);
   const expected = {
     secrets: ["secrets/send-fail"],
@@ -105,6 +112,7 @@ test("seeded fixture: each seeded defect class fails its own probe", async () =>
     docs: ["docs/--dry-run"],
     config: ["config/unknown-key"],
     lifecycle: ["lifecycle/serve"],
+    errors: [`errors/rewrapped-message:cli.js:${seededRewrapLine(dir)}`],
   };
   for (const [probe, ids] of Object.entries(expected)) {
     expect(run.receipt.probes.find((entry) => entry.name === probe).status).toBe("FAIL");
@@ -145,7 +153,7 @@ test("bare receipt names the unconfigured probes and a missing config exits 2", 
   const proc = Bun.spawnSync(["bun", sweepPath, "--root", dir, "--config", ".wish-sweep.json", "--json", receiptPath], { cwd: repo });
   const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
   expect(proc.exitCode).toBe(0);
-  expect(receipt.summary.SKIP).toBe(7);
+  expect(receipt.summary.SKIP).toBe(8);
   expect(receipt.probes.every((probe) => probe.checks[0].detail.includes("not configured"))).toBe(true);
 
   const missing = Bun.spawnSync(["bun", sweepPath, "--root", dir, "--config", ".absent.json"], { cwd: repo });

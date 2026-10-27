@@ -47,7 +47,12 @@ if (command === "send") {
 } else if (command === "config") {
   const index = rest.indexOf("--file");
   if (index === -1) die("config: --file is required");
-  const document = JSON.parse(readFileSync(rest[index + 1], "utf8"));
+  let document;
+  try {
+    document = JSON.parse(readFileSync(rest[index + 1], "utf8"));
+  } catch (error) {
+    throw new Error(error.message);
+  }
   process.stdout.write(`config: ok ${Object.keys(document).length}\n`);
 } else if (command === "serve") {
   process.stdout.write("listening\n");

@@ -341,6 +341,34 @@ async function probeMutation(config, ctx) {
   return [...checks, ...results];
 }
 
+const DEFAULT_ERROR_PATTERNS = [
+  { name: "errorf-loses-chain", regex: "fmt\\.Errorf\\([^\\n]*%(v|s)[^\\n]*\\)", message: "re-wraps with %v or %s, so errors.Is and errors.As cannot see through it" },
+  { name: "rewrapped-message", regex: "new Error\\([^\\n]*\\.message\\)", message: "re-wraps an error message and drops its cause" },
+  { name: "swallowed-catch", regex: "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}", message: "swallows the error" },
+];
+
+function lineBody(ctx, entry) {
+  if (entry.text !== undefined) return entry.text;
+  const file = join(ctx.root, entry.file);
+  return existsSync(file) ? (readFileSync(file, "utf8").split("\n")[entry.line - 1] ?? "") : "";
+}
+
+function probeErrors(config, ctx) {
+  const patterns = (config.patterns ?? DEFAULT_ERROR_PATTERNS).map((pattern) => ({ ...pattern, re: new RegExp(pattern.regex) }));
+  const lines = config.lines?.length ? config.lines : addedLines({ root: ctx.root, base: config.base ?? "origin/main", paths: config.paths });
+  if (lines.length === 0) return [check("errors", "SKIP", "no added lines to inspect")];
+  const status = config.strict ? "FAIL" : "WARN";
+  const checks = [];
+  for (const line of lines) {
+    const body = lineBody(ctx, line);
+    for (const pattern of patterns) {
+      if (pattern.re.test(body)) checks.push(check(`errors/${pattern.name}:${line.file}:${line.line}`, status, pattern.message));
+    }
+  }
+  if (checks.length === 0) checks.push(check("errors", "PASS", `${lines.length} added lines re-wrap no error`));
+  return checks;
+}
+
 function probeDocs(config, ctx) {
   const checks = [];
   const docs = matchFiles(ctx.root, config.docs ?? []);
@@ -464,6 +492,7 @@ const PROBES = {
   race: probeRace,
   mutation: probeMutation,
   docs: probeDocs,
+  errors: probeErrors,
   config: probeConfig,
   lifecycle: probeLifecycle,
 };
@@ -490,7 +519,7 @@ export async function runSweep({ root, config }) {
     }
     probes.push({ name, status: summariseChecks(checks), checks });
   }
-  const summary = { PASS: 0, FAIL: 0, SKIP: 0, INVALID: 0 };
+  const summary = { PASS: 0, FAIL: 0, SKIP: 0, INVALID: 0, WARN: 0 };
   for (const probe of probes) summary[probe.status] = (summary[probe.status] ?? 0) + 1;
   return {
     version: "x1-sweep/1",
@@ -515,8 +544,8 @@ export function renderReceipt(receipt) {
       lines.push(`  ${entry.status.padEnd(7)} ${entry.id}: ${entry.detail}`);
     }
   }
-  const { PASS, FAIL, SKIP, INVALID } = receipt.summary;
-  lines.push("", `summary PASS ${PASS} FAIL ${FAIL} SKIP ${SKIP} INVALID ${INVALID} — exit ${receipt.exit}`);
+  const { PASS, FAIL, SKIP, INVALID, WARN } = receipt.summary;
+  lines.push("", `summary PASS ${PASS} FAIL ${FAIL} SKIP ${SKIP} INVALID ${INVALID} WARN ${WARN} — exit ${receipt.exit}`);
   return lines.join("\n");
 }
 
