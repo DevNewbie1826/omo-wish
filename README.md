@@ -102,8 +102,8 @@ omo remove https://github.com/DevNewbie1826/omo-wish
 5. mass-ulw로 실행: 태스크마다 worktree, 쓰기 범위가 겹치지 않는 병렬 노드, 변경과 그 증명은 한 노드가 맡고, 노드 안에서 주입 검사를 하며, 검증된 단위마다 커밋을 직렬로 남깁니다. high-risk 행을 맡은 노드는 작성자와 다른 모델 계열의 적대적 리뷰를 노드 안에서 한 번 받습니다.
 6. PR 전 검증 두 갈래를 병렬로: (a) 저장소 테스트와 변이 검사 (guard 행마다 변이 하나, 행마다 killed/survived 기록), (b) `omo-native-qa-executor`가 실제 표면에서 QA 시나리오를 돌립니다. 실패는 먼저 분류합니다: 범위 안(못 지킨 IS·COMPANION 행, 계획에 오른 기존 버그, 가드를 통과한 같은 패턴 형제, 이번 변경이 만든 회귀)은 이 태스크에서 고치고, 환경 문제는 요건을 복구해 다시 돌려 통과해야 하고, 관련 없는 기존 실패(기준 커밋에서 같은 방식으로 실패, 두 실행 모두 캡처)는 후속 기록과 최종 보고에 남깁니다. 변이는 가드 테스트가 원본에서 통과하고 변이 아래 회귀 단언에서 실패하고 원복 후 다시 통과할 때만 죽은(killed) 것으로 기록합니다. 출시되는 구성으로 첫 사용·재개 경로, 프로세스 종료, 자원 정리까지 확인하고, 없는 표면은 실패, 닿을 수 없는 외부 인증·플랫폼은 미검증으로 둡니다.
 7. `omo-native-code-reviewer`를 라운드마다 한 번: 발견 사항을 CRITICAL/HIGH/MEDIUM/LOW로 나누되, 심각도와 무관하게, 계약 안에서 재현된 코드 차단 결함을 모두 한 번 고친 뒤 넘어갑니다. 나머지는 메모로 남기며 같은 라운드에서 두 번째 코드 리뷰는 하지 않습니다.
-8. PR 생성: 전달한 행동, 돌린 테스트와 QA, 실제 한계를 적습니다. head·명령·종료 코드·개수 주장은 캡처에서 가져오고, 이전 head 기록은 최종 head 주장과 나눕니다.
-9. `ultrabrain` 카테고리의 최종 리뷰 한 번: PR의 코드 결함을 한 판정에 모두 보고합니다.
+8. PR 생성: 본문에 `REVIEW ROUTE` 줄과 파일별 분류표를 적고, head가 움직이면 다시 계산합니다. 전달한 행동, 돌린 테스트와 QA, 실제 한계를 적습니다. head·명령·종료 코드·개수 주장은 캡처에서 가져오고, 이전 head 기록은 최종 head 주장과 나눕니다.
+9. 변경 경로로 최종 리뷰어를 고릅니다. 모든 변경 파일이 test·docs·CI이면 `omo-native-code-reviewer`, production 경로가 하나라도 있거나 섞였거나 알 수 없거나 빈 diff면 `ultrabrain`입니다. 어느 쪽이든 PR의 코드 결함을 한 판정에 모두 보고합니다.
 10. 증거 문제는 REVISE 사유가 아닙니다. 수정 메모가 되고, 이 스킬을 실행하는 에이전트가 재리뷰 없이 고칩니다. 리뷰 발견은 유한한 계약 안에서만 막습니다: 목록의 불변식 위반이 실패하는 테스트(no-test로 표시한 행동이면 실패하는 QA 시나리오)로 드러났거나 IS·COMPANION 행이 전달되지 않았을 때뿐이고, 나머지는 메모나 후속 기록입니다.
 11. APPROVED면 이 스킬을 실행하는 에이전트가 병합합니다. REVISE(코드 문제만)면 1단계로 돌아가 2, 5~9단계를 같은 worktree, 같은 PR에서 커밋을 더해 이 순서대로 다시 돕니다. 9단계는 7단계에서 계약 안에서 재현된 코드 차단 결함을 수정·검증하고 커밋·푸시한 뒤에만 시작해, 최종 리뷰가 최종 head를 판정합니다. 같은 구성 요소가 두 라운드 연속 REVISE를 받으면 땜질을 멈추고, 실패한 수정들이 공통으로 가정한 전제를 한 문장으로 적어 원인과 그 전제를 `architect` 리뷰 한 번에 맡긴 뒤 고칩니다. 판정은 패치를 덮으므로, rebase로만 head가 움직였다면 판정 head와 새 head의 `git patch-id`를 비교해 같으면 판정을 유지하고(보고에 비교를 적음) 다르면 델타 리뷰를 받습니다.
 12. 병합 후 병합된 결과에서 전체 검증 한 번: 모든 QA 시나리오와 저장소 테스트, 있으면 타입 검사와 빌드. 실패 대상은 6단계 분류 규칙으로 다룹니다: 범위 안은 새 worktree와 별도 PR로 고쳐 재검증하고(main은 직접 고치지 않음), 환경 문제는 복구해 다시 돌리고, 관련 없는 기존 실패는 후속 기록과 최종 보고에 남깁니다.
@@ -124,7 +124,7 @@ companion은 이번 변경과 같은 결이고, 요청자가 당연히 같이 �
 - 픽스처: 값 여러 개를 소비하는 행동의 픽스처는 최소 두 값을 담아서, 첫 값만 쓰는 변화에도 깨져야 합니다.
 - 증거 캡처: 명령과 출력을 함께 캡처하고, 캡처에 있는 SHA나 숫자는 손으로 다시 치지 않으며, 확인한 것만 기록합니다.
 - 대기: sleep 없이 이벤트나 상태 변화 자체를 기다립니다.
-- 게이트 순서: 6단계가 통과하고 7단계가 돌기 전에는 PR을 열지 않고, ultrabrain 리뷰의 APPROVED 전에는 병합하지 않습니다.
+- 게이트 순서: 6단계가 통과하고 7단계가 돌기 전에는 PR을 열지 않고, 9단계 최종 리뷰(라우팅된 리뷰어)의 APPROVED 전에는 병합하지 않습니다.
 - 실패 분류: 실패하는 테스트·시나리오·검사는 먼저 분류합니다. 범위 안은 고치고, 환경 문제는 요건을 복구해 다시 돌려 통과해야 하며, 관련 없는 기존 실패(기준 커밋에서 같은 방식으로 실패, 두 실행 모두 캡처)만 후속 기록으로 넘어갑니다. IS·COMPANION 행을 증명하는 시나리오는 관련 없음이 될 수 없습니다. 변이 검사의 killed는 가드가 원본에서 통과하고 변이 아래 회귀 단언에서 실패하고 원복 후 재통과할 때만 인정됩니다.
 
 ### 증거 문제와 수정 메모
@@ -134,6 +134,18 @@ companion은 이번 변경과 같은 결이고, 요청자가 당연히 같이 �
 ### 7단계 코드 리뷰
 
 7단계 리뷰어 프롬프트는 리뷰어가 `remove-ai-slops`와 `programming` 스킬을 불러와 적용하고, 그 점검을 실제로 했는지 보고서에 밝히도록 요구해야 합니다. REVISE 라운드에서는 바뀐 부분의 diff만 봅니다.
+
+### 9단계 최종 리뷰 라우팅
+
+9단계 리뷰어는 PR이 바꾼 경로로 고릅니다. 분류는 `git diff --name-status -M <base>...<head>`의 모든 경로에 대해 대소문자를 구분해 전체 경로로 하고, rename은 양쪽 경로를, 삭제는 삭제된 경로를 봅니다. 위쪽 행이 이깁니다.
+
+- production(제품 오버라이드): 계획이 선언한 제품 콘텐츠 루트 아래. 제품이 런타임에 읽는 스킬·프롬프트·템플릿·로케일 파일입니다.
+- test: `test`, `tests`, `__tests__`, `__mocks__`, `__snapshots__`, `__fixtures__`, `spec`, `specs`, `testdata`, `e2e` 디렉터리 아래, 또는 `*.test.*`, `*.spec.*`, `*_test.*`, `*_spec.*`, `*.snap`, `test_*.py`, `*_test.py`, `*Test.java`, `*Tests.java`, `*Test.kt`, `*Tests.kt`, `*Tests.cs`, `*_test.go` 파일명.
+- CI: `.github/workflows/`, `.github/actions/`, `.circleci/`, `.buildkite/`, `.gitlab/`, `.azure-pipelines/`, `ci/`, `.ci/` 아래, 또는 `Jenkinsfile`, `Jenkinsfile.*`, `.gitlab-ci.yml`, `.travis.yml`, `azure-pipelines.yml`, `appveyor.yml`, `.drone.yml`, `bitbucket-pipelines.yml`, `.github/dependabot.yml`, `renovate.json`, `.renovaterc`, `.renovaterc.json`.
+- docs(허용 목록): `docs/`, `doc/`, `documentation/` 아래, 또는 루트의 `README*`, `CHANGELOG*`, `CHANGES*`, `CONTRIBUTING*`, `CODE_OF_CONDUCT*`, `SECURITY*`, `AUTHORS*`, `NOTICE*`, `LICENSE*`, `COPYING*`. 그 밖의 문서 확장자 파일은 production입니다.
+- 나머지 전부는 production입니다.
+
+경로가 하나 이상이고 전부 test·docs·CI이면 `omo-native-code-reviewer`, production 경로가 하나라도 있거나 섞였거나 알 수 없거나 빈 diff면 `ultrabrain`입니다. code reviewer의 최종 리뷰는 7단계 요구사항(두 스킬 적용, 전체 PR, 한 판정)을 따르되 7단계의 두 번째 패스가 아닙니다. 경로는 올라가기만 하고(production이 나타나면 이후 head도 ultrabrain), 분류 오류·기준 없음·잘린 목록은 ultrabrain으로 갑니다. 분류기는 `skills/wish/scripts/review-route.mjs`이고 같은 표를 구현합니다.
 
 ### 참조 파일
 
@@ -156,7 +168,7 @@ companion은 이번 변경과 같은 결이고, 요청자가 당연히 같이 �
 `/wish`는 호스트의 네이티브 plan-reviewer 게이트를 쓰지 않습니다. 그 게이트는 사용자가 ulw-plan 흐름을 명시적으로 요청했을 때처럼 호스트 조건이 맞을 때만 열리고, wish 계획에는 적용되지 않습니다.
 
 - 계획 리뷰는 `architect` 카테고리 한 라운드로 끝냅니다. 지적된 차단 사항은 고치고 계획의 "Plan review record"에 기록하며 다시 리뷰하지 않습니다.
-- 최종 ultrabrain 리뷰가 그 수정을 확인합니다.
+- 9단계 최종 리뷰(라우팅된 리뷰어)가 그 수정을 확인합니다.
 - `architect`가 호스트 카테고리 목록에 없으면 멈추고 차단 사항으로 보고합니다. 대체 카테고리를 정하지 않습니다.
 - 네이티브 plan-reviewer 경로는 없고, 게이트를 수동으로 풀거나 거부된 호출을 반복해서 재시도하지 않습니다.
 
@@ -172,11 +184,14 @@ omo-wish/
 ├── skills/
 │   └── wish/
 │       ├── SKILL.md              # 13단계와 핵심 규칙
+│       ├── scripts/
+│       │   └── review-route.mjs  # 9단계 최종 리뷰 경로 분류기
 │       └── references/
 │           ├── plan.md           # 1~4단계
 │           ├── run.md            # 5단계
 │           └── review.md         # 6~13단계
 ├── test/
+│   ├── review-route.test.js      # 경로 분류 테스트
 │   └── wish.test.js              # 동작 테스트
 └── scripts/
     └── verify.mjs                # 실제 호스트 로더로 확인하는 검증 스크립트
@@ -189,6 +204,7 @@ omo-wish/
 ```sh
 bun test
 bun scripts/verify.mjs .
+bun skills/wish/scripts/review-route.mjs --base main --head HEAD --product-root skills
 ```
 
 `scripts/verify.mjs`는 설치된 Senpi의 실제 로더(프롬프트 템플릿, 스킬, 확장 러너)로 패키지를 불러와 확인합니다. 테스트와 검증기의 기본 Senpi 위치는 현재 사용자 홈 아래 `.bun/install/global/node_modules/@code-yeongyu/senpi`입니다. 다른 위치에 설치했다면 `SENPI_ROOT` 환경 변수로 설치 경로를 지정하세요.
