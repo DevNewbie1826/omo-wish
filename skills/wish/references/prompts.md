@@ -19,7 +19,7 @@ child's prompt is.
 1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
    lane vocabulary.
 2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
-   `define-report`, `decide-batch`.
+   `define-report`, `decide-batch`, `execution`.
 3. Verify-wave lanes — `tests-lane`, `sweep-lane`, `qa-lane`, `code-review-lane`, `adversarial-lane`,
    `gate-repro`.
 4. Review prompts — `plan-review`, `premise-review`, `ultrabrain-r1`, `ultrabrain-r2`, `gate-checkpoint`,
@@ -410,6 +410,47 @@ REPORT: the row count, the file path, and each row's recorded answer.
 A decision that appears mid-run parks only its lane: the lane's state is `parked`, every other lane
 continues, and the `PROGRESS:` line names it in its `waiting` field. Which decisions belong to the requester
 is owned by `SKILL.md`.
+
+### 2.8 `execution` - the base execution step
+
+**TEMPLATE:** `execution`
+
+The execution step restates the requester's base sentence before it dispatches any build lane:
+
+```
+After that, don't ask the requester. Proceed exactly as written in this content with mass-ulw, ulw-loop, and ulw-execute, at maximum parallelism, verifying rigorously. Deliver the work as several pull requests, include the before/after directly inside each pull request, and make the improvements clearly visible. As you proceed, report status to the requester very frequently, every time, saying how much of the whole work is done and which parts are done.
+```
+
+```
+Purpose: <the original requested outcome>.
+Scope: run the approved plan <plan path> to merged, verified PRs.
+Contract: <IS/COMPANION/INVARIANT/LIMIT rows verbatim>.
+Blockers: an IS or COMPANION row not delivered, or a listed INVARIANT shown violated.
+Separate findings: recorded in `<ER>/follow-ups.md`, never fixed in this run.
+
+TASK: execute <plan path> unit by unit, one PR per unit, reporting progress at every milestone.
+DELIVERABLE: one PR per independently verifiable unit, each with `## Before` and `## After` in its body;
+  the `PROGRESS:` line at every milestone.
+SCOPE: each unit writes only its own disjoint write scope from the plan. OUT OF SCOPE: another unit's
+  files, a decision the requester owns (it parks its lane, §2.7).
+VERIFY: every unit's devices pass at its head, and each PR body has both `## Before` and `## After`.
+STOP WHEN: every unit's PR is merged and its post-merge verification passes, or its lane is parked.
+TIMEBOX: <from the plan>. At expiry report every unit's state by name.
+FORBIDDEN: two units writing the same file; a PR without `## Before` / `## After`; a shortened PROGRESS line;
+  asking the requester anything outside the decision batch.
+REPORT: one `PROGRESS:` line per milestone, then the PR list.
+```
+
+Units and PRs: one PR per independently verifiable unit, and units have disjoint write scopes. A PR may hold
+several commits. Its body carries `## Before` and `## After`. A request that is one unit stays one PR; it is
+never split to look like several.
+
+Progress: print the `PROGRESS:` line at every milestone, in its exact v2 shape from `ledger.md` §11, never a
+shortened form:
+
+```
+PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<round> on <#pr|none> · switch <count> · waiting <what|none>
+```
 
 ---
 
