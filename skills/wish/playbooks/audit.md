@@ -34,7 +34,7 @@ appended at this playbook's step 7.
 - [ ] 16. PR: `gh pr create --base $BASE --head $BR --body-file $ER/pr-body.md`, append `pr_open` [omo: `gh` + `tool.monitor`] [receipt: `pr_open` event]
 - [ ] 17. ROUND: `wish gate --round <n>`, then one `category: ultrabrain` review — it judges **coverage** (every rule × surface pair is decided) and the spot accuracy, not the product's quality; `check-verdict.mjs --require-approved` [omo: `wish.mjs gate` + `category: ultrabrain`] [receipt: `receipts/final-r<n>-<head7>.md` + `round` and `verdict` events]
 - [ ] 18. REVISE: on `REVISE`, go to `playbooks/revise.md`; for an audit the usual switch is `rediscover` — a surface group was missed, not a patch miswritten [omo: as `revise.md` says] [receipt: the `switch` event the round requires]
-- [ ] 19. MERGE: after `APPROVED`, merge and append `merge` [omo: session] [receipt: `merge` event]
+- [ ] 19. MERGE: refresh and re-push the body — `wish pr-body --out $ER/pr-body.md`, then `gh pr edit <n> --body-file $ER/pr-body.md` — and clear `wish merge-ready --body $ER/pr-body.md` (`../SKILL.md` stage 17) once `APPROVED`, then merge and append `merge` [omo: session] [receipt: `merge` event]
 - [ ] 20. POST-MERGE: re-check that the merged register equals the frozen one and every `FAIL` row still reproduces [omo: `omo-native-qa-executor` when a command is involved] [receipt: `post_merge` event]
 - [ ] 21. CHECKPOINT and CLEANUP: ulw-loop `checkpoint`, `omo-native-gate-reviewer`, `wish metrics export`, `memory` for the classes and the coverage numbers, teardown, then append `cleanup` [omo: `ulw-loop` + `omo-native-gate-reviewer` + `metrics.mjs` + `memory`] [receipt: `checkpoint` event then `cleanup` event with ≥1 teardown receipt]
 

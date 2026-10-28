@@ -4,6 +4,11 @@ Enter this playbook when a `round` verdict is `REVISE`, or when a gate row came 
 is `../SKILL.md`'s round rule; `../references/contract.md` §6 and `../references/ledger.md` §9.4 are the
 binding text, and this file is how it runs.
 
+A defect found after `APPROVED` enters here as well: fix it, `wish freeze` the new head, then re-open the
+approved round — `wish ledger append --event reopen --json -` with that `round`, `reason` and the new `head`
+(`../references/ledger.md` §9.4) — because no round may follow `APPROVED` without it. The re-opened round
+runs from step 7 on, and it is judged by a reviewer that never saw the approval.
+
 ```
 ER=<evidence root>   export WISH_EVIDENCE_ROOT=$ER
 PLAN=.omo/plans/wish-<slug>.md   WT=<absolute worktree>   BR=<branch>

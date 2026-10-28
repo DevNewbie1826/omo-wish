@@ -40,7 +40,7 @@ export const PRIMARY_TYPES = Object.freeze(["code", "design", "research", "audit
 export const LEDGER_EVENTS = Object.freeze([
   "intake", "lens", "discover", "ideal", "gap", "before", "plan", "plan_lint",
   "plan_review", "goal", "build", "verify_lane", "triage", "fix", "reuse",
-  "freeze", "pr_open", "gate", "round", "verdict", "switch", "progress",
+  "freeze", "pr_open", "gate", "round", "verdict", "reopen", "switch", "progress",
   "merge", "post_merge", "checkpoint", "cleanup", "resume",
 ]);
 
@@ -82,6 +82,9 @@ export const SWITCH_KINDS = Object.freeze([
   "premise", "family", "strategy", "split", "rediscover",
 ]);
 export const ROUND_VERDICTS = Object.freeze(["APPROVED", "REVISE"]);
+// The only provenance a re-opened review may claim: the approval was real, and a
+// defect found afterwards reopens the review explicitly instead of being ignored.
+export const REOPEN_REASONS = Object.freeze(["author-found-defect", "owner-found-defect"]);
 
 // A §C.1 `VERIFY-WAVE 레인(= 장치)`; `mixed` is the union of its two types.
 // `adversarial` is required only for a plan that flags a high-risk row (D §2.3).
@@ -135,7 +138,7 @@ export const EXIT_CODES = Object.freeze({ OK: 0, CHECK_FAILED: 1, USAGE: 2, STAT
 // D §3 + A §F (M1): every verb the one entry point exposes.
 export const CLI_VERBS = Object.freeze([
   "init", "status", "ledger", "findings", "gaps", "gate", "freeze", "pr-body",
-  "reuse-check", "switch", "metrics", "resume-plan",
+  "merge-ready", "reuse-check", "switch", "metrics", "resume-plan",
 ]);
 
 // C44 verbatim (D §4 requires the identical pattern).
@@ -321,6 +324,7 @@ const LEDGER_EVENT_EXTRAS = {
   gate: { gate_id: T.str, gate_status: T.enumOf(["open", "resolved"]) },
   round: { round: T.int(1), verdict: T.enumOf(ROUND_VERDICTS) },
   verdict: { round: T.int(1), verdict: T.enumOf(ROUND_VERDICTS), artifact: T.str },
+  reopen: { round: T.int(1), reason: T.enumOf(REOPEN_REASONS) },
   switch: {
     round: T.int(1), kind: T.enumOf(SWITCH_KINDS), premise: T.str, new_approach: T.str,
   },
@@ -336,7 +340,7 @@ const LEDGER_OPTIONAL = [
   "checkpoint_opened_at", "category", "agent", "model_family", "verdict", "round", "reuse",
   "tier", "gate_id", "gate_status", "checkpoint_op", "pr", "sha", "merged_at", "note",
   "primary", "secondary", "facts", "progress", "gap_id", "gap_status", "kind", "premise",
-  "new_approach", "rules_total", "lane", "task", "adversarial_classes",
+  "new_approach", "rules_total", "lane", "task", "adversarial_classes", "reason",
 ];
 const LEDGER_KEYS = [...new Set([...Object.keys(LEDGER_COMMON_SPEC), ...LEDGER_OPTIONAL])];
 const ADVERSARIAL_SPEC = { name: T.str, applicable: T.bool, observable: T.str };
@@ -352,10 +356,11 @@ const LEDGER_OPTIONAL_SPEC = {
   gap_status: T.enumOf(GAP_STATUSES), kind: T.enumOf(SWITCH_KINDS), premise: T.str,
   new_approach: T.str, rules_total: T.int(0), lane: T.kebab, task: T.str,
   adversarial_classes: T.arr(T.obj(ADVERSARIAL_SPEC)),
+  reason: T.enumOf(REOPEN_REASONS),
   ended_at: T.iso,
   duration_s: (v, p, e) => { if (!(typeof v === "number" && v >= 0)) fail(e, p, "expected a number >= 0"); },
 };
-const HEAD_REQUIRED = ["build", "verify_lane", "fix", "reuse", "freeze", "pr_open", "round", "verdict", "merge", "post_merge"];
+const HEAD_REQUIRED = ["build", "verify_lane", "fix", "reuse", "freeze", "pr_open", "round", "verdict", "reopen", "merge", "post_merge"];
 const TREE_REQUIRED = ["verify_lane", "post_merge"];
 
 // --------------------------------------------------------------- functions
@@ -571,16 +576,31 @@ export function validateLedgerSequence(events) {
     });
     rounds.forEach(({ event, index }) => {
       const after = valid.slice(index + 1);
-      if (event.verdict === "APPROVED" && after.some((next) => next.unit === unit && next.event === "round")) {
-        fail(errors, `unit ${unit} round ${event.round}`, "review runs until APPROVED; no round may follow it");
+      const nextRound = after.findIndex((next) => next.unit === unit && next.event === "round");
+      // A defect found after APPROVED is real work, not an outcome: the review is
+      // re-opened by an explicit event that names the approval it reopens and the
+      // head the coming round judges. Without that event the approval still closes it.
+      if (event.verdict === "APPROVED" && nextRound !== -1) {
+        const reopened = after.slice(0, nextRound).filter((next) => next.unit === unit && next.event === "reopen");
+        const target = after[nextRound];
+        if (reopened.length === 0) {
+          fail(errors, `unit ${unit} round ${event.round}`, "review runs until APPROVED; no round may follow it without a reopen");
+        } else if (!reopened.some((next) => next.round === event.round && next.head === target.head)) {
+          fail(errors, `unit ${unit} round ${event.round}`, "a reopen names the APPROVED round it reopens and the head the next round judges");
+        }
       }
       if (event.verdict === "REVISE" && event.round >= 3) {
-        const nextRound = after.findIndex((next) => next.unit === unit && next.event === "round");
         const window = nextRound === -1 ? after : after.slice(0, nextRound);
         const switched = window.some((next) => next.unit === unit && next.event === "switch" && next.round === event.round);
         if (!switched) fail(errors, `unit ${unit} round ${event.round}`, "a third REVISE requires an approach switch before review continues");
       }
     });
+    for (const item of valid.filter((other) => other.unit === unit && other.event === "reopen")) {
+      const judged = rounds.find(({ event }) => event.round === item.round);
+      if (!judged || valid.indexOf(judged.event) > valid.indexOf(item) || judged.event.verdict !== "APPROVED") {
+        fail(errors, `unit ${unit} round ${item.round}`, "a reopen follows an APPROVED round of the same round number");
+      }
+    }
     const kinds = [];
     for (const item of valid.filter((other) => other.unit === unit && other.event === "switch")) {
       const target = rounds.find(({ event }) => event.round === item.round);

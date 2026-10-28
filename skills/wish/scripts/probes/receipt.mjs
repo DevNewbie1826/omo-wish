@@ -51,7 +51,10 @@ export function writeReceipt(pathArg, receipt) {
     ? join(resolved, receiptFilename({ stage: "verify_lane", lane: receipt.lane, head: receipt.head }))
     : resolved;
   if (!isDir && !parseReceiptFilename(name).ok) {
-    process.stderr.write(`sweep: ${name} is not a receipt filename; pass a directory or verify_lane-<lane>-<head7>.json\n`);
+    // Name both accepted forms, and name this run's canonical file so the caller can
+    // copy a valid path back instead of guessing the lanes and the head suffix.
+    const canonical = receiptFilename({ stage: "verify_lane", lane: receipt.lane, head: receipt.head });
+    process.stderr.write(`sweep: ${name} is not a receipt filename; pass a directory (the receipt lands as ${canonical}) or a file named ${canonical}\n`);
     return { ok: false, path, reason: "usage" };
   }
   receipt.artifacts = [path];

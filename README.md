@@ -108,7 +108,7 @@ wish v2의 테스트와 로더 검증을 실제로 돌린 환경입니다.
 | `pr_open` | `gh pr create` + `tool.monitor`(=`pr-watch.mjs`) | `pr_open` 이벤트 |
 | `round` | `wish gate` → `category: ultrabrain`(r1 전체, r2+ 델타+회귀) → `check-verdict.mjs` | `final-r<n>-<head7>.md` + `round`, `verdict` 이벤트 |
 | `switch` | `architect` 전제 리뷰, `deep-high` 계열 전환, `SWITCH:` 계획 행, 재발견 | `switch` 이벤트(`round`, `kind`, `premise`, `new_approach`) |
-| `merge` | 세션(작업한 세션이 병합) | `merge` 이벤트(`sha`, `merged_at`, `pr`) |
+| `merge` | 세션(작업한 세션이 병합): `wish pr-body` → `gh pr edit` → `wish merge-ready --body $ER/pr-body.md` exit 0 — 병합 ACK·질문·병합은 그 뒤에만 | `merge` 이벤트(`sha`, `merged_at`, `pr`) |
 | `post_merge` | `omo-native-qa-executor`: tree 동일이면 smoke, 다르면 전체 | `post_merge` 이벤트 + `post_merge-<tree7>.*` |
 | `checkpoint` | `ulw-loop` `checkpoint` + `omo-native-gate-reviewer` | `checkpoint` 이벤트(`checkpoint_op: complete`) |
 | `cleanup` | 세션: `metrics export`, `memory` 기록 | `cleanup` 이벤트 + 정리 영수증 |
@@ -152,6 +152,8 @@ PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs
 3. 전환 뒤에는 수정 run → `reuse-check` → 무효 레인만 재실행 → `freeze` → 게이트 표 → **새** ultrabrain 리뷰어의 델타+직전 결함 회귀로 이어집니다. 회차 수에 상한이 없습니다.
 4. 오너에게 "리뷰를 그만할까요"를 묻지 않습니다. 그건 오너 결정이 아닙니다. 오너 결정은 되돌릴 수 없는 변경·파괴·지출, 또는 계약 수준의 LIMIT 수락뿐이고, 게이트가 열려 있는 동안 다른 단위는 계속 돕니다.
 
+`APPROVED` 뒤에 저자나 오너가 결함을 찾으면 그 회차를 `reopen`(회차, 사유, 새 head)으로 장부에 다시 열고, 다시 연 회차는 다른 회차와 같은 레인·게이트·새 리뷰어를 겁니다. 리뷰는 여전히 `APPROVED`에서만 끝나고, 바뀌는 것은 심사 대상 head입니다.
+
 ## 유한 계약 — 무엇이 차단 사유인가
 
 계획의 `IS`·`COMPANION` 행이 요청이고, `INVARIANT`는 계속 지켜야 할 것, `LIMIT`은 알면서 처리하지 않는 것입니다.
@@ -174,7 +176,7 @@ PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs
 | `<ER>/gates.md` | 오너 질문(선택지·기본값·답) |
 | `<ER>/resume.md` | 재개 지점 |
 
-쓰기 주체는 고정입니다: 세션만 계획·장부·findings·gaps·lens·ideal·gates·resume을 쓰고, 레인은 자기 영수증만 쓰며, 스크립트는 아무것도 저술하지 않습니다. 영수증은 `tree`가 맞는 동안 유효하고(연구 단위는 64자 sha256이 `head`이고 `tree`는 `null`), 판정은 `patch_id`가 맞는 동안 유효합니다. `before` 캡처는 일부러 옛 것이므로 재사용 검사에서 제외됩니다.
+쓰기 주체는 고정입니다: 세션만 계획·장부·findings·gaps·lens·ideal·gates·resume을 쓰고, 레인은 자기 영수증만 쓰며, 스크립트는 아무것도 저술하지 않습니다. 영수증은 `tree`가 맞는 동안 유효하고(연구 단위는 64자 sha256이 `head`이고 `tree`는 `null`), 판정은 `patch_id`가 맞는 동안 유효합니다. 끝난 실행(`stage: done`)의 영수증은 이력으로 읽습니다 — 다시 돌 레인이 없으므로 STALE로 보고하지 않고, 병합이 옮긴 체크아웃도 그 실행의 장애물이 아닙니다. `before` 캡처는 일부러 옛 것이므로 재사용 검사에서 제외됩니다.
 
 ## 스크립트
 
@@ -182,7 +184,7 @@ PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs
 
 | 스크립트 | 역할 |
 | --- | --- |
-| `scripts/wish.mjs` | 상태·CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate`(재현 표·`add`·`resolve`), `freeze [--check]`, `pr-body`, `reuse-check`, `switch record`, `metrics export\|post-merge`, `resume-plan` |
+| `scripts/wish.mjs` | 상태·CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate`(재현 표·`add`·`resolve`), `freeze [--check]`, `pr-body`, `merge-ready`, `reuse-check`, `switch record`, `metrics export\|post-merge`, `resume-plan` |
 | `scripts/check-plan.mjs` | 계획 린트: IS↔QA 짝, `DEVICE:` 행, guard/no-test 행, `HIGH-RISK`, front matter, `--register`일 때 gap 인용 |
 | `scripts/sweep.mjs` + `scripts/probes/*.mjs` | 결함 부류 탐침 러너: 비밀값 카나리, 경계 입력, 레이스·수명, 오류 체인, 변이, 문서-도움말, 설정, 초안 가드. 레인 영수증을 쓰고, 프로브는 단독 실행도 됩니다 |
 | `scripts/check-verdict.mjs` | 판정 줄 파서: 마지막 비어 있지 않은 줄이 `VERDICT: <APPROVED\|REVISE> round <n> head <sha>`이고 head를 덮는지, `--require-approved` |

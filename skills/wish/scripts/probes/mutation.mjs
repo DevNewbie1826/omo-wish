@@ -4,7 +4,7 @@
 // the #63 REVISE chain. The probe deletes one added production line in a
 // throwaway copy and requires the declared suite to fail.
 
-import { cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { addedLines, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
@@ -21,7 +21,9 @@ export const usage = `config:
   } }
 
 The suite must be green first. Each candidate line is then deleted in its own
-copy of the tree and the suite is re-run:
+copy of the tree and the suite is re-run. The copy leaves node_modules out and
+links the repository's install read-only, so a guard that imports a package
+still compiles and an INVALID row means the mutation, not a missing dependency:
   PASS    the suite failed with a test-failure marker (the mutation was killed)
   FAIL    the suite stayed green (SURVIVED: nothing tests this line)
   INVALID the mutation did not compile, or the run failed without a failure
@@ -35,6 +37,21 @@ says (a lower "max" is honoured: tier S declares 3); the rest are reported as
 one WARN row so an unprobed line can never read as covered.`;
 
 const SKIP_DIRS = new Set([".git", "node_modules", ".omo", "dist", "build", ".next", "target"]);
+
+// A guard that imports a package cannot compile without the installed tree, so the
+// copy reuses the repository's node_modules through a link instead of reinstalling
+// it: the install is read-only input to the probe, never a mutation target (a
+// candidate inside it is refused by the copy-containment check below).
+function linkInstalledModules(root, tree) {
+  const installed = join(root, "node_modules");
+  if (existsSync(join(tree, "node_modules")) || !existsSync(installed)) return null;
+  try {
+    symlinkSync(installed, join(tree, "node_modules"), "dir");
+    return null;
+  } catch (error) {
+    return `the copy could not reuse node_modules: ${error?.code ?? error}`;
+  }
+}
 
 function insideCopy(tree, target) {
   try {
@@ -113,6 +130,8 @@ export async function run(config, ctx) {
           return !SKIP_DIRS.has(first);
         },
       });
+      const linkError = linkInstalledModules(ctx.root, tree);
+      if (linkError) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: linkError });
       const target = resolve(tree, candidate.file);
       if (!target.startsWith(`${tree}${sep}`)) {
         return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate path escapes the throwaway copy; nothing was written" });

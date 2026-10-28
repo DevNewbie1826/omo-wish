@@ -86,6 +86,7 @@ above.
 
 Review has no round ceiling (A §C.6). A third REVISE round forces an approach switch — a `SWITCH:` plan row
 (`plan-format.md` §4.5) plus a `switch` ledger event (`ledger.md` §9.4) — and every REVISE after it uses one more
-switch kind. Review ends at `APPROVED` and nowhere else; the owner is asked only for a decision that is theirs
+switch kind. Review ends at `APPROVED` and nowhere else; an approval that a later defect disproves is re-opened
+on the record (`ledger.md` §9.4), never merged as final. The owner is asked only for a decision that is theirs
 (irreversible, destructive, a spend, or a contract-level LIMIT to accept), never for permission to stop
 reviewing.

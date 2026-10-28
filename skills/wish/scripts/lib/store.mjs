@@ -995,8 +995,9 @@ function parseReceiptMarkdown(text) {
 // §2/§4: a lane receipt is valid while its tree (or, for research, its artifact
 // sha256 in head) matches; otherwise a recorded `reuse` verdict at the same head
 // can keep it valid (§2.7). `before`/`after` captures are exempt on purpose, and
-// an opaque capture is judged by its filename anchor only.
-export function judgeReceipt(receipt, { type, head, tree, reuseEvents = [] }) {
+// an opaque capture is judged by its filename anchor only. A finished run is judged
+// structurally alone: its evidence is history, and no lane of it can run again.
+export function judgeReceipt(receipt, { type, head, tree, reuseEvents = [], final = false }) {
   const kind = receipt.body?.kind ?? receipt.parsed?.kind;
   // Structural validity comes first: a malformed file or a directory named like a
   // receipt is unproven evidence, and being exempt from age checks (before/after)
@@ -1011,6 +1012,7 @@ export function judgeReceipt(receipt, { type, head, tree, reuseEvents = [] }) {
   }
   const body = receipt.body;
   if (!receipt.ok || !body) return { valid: false, reason: "unparseable" };
+  if (final) return { valid: true, reason: "run finished: evidence is historical" };
   const byTree = type === "research" ? null : body.tree;
   const anchored = type === "research" ? body.head === head : Boolean(tree) && byTree === tree;
   if (anchored) return { valid: true, reason: type === "research" ? "artifact sha256 matches" : "tree matches" };
@@ -1024,8 +1026,8 @@ export function judgeReceipt(receipt, { type, head, tree, reuseEvents = [] }) {
 // -------------------------------------------------------------- stage machine
 
 // The dispatchable stages, in order (design §2.2 + addendum §C.3). Side events
-// ('gate', 'round', 'verdict', 'switch', 'progress', 'reuse', 'resume') are not
-// stages: they record a decision or a measurement, never a step to dispatch.
+// ('gate', 'round', 'verdict', 'reopen', 'switch', 'progress', 'reuse', 'resume') are
+// not stages: they record a decision or a measurement, never a step to dispatch.
 export const STAGE_ORDER = Object.freeze([
   "intake", "lens", "discover", "ideal", "gap", "before", "plan", "plan_lint",
   "plan_review", "goal", "build", "verify_lane", "triage", "fix", "freeze",
@@ -1145,7 +1147,7 @@ function satisfiesLane(receipt, lane) {
 }
 
 function laneState(context) {
-  const { receipts, requiredLanes, head, tree, reuseEvents, unit, identity } = context;
+  const { receipts, requiredLanes, head, tree, reuseEvents, unit, identity, final } = context;
   const missing = [];
   const stale = [];
   const satisfied = [];
@@ -1155,7 +1157,7 @@ function laneState(context) {
       missing.push(lane);
       continue;
     }
-    const judged = candidates.map((receipt) => ({ receipt, verdict: judgeReceipt(receipt, { type: identity, head, tree, reuseEvents }) }));
+    const judged = candidates.map((receipt) => ({ receipt, verdict: judgeReceipt(receipt, { type: identity, head, tree, reuseEvents, final }) }));
     const good = judged.find((entry) => entry.verdict.valid
       && RECEIPT_STATUSES.includes(entry.receipt.body.status)
       && entry.receipt.body.status !== "SKIP"
@@ -1186,7 +1188,7 @@ function buildContext({ root, plan, events, receipts, findings, gaps, gates, hea
   const requiredLanes = requiredReceiptsFor(wish.type, { primary, secondary, highRisk });
   const context = {
     root, type: wish.type, identity, primary, secondary, head, tree, unit, events, receipts, findings, gaps, gates,
-    requiredLanes, highRisk,
+    requiredLanes, highRisk, final: isDone(events, unit),
     reuseEvents: events.filter((event) => event.event === "reuse"),
     frozenHead: wish.frozen_head,
   };
@@ -1329,9 +1331,19 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
   const observedHead = head ?? [...events].reverse().find((event) => typeof event.head === "string")?.head ?? null;
   const observedTree = tree ?? [...events].reverse().find((event) => typeof event.tree === "string")?.tree ?? null;
 
-  const contexts = units.map((unit) => buildContext({
-    root, plan, events, receipts, findings, gaps, gates, head: observedHead, tree: observedTree, unit,
-  }));
+  // A finished unit's receipts certified a head that the merge then moved past: they
+  // are read as history (judgeReceipt's `final`), and the frozen state is the one a
+  // lane obstacle would be measured against, so a closed run reports none.
+  const frozenOf = (unit) => (isDone(events, unit)
+    ? [...events].reverse().find((event) => event.event === "freeze" && event.unit === unit)
+    : null);
+  const contexts = units.map((unit) => {
+    const frozen = frozenOf(unit);
+    return buildContext({
+      root, plan, events, receipts, findings, gaps, gates,
+      head: frozen?.head ?? observedHead, tree: frozen?.tree ?? observedTree, unit,
+    });
+  });
   const current = contexts.find((context) => context.unit === plan.wish.unit) ?? contexts[0];
   const unitStates = contexts.map((context) => unitStatus(context));
   const currentState = unitStates[contexts.indexOf(current)];
@@ -1340,7 +1352,8 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
   const stale = [];
   for (const receipt of receipts) {
     const verdict = judgeReceipt(receipt, {
-      type: current.identity, head: observedHead, tree: observedTree, reuseEvents: current.reuseEvents,
+      type: current.identity, head: current.head, tree: current.tree,
+      reuseEvents: current.reuseEvents, final: current.final,
     });
     (verdict.valid ? valid : stale).push(receipt.name);
   }

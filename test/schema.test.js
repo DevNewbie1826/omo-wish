@@ -177,6 +177,33 @@ test("a third REVISE requires a switch and no round may follow APPROVED", () => 
   expect(codes(validateLedgerSequence(capped))).toContain("events[18].terminal");
 });
 
+test("an APPROVED review is re-opened only by an explicit reopen naming its round and the coming head", () => {
+  const base = event();
+  delete base.tier;
+  delete base.facts;
+  const round = (n, verdict, head = HEAD) => ({ ...base, event: "round", stage: "round", round: n, verdict, head });
+  const reopen = (n, head = OTHER, reason = "author-found-defect") => ({ ...base, event: "reopen", stage: "reopen", round: n, reason, head });
+
+  expect(validateLedgerEvent(reopen(1)).ok).toBe(true);
+  expect(codes(validateLedgerEvent({ ...reopen(1), head: undefined }))).toContain("event.head");
+  expect(codes(validateLedgerEvent(reopen(1, OTHER, "because")))).toContain("event.reason");
+
+  expect(validateLedgerSequence([round(1, "APPROVED")]).ok).toBe(true);
+  expect(codes(validateLedgerSequence([round(1, "APPROVED"), round(2, "APPROVED", OTHER)]))).toContain("unit u1 round 1");
+  expect(validateLedgerSequence([round(1, "APPROVED"), reopen(1), round(2, "APPROVED", OTHER)]).ok).toBe(true);
+
+  expect(codes(validateLedgerSequence([round(1, "APPROVED"), reopen(2), round(2, "APPROVED", OTHER)]))).toContain("unit u1 round 1");
+  expect(codes(validateLedgerSequence([round(1, "APPROVED"), reopen(1, HEAD), round(2, "APPROVED", OTHER)]))).toContain("unit u1 round 1");
+  expect(codes(validateLedgerSequence([round(1, "REVISE"), reopen(1, OTHER), round(2, "APPROVED", OTHER)]))).toContain("unit u1 round 1");
+
+  const reopenedTwice = [
+    round(1, "APPROVED"), reopen(1, OTHER), round(2, "APPROVED", OTHER),
+    reopen(2, HEAD), round(3, "APPROVED", HEAD),
+  ];
+  expect(validateLedgerSequence(reopenedTwice).ok).toBe(true);
+  expect(LEDGER_EVENTS).toContain("reopen");
+});
+
 test("the switch cycle never caps the round count", () => {
   const base = event();
   delete base.tier;
@@ -407,6 +434,6 @@ test("CSV headers accept the C43 base and the v2 suffix but never a reorder", ()
 });
 
 test("the CLI contract exposes every verb and the four exit codes", () => {
-  expect(CLI_VERBS).toEqual(["init", "status", "ledger", "findings", "gaps", "gate", "freeze", "pr-body", "reuse-check", "switch", "metrics", "resume-plan"]);
+  expect(CLI_VERBS).toEqual(["init", "status", "ledger", "findings", "gaps", "gate", "freeze", "pr-body", "merge-ready", "reuse-check", "switch", "metrics", "resume-plan"]);
   expect(EXIT_CODES).toEqual({ OK: 0, CHECK_FAILED: 1, USAGE: 2, STATE_MISMATCH: 3 });
 });

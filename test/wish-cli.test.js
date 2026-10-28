@@ -283,7 +283,7 @@ describe("help and usage contract", () => {
       expect(one.code).toBe(0);
       expect(one.out.length).toBeGreaterThan(20);
     }
-    expect(CLI_VERBS.length).toBe(12);
+    expect(CLI_VERBS.length).toBe(13);
   });
 
   test("runs its verbs when invoked through a symlink", () => {
@@ -1207,7 +1207,11 @@ describe("review blockers", () => {
     copyFileSync(join(FIXTURES, "receipts", "before-G1-89abcde.json"), join(state.root, "receipts", "before-G1-89abcde.json"));
     const withReceipts = cli(["status", "--json", "--plan", state.plan, "--root", state.root]);
     expect(withReceipts.code).toBe(0);
-    expect(JSON.parse(withReceipts.out).stale_receipts).toContain("verify_lane-sweep-0123456.json");
+    // The example run is finished and the receipt is bound to the tree the example
+    // ledger froze: its evidence is history, not a lane that must re-run.
+    const receipts = JSON.parse(withReceipts.out);
+    expect(receipts.valid_receipts).toContain("verify_lane-sweep-0123456.json");
+    expect(receipts.stale_receipts).not.toContain("verify_lane-sweep-0123456.json");
   });
 
   test("an all-digit head stays a string in the front matter", () => {
@@ -1886,5 +1890,170 @@ test("an unsearchable evidence directory refuses the write instead of skipping i
     const result = cli(["pr-body", "--root", state.root, "--out", join(state.root, "missing", "body.md")]);
     expect(result.code).toBe(2);
     expect(result.err).toContain("not a writable path");
+  });
+});
+
+describe("merge-ready", () => {
+  function approved(state) {
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--pr", "51", "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "pr_open", pr: 51, head: state.repo.head, tree: state.repo.tree }).code).toBe(0);
+    expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head: state.repo.head }).code).toBe(0);
+  }
+
+  test("the PR body ends with the verdict and merge-ready refuses every other last line", () => {
+    const state = scene();
+    approved(state);
+    const body = join(state.root, "pr-body.md");
+    expect(cli(["pr-body", "--out", body, "--root", state.root]).code).toBe(0);
+    const text = readFileSync(body, "utf8");
+    const lines = text.split("\n");
+    const lastNonEmpty = [...lines].reverse().find((line) => line.trim() !== "");
+    expect(lastNonEmpty).toBe(`VERDICT: APPROVED round 1 head ${state.repo.head}`);
+
+    const ready = cli(["merge-ready", "--body", body, "--root", state.root]);
+    expect(ready.code).toBe(0);
+    expect(ready.out).toContain(`APPROVED round 1 head ${state.repo.head}`);
+
+    const otherHead = join(state.root, "other-head.md");
+    writeFileSync(otherHead, text.replaceAll(state.repo.head, OTHER));
+    const refused = cli(["merge-ready", "--body", otherHead, "--root", state.root]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("does not cover");
+
+    const missing = join(state.root, "no-verdict.md");
+    writeFileSync(missing, "# a body written before the review\n");
+    const unjudged = cli(["merge-ready", "--body", missing, "--root", state.root]);
+    expect(unjudged.code).toBe(1);
+    expect(unjudged.err).toContain("not a verdict line");
+
+    const otherRound = join(state.root, "other-round.md");
+    writeFileSync(otherRound, `## Verdict\n\nVERDICT: APPROVED round 3 head ${state.repo.head}\n`);
+    const mismatched = cli(["merge-ready", "--body", otherRound, "--root", state.root]);
+    expect(mismatched.code).toBe(1);
+    expect(mismatched.err).toContain("ledger's last round is 1");
+
+    expect(cli(["merge-ready", "--root", state.root]).code).toBe(2);
+  });
+
+  test("merge-ready follows the ledger's last round, not the body's claim", () => {
+    const state = scene();
+    approved(state);
+    const body = join(state.root, "pr-body.md");
+    expect(cli(["pr-body", "--out", body, "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "reopen", round: 1, reason: "owner-found-defect", head: state.repo.head }).code).toBe(0);
+    expect(append(state, { event: "round", round: 2, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
+    const refused = cli(["merge-ready", "--body", body, "--root", state.root]);
+    expect(refused.code).toBe(1);
+    expect(refused.err).toContain("REVISE");
+    const noVerdict = cli(["pr-body", "--root", state.root]);
+    expect(noVerdict.code).toBe(0);
+    expect(noVerdict.out).not.toContain("VERDICT:");
+  });
+});
+
+describe("a finished run", () => {
+  test("reports its evidence as history, never as stale", () => {
+    const state = scene();
+    upToBuild(state);
+    const lanes = ["tests", "qa", "sweep", "code-review"].map((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--pr", "51", "--root", state.root]).code).toBe(0);
+    const frozenHead = state.repo.head;
+    expect(append(state, { event: "pr_open", pr: 51, head: frozenHead, tree: state.repo.tree }).code).toBe(0);
+    expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head: frozenHead }).code).toBe(0);
+    const superseded = lane(state, { lane: "tests", head: OTHER, tree: HEAD });
+    const merged = commitFile(state.repo, "merge.txt", "merged\n", "Merge pull request #51");
+    for (const step of [
+      { event: "merge", sha: merged.head, merged_at: "2026-10-27T19:00:00Z", pr: 51, head: frozenHead },
+      { event: "post_merge", head: merged.head, tree: merged.tree },
+      { event: "checkpoint", checkpoint_op: "complete" },
+      { event: "cleanup", cleanup: ["worktree removed", "branch deleted"] },
+    ]) {
+      const result = append(state, step);
+      expect(result.code).toBe(0);
+    }
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.stage).toBe("done");
+    for (const entry of [...lanes, superseded]) {
+      expect(reported.json.valid_receipts).toContain(entry.name);
+    }
+    expect(reported.json.stale_receipts).toEqual([]);
+    expect(reported.json.blocking).toEqual([]);
+  });
+
+  test("reports a receipt from another tree as stale while the run is open", () => {
+    const state = scene();
+    upToBuild(state);
+    const lanes = ["tests", "qa", "sweep", "code-review"].map((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--pr", "51", "--root", state.root]).code).toBe(0);
+    const stray = lane(state, { lane: "tests", head: OTHER, tree: HEAD });
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.stage).not.toBe("done");
+    for (const entry of lanes) expect(reported.json.valid_receipts).toContain(entry.name);
+    expect(reported.json.stale_receipts).toContain(stray.name);
+  });
+});
+
+describe("reopen", () => {
+  function approved(state) {
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--pr", "51", "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "pr_open", pr: 51, head: state.repo.head, tree: state.repo.tree }).code).toBe(0);
+    expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head: state.repo.head }).code).toBe(0);
+  }
+
+  test("a defect found after APPROVED is re-opened explicitly, and the run follows the new head", () => {
+    const state = scene();
+    approved(state);
+    const fix = commitFile(state.repo, "leak.txt", "fixed\n", "fix the credential leak");
+    expect(cli(["freeze", "--head", fix.head, "--root", state.root]).code).toBe(0);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name, head: fix.head, tree: fix.tree }));
+
+    const refused = append(state, { event: "round", round: 2, verdict: "APPROVED", head: fix.head });
+    expect(refused.code).toBe(3);
+    expect(refused.err).toContain("no round may follow it");
+
+    const reopened = append(state, { event: "reopen", round: 1, reason: "author-found-defect", head: fix.head });
+    expect(reopened.code).toBe(0);
+    expect(JSON.parse(reopened.out)).toMatchObject({ event: "reopen", round: 1, reason: "author-found-defect", head: fix.head });
+
+    const second = append(state, { event: "round", round: 2, verdict: "APPROVED", head: fix.head });
+    expect(second.code).toBe(0);
+
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.round).toBe(2);
+    expect(reported.json.head).toBe(fix.head);
+    expect(reported.json.blocking.filter((reason) => reason.startsWith("verdict:"))).toEqual([]);
+    expect(reported.json.blocking).toEqual([]);
+    expect(reported.json.next).toBe("merge");
+
+    const frozen = cli(["freeze", "--check", "--head", fix.head, "--root", state.root]);
+    expect(frozen.code).toBe(0);
+    expect(frozen.out).toContain(fix.head.slice(0, 7));
+  });
+
+  test("a reopen needs the contract's reason, the approved round and the head the round judges", () => {
+    const state = scene();
+    approved(state);
+    const fix = commitFile(state.repo, "leak.txt", "fixed\n", "fix the credential leak");
+    expect(cli(["freeze", "--head", fix.head, "--root", state.root]).code).toBe(0);
+
+    const invented = append(state, { event: "reopen", round: 1, reason: "because", head: fix.head });
+    expect(invented.code).toBe(1);
+    expect(invented.err).toContain("event.reason");
+
+    const unapproved = append(state, { event: "reopen", round: 2, reason: "author-found-defect", head: fix.head });
+    expect(unapproved.code).toBe(3);
+    expect(unapproved.err).toContain("APPROVED round of the same round number");
+
+    expect(append(state, { event: "reopen", round: 1, reason: "author-found-defect", head: fix.head }).code).toBe(0);
+    const otherHead = append(state, { event: "round", round: 2, verdict: "APPROVED", head: state.repo.head });
+    expect(otherHead.code).toBe(3);
+    expect(otherHead.err).toContain("the head the next round judges");
   });
 });

@@ -14,6 +14,7 @@ import {
   SWITCH_KINDS,
   WORK_TYPES,
   TIERS,
+  checkVerdictCoverage,
   validateGapReceipts,
   validateLedgerEvent,
   validateReceipt,
@@ -100,6 +101,11 @@ const VERB_USAGE = {
     "     Record head, tree and pr; --check proves nothing landed after the freeze.",
   ],
   "pr-body": ["pr-body [--pr <n>] [--out <path>]", "     Build the PR body from state, including the before/after table."],
+  "merge-ready": [
+    "merge-ready --body <path>",
+    "     Refuse the merge-ready state until the body's last line is the APPROVED",
+    "     verdict on the frozen head and the ledger's last round agrees.",
+  ],
   "reuse-check": ["reuse-check <receipt> --head <sha>", "     Delegates to scripts/reuse-check.mjs (module M4)."],
   switch: [
     "switch record --round <n> --kind <premise|family|strategy|split|rediscover> --premise <text> --new-approach <text>",
@@ -914,6 +920,15 @@ function verbPrBody(parsed, root) {
     ?? "none recorded in the plan";
   const outcome = planSection(plan.body, "## Purpose") ?? planPath;
   const pr = parsed.has("--pr") ? parsed.get("--pr") : (plan.wish.pr ?? "-");
+  const rounds = events.filter((event) => event.event === "round" && event.unit === unit)
+    .sort((left, right) => left.round - right.round);
+  const lastRound = rounds[rounds.length - 1];
+  // The body a reviewer and the owner read has to end with the line the merge rests
+  // on, generated from the ledger so a hand-copied verdict cannot drift from it. A
+  // round that is REVISE or judged another head writes no verdict line at all.
+  const verdictLine = lastRound && lastRound.verdict === "APPROVED" && lastRound.head === frozen.head
+    ? `VERDICT: APPROVED round ${lastRound.round} head ${lastRound.head}`
+    : null;
   const lines = [
     `# ${plan.wish.run_id} - ${plan.wish.type} (${plan.wish.tier})`,
     "",
@@ -951,6 +966,7 @@ function verbPrBody(parsed, root) {
     `- receipts: ${join(root, "receipts")}`,
     `- findings: ${join(root, "findings.tsv")}`,
     "",
+    ...(verdictLine ? ["## Verdict", "", verdictLine, ""] : []),
   ];
   const body = lines.join("\n");
   const out = parsed.get("--out");
@@ -1025,6 +1041,35 @@ function verbPrBody(parsed, root) {
     }
     process.stdout.write(`${resolve(out)}\n`);
   } else process.stdout.write(body);
+  return null;
+}
+
+// The merge-ready gate (SKILL.md stage 17): nothing else checks that the PR body a
+// reviewer and the owner read carries the last line the merge rests on. The gate
+// runs before any merge-ready ACK or merge question, and refuses a body whose last
+// line is missing, is REVISE, names another head, or names another round than the
+// ledger's last one.
+function verbMergeReady(parsed, root) {
+  const bodyPath = parsed.get("--body");
+  if (!bodyPath) throw usage("merge-ready needs --body <path>");
+  const { plan, events } = planFor(root, parsed);
+  const unit = plan.wish.unit ?? "u1";
+  const frozen = [...events].reverse().find((event) => event.event === "freeze" && event.unit === unit);
+  if (!frozen) throw stateMismatch("no freeze event: nothing is merge ready");
+  const rounds = events.filter((event) => event.event === "round" && event.unit === unit)
+    .sort((left, right) => left.round - right.round);
+  const last = rounds[rounds.length - 1];
+  if (!last) throw checkFailed("no round event: the frozen head has not been reviewed");
+  if (last.verdict !== "APPROVED") throw checkFailed(`the last round is ${last.verdict}; review continues until APPROVED`);
+  if (last.head !== frozen.head) {
+    throw checkFailed(`the last round judged ${String(last.head).slice(0, 7)}, not the frozen head ${String(frozen.head).slice(0, 7)}`);
+  }
+  const covered = checkVerdictCoverage({ body: readInput(bodyPath, "--body"), head: frozen.head, requireApproved: true });
+  if (!covered.ok) throw checkFailed(covered.reason);
+  if (covered.verdict.round !== last.round) {
+    throw checkFailed(`the body's verdict names round ${covered.verdict.round}, the ledger's last round is ${last.round}`);
+  }
+  process.stdout.write(`PASS merge ready: ${covered.verdict.line}\n`);
   return null;
 }
 
@@ -1174,6 +1219,7 @@ const SPECS = {
   },
   freeze: { ...COMMENT_FLAGS, "--head": { kind: "value" }, "--pr": { kind: "value" }, "--check": { kind: "bool" } },
   "pr-body": { ...COMMENT_FLAGS, "--pr": { kind: "value" }, "--out": { kind: "value" } },
+  "merge-ready": { ...COMMENT_FLAGS, "--body": { kind: "value" } },
   "reuse-check": { ...COMMENT_FLAGS, "--head": { kind: "value" } },
   switch: {
     ...COMMENT_FLAGS,
@@ -1195,6 +1241,7 @@ const HANDLERS = {
   gate: verbGate,
   freeze: verbFreeze,
   "pr-body": verbPrBody,
+  "merge-ready": verbMergeReady,
   switch: verbSwitch,
   "resume-plan": verbResumePlan,
 };

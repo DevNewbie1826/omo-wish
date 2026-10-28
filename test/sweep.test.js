@@ -670,13 +670,69 @@ test("a mutation that does not parse is invalid, not a kill", () => {
   expect(run.exit).toBe(0);
 });
 
-test("an explicit receipt name must already be the M0 form", () => {
+test("an explicit receipt name must already be the M0 form, and the refusal names both accepted forms", () => {
   const dir = stage("clean");
   writeConfig(dir);
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", join(dir, "receipt.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--lane", "mutation", "--receipt", join(dir, "mutation.json"), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   expect(run.exit).toBe(2);
   expect(run.stderr).toContain("is not a receipt filename");
-  expect(existsSync(join(dir, "receipt.json"))).toBe(false);
+  // Both accepted forms are named, and the file form is concrete for this run: a
+  // session that pasted a prose name has to be able to copy the right one back.
+  expect(run.stderr).toContain("pass a directory");
+  expect(run.stderr).toContain(`verify_lane-mutation-${HEAD.slice(0, 7)}.json`);
+  expect(existsSync(join(dir, "mutation.json"))).toBe(false);
+});
+
+test("a guard that imports a package is killed in the copy, never invalid", () => {
+  const dir = stage("clean");
+  // A package the guard imports: without it the throwaway copy cannot compile and
+  // the probe would report INVALID, which is never a kill.
+  mkdirSync(join(dir, "node_modules", "tiny-verify"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", "tiny-verify", "package.json"),
+    JSON.stringify({ name: "tiny-verify", version: "1.0.0", main: "index.js" }));
+  writeFileSync(join(dir, "node_modules", "tiny-verify", "index.js"),
+    "export function verify(value) {\n  return value === \"ok\";\n}\n");
+  writeFileSync(join(dir, "guard.js"), [
+    "import { verify } from \"tiny-verify\";",
+    "",
+    "export const VERSION = 1;",
+    "",
+    "export function allow(value) {",
+    "  if (!verify(value)) return false;",
+    "  return true;",
+    "}",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    "import { allow } from \"./guard.js\";",
+    "",
+    "if (allow(\"bad\")) {",
+    "  console.log(\"CHECK FAILED: a bad value was allowed\");",
+    "  process.exit(1);",
+    "}",
+    "console.log(\"ok\");",
+    "",
+  ].join("\n"));
+  const guardLine = lineOf(dir, "guard.js", "if (!verify(value)) return false;");
+  const inertLine = lineOf(dir, "guard.js", "export const VERSION = 1;");
+  writeConfig(dir, {
+    probes: {
+      mutation: {
+        testCmd: "bun check.js",
+        failMarker: "CHECK FAILED",
+        candidates: [{ file: "guard.js", line: guardLine }, { file: "guard.js", line: inertLine }],
+      },
+    },
+  });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--probe", "mutation", "--lane", "sweep", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const killed = receipt.rows.find((entry) => entry.id === `mutation/guard.js:${guardLine}`);
+  const survived = receipt.rows.find((entry) => entry.id === `mutation/guard.js:${inertLine}`);
+  expect(killed.verdict).toBe("PASS");
+  expect(killed.note).toContain("killed");
+  expect(survived.verdict).toBe("FAIL");
+  expect(survived.note).toContain("SURVIVED");
+  expect(run.exit).toBe(1);
 });
 
 test("the lifecycle timeouts are clamped to the command ceiling", () => {

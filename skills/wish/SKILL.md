@@ -39,7 +39,7 @@ Resolve every path relative to this file's directory. `/wish` arms ultrawork: ne
 | 15 | `pr_open` | `gh pr create` with the generated body; `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
 | 16 | `round` | `wish.mjs gate`, then `category: ultrabrain` (r1 full, r2+ delta+regression), then `check-verdict.mjs` | `final-r<n>-<head7>.md` + `round`, `verdict` events |
 | — | `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscover | `switch` event: `round`, `kind`, `premise`, `new_approach` |
-| 17 | `merge` | session merges; `wish status --json` reports it | `merge` event: `sha`, `merged_at`, `pr` |
+| 17 | `merge` | session: `wish pr-body` → `gh pr edit` → `wish merge-ready --body $ER/pr-body.md` must exit 0 **before** any merge-ready ACK, merge question or merge; then merge, and `wish status --json` reports it | `merge` event: `sha`, `merged_at`, `pr` |
 | 18 | `post_merge` | `omo-native-qa-executor`: smoke when the tree is identical, full otherwise | `post_merge` event + `post_merge-<tree7>.*` |
 | 19 | `checkpoint` | `ulw-loop` `agentToolkit.checkpoint`; `omo-native-gate-reviewer` reads the evidence record | `checkpoint` event, `checkpoint_op: complete` |
 | 20 | `cleanup` | session: `metrics export`, then `memory` for the classes it caught | `cleanup` event with at least one teardown receipt |
@@ -76,6 +76,8 @@ Review has no round ceiling. `APPROVED` is the only end.
 2. A **third-or-later** REVISE round forces an approach switch, and every REVISE after it uses one more kind it has not used yet: `premise`, `family` (a model family other than the failed fix's), `strategy` (a `SWITCH:` row that redesigns the component), `split` (program only), `rediscover` — meanings in `references/ledger.md` §9.4.
 3. After the switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain reviewer on the delta and the prior findings.
 4. The owner is never asked whether to keep reviewing; only for a decision that is theirs — and while a gate is open, other units keep running.
+
+A defect found after `APPROVED` is real work: the approved round is re-opened on the record — `reopen` with the round, a reason and the new head — and the re-opened round goes through the same lanes, gate and a fresh reviewer as any other round. Review therefore still ends only at `APPROVED`; the re-open changes which head is judged, never how much is reviewed.
 
 `references/contract.md` §6 and `references/ledger.md` §9.4 are the binding statements; `playbooks/revise.md` runs them.
 

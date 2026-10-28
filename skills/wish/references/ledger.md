@@ -273,10 +273,11 @@ D §2.8 and A §C.4 for the wish additions).
 `schema.mjs` exports the frozen list as `LEDGER_EVENTS`; the same alphabet names a receipt's stage.
 
 `intake, lens, discover, ideal, gap, before, plan, plan_lint, plan_review, goal, build, verify_lane,
-triage, fix, reuse, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint,
-cleanup, resume`
+triage, fix, reuse, freeze, pr_open, gate, round, verdict, reopen, switch, progress, merge, post_merge,
+checkpoint, cleanup, resume`
 
-The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A §C.4.
+D §4's stage alphabet is unchanged; `lens, ideal, gap, before, switch, progress` are A §C.4 additions. `reopen`
+is v2's review-tail event (§9.4): an approved review that a later, real defect re-opens.
 
 ### 9.2 Fields on every event
 
@@ -291,7 +292,7 @@ The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A
 | `head`, `tree` | §2 values when the event reports on a state | D §2.8, U |
 | `ended_at`, `duration_s` | ISO timestamp, seconds ≥ 0 | D §2.10 |
 | `commands`, `artifact`, `cleanup`, `attempt`, `checkpoint_opened_at`, `adversarial_classes` | U's field set | U |
-| `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
+| `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `reason`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
 
 ### 9.3 Required extras per event
 
@@ -317,6 +318,7 @@ The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A
 | `gate` | `gate_id`, `gate_status` | D §2.6, P |
 | `round` | `round` ≥ 1, `verdict` ∈ `APPROVED`/`REVISE` | C43, D §2.2 |
 | `verdict` | `round`, `verdict`, `artifact` (the reviewer body), `head` | C44 |
+| `reopen` | `round` (the `APPROVED` round it re-opens), `reason` ∈ `author-found-defect` \| `owner-found-defect`, `head` (the head the next round judges) | §9.4 |
 | `switch` | `round`, `kind`, `premise`, `new_approach` | A §C.6 |
 | `progress` | `progress` (§11 values) | A §B7/§C.4 |
 | `merge` | `sha`, `merged_at`, `pr`, `head` | D §2.2 |
@@ -334,11 +336,18 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 `validateLedgerSequence` enforces:
 
 1. `round` events for a unit are `1, 2, 3, …` with no gap.
-2. No further `round` follows an `APPROVED` round for that unit.
+2. No further `round` follows an `APPROVED` round for that unit unless a `reopen` event for that unit sits
+   between them, naming that round, a `reason` from the set above, and the head the coming round judges.
+   A real approval that a later defect disproves is re-opened on the record; it is never silently
+   overridden, and the re-opened round is judged at the head the `reopen` names.
 3. A third-or-later `REVISE` round requires a `switch` event for the same round **before the next round** —
    otherwise the review continued without a change of approach, which is not an outcome.
 4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.
 5. No event carries `[~]` or a terminal marker.
+
+A `reopen` adds no outcome: review still ends only at `APPROVED`, and the re-opened round re-runs the same
+lanes, the same gate and a fresh reviewer. The sentences above are the whole rule, so a cap stays an approach
+switch and the owner is still never asked whether to keep reviewing.
 
 `switch.kind` values (A §C.6.2): `premise` (the architect premise review has not run), `family` (the fix
 node moves to a model family different from the one that produced the failed fix), `strategy` (a
@@ -375,7 +384,7 @@ accepts the base header or the base plus its exact suffix.
 | `type`, `tier` | work type, `S`/`M`/`L` | from the plan | A §C.4, D §2.3 |
 | `head`, `tree` | §2 or `null` | the state described | D §4 |
 | `round` | integer ≥ 0 | current ultrabrain round | D §4 |
-| `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt | D §4/§2.7 |
+| `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt, judged against the state it certified; a unit whose run is finished (`stage: done`) reads its readable receipts as history — no lane of it can run again, so none is reported stale | D §4/§2.7 |
 | `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>` | D §4 |
 | `next` | §9.1 name or `done` | the only stage the session may dispatch; `blocking` says why it is blocked | D §4 |
 | `units` | `[{id, stage, pr, round, switches}]`, where `stage` is a §9.1 name or `done` | per-unit state (program mode) | A §C.4 |
@@ -434,7 +443,8 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>]`; `list [--json]` | maintain the register | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
 | `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
-| `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
+| `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table; when the last round is `APPROVED` at the frozen head the body ends with its `VERDICT:` line | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
+| `merge-ready` | `--body <path>` | refuse the merge-ready state until that body's last line is the `APPROVED` verdict on the frozen head and the ledger's last round names the same round and head | 0 merge ready; 1 not merge ready; 2 usage; 3 no freeze | D §2.2, §12 |
 | `reuse-check` | `<receipt> --head <sha>` | tree match → VALID; else intersect changed files and their reference holders with `scope` | 0 VALID; 1 STALE; 2 usage; 3 unparseable or another run's receipt | D §2.7 |
 | `switch` | `record --round <n> --kind <kind> --premise <text> --new-approach <text>` | record the approach switch (§9.4) | 0 ok; 1 schema failure; 2 usage; 3 no REVISE at that round | A §C.6 |
 | `metrics` | `export [--out <dir>]`; `post-merge --days <n> [--pr <n>]` | write §10 rows; count post-merge refixes | 0 ok; 1 a row or query fails; 2 usage; 3 freeze/merge data missing | C43, D §2.10 |
