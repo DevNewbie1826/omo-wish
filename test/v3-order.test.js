@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  appendEvent, codeReviewAt, computeStatus, mergeFrontMatter, rootPaths, writeFrontMatter,
+  appendEvent, codeReviewAt, computeStatus, firstInvalidStage, mergeFrontMatter, rootPaths, writeFrontMatter,
 } from "../skills/wish/scripts/lib/store.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
@@ -184,4 +184,68 @@ test("REVISE returns through define plan and plan_lint for its own round before 
   expect(view(state).status.next).toBe("round");
   record(state, { event: "round", round: 2, verdict: "REVISE", head: HEAD });
   expect(view(state).status.next).toBe("define");
+});
+
+test("collect and define receipts gate the plan stage", () => {
+  const root = mkdtempSync(join(tmpdir(), "stage-gates-"));
+  roots.push(root);
+  const planPath = join(root, "plan.md");
+  writeFrontMatter(planPath, {
+    run_id: "w-order-20261028-1700", type: "code", tier: "M", unit: "u1", program_id: null,
+    worktree: root, branch: "unit", pr: 1, frozen_head: null, round: 0,
+  });
+  const state = { root, planPath };
+  const invalid = () => firstInvalidStage(computeStatus({
+    root, planPath, head: HEAD, tree: TREE,
+  }).contexts[0]);
+  record(state, { event: "intake", tier: "M", facts: ["one unit"] });
+  expect(invalid()).toBe("collect");
+  expect(view(state).status.next).toBe("collect");
+  record(state, { event: "collect", sources: 2, elements: 3, report: join(root, "collect.md") });
+  expect(invalid()).toBe("define");
+  expect(view(state).status.next).toBe("define");
+  record(state, { event: "define", round: 0, ideal: 1, gaps: 0, report: join(root, "define.md") });
+  expect(invalid()).toBe("plan");
+  expect(view(state).status.next).toBe("plan");
+});
+
+test("a research unit reaches round with neither a frozen head nor a code review receipt", () => {
+  const root = mkdtempSync(join(tmpdir(), "round-research-"));
+  roots.push(root);
+  const planPath = join(root, "plan.md");
+  const SHA = "a".repeat(64);
+  writeFrontMatter(planPath, {
+    run_id: "w-order-20261028-1800", type: "research", tier: "M", unit: "u1", program_id: null,
+    worktree: root, branch: "unit", pr: 1, frozen_head: null, round: 0,
+  });
+  const base = {
+    type: "research", unit: "u1", program_id: null, plan: planPath,
+    session_id: "senpi:order-test", started_at: AT,
+  };
+  for (const event of [
+    { event: "intake", tier: "M", facts: ["readers"] },
+    { event: "collect", sources: 3, elements: 4, report: join(root, "collect.md") },
+    { event: "define", round: 0, ideal: 2, gaps: 0, report: join(root, "define.md") },
+    { event: "plan", artifact: planPath },
+    { event: "plan_lint", verdict: "PASS" },
+    { event: "plan_review", verdict: "OKAY" },
+    { event: "decide", count: 0, gates: [], recommended: [] },
+    { event: "goal", artifact: "goal:research" },
+    { event: "build", task: "node-1", head: SHA },
+  ]) appendEvent(root, { ...base, ...event });
+  const receipts = rootPaths(root).receipts;
+  mkdirSync(receipts, { recursive: true });
+  for (const name of ["fact-verify", "claim-gate", "skeptic", "execution-verify", "delivery-gate"]) {
+    writeFileSync(join(receipts, `verify_lane-${name}-${SHA.slice(0, 7)}.json`), JSON.stringify({
+      kind: "lane", stage: "verify_lane", type: "research", unit: "u1", program_id: null,
+      lane: name, head: SHA, tree: null, scope: ["report.md"], status: "PASS",
+      started_at: AT, ended_at: AT, rows: [], artifacts: [], cleanup: [],
+    }));
+  }
+  const observed = () => computeStatus({ root, planPath, head: SHA, tree: null }).status;
+  expect(observed().blocking.some((reason) => reason.startsWith("order:"))).toBe(false);
+  expect(appendEvent(root, { ...base, event: "round", round: 1, verdict: "APPROVED", head: SHA }))
+    .toMatchObject({ event: "round", round: 1 });
+  expect(observed().next).toBe("merge");
+  expect(observed().blocking.some((reason) => reason.startsWith("order:"))).toBe(false);
 });
