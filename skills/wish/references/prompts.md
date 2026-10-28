@@ -620,6 +620,19 @@ rows carry a reason; companion rows pass the guards; the front matter parses. Al
 sources of authority — a second parser, a reconstructed path, a duplicate identity, an enumeration of a
 domain the change does not own — and require the plan to name the authoritative source or a `LIMIT`.
 
+The plan carries these sentences verbatim, and the review checks that they are there, unreworded:
+
+```
+Implement it, and also include, strictly, a device that confirms the implementation was done.
+
+In addition, fix it, and also include, strictly, a device that confirms the fix was made.
+
+Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
+```
+
+The third sentence applies to a plan with a rendered surface or a visual QA scenario.
+A plan forces no test code, because the confirmation device fills that role (`plan-format.md` §3).
+
 If the host lists no `architect` category, use the highest-capability category it does list and record it.
 `plan-reviewer` is a plan-gated, one-shot agent: use it only when the requester explicitly chose the
 `ulw-plan` workflow; otherwise the architect review is the one round.
