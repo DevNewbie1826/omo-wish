@@ -338,6 +338,14 @@ bun skills/wish/scripts/metrics.mjs validate --dir "$ER/metrics"
 ## The native plan gate
 
 `/wish` never opens the host's native plan-reviewer gate itself; the gate opens only when the requester's own
-message asks for the ulw-plan workflow. When it is open, PLAN-REVIEW may use `plan-reviewer` for its one round;
-otherwise it uses `category: architect` for that round. Either way the plan records one fix per blocker and is not
-re-reviewed; the final ultrabrain review confirms those fixes.
+message asks for the ulw-plan workflow. That fact produces the two plan branches.
+
+The default branch: the session writes the plan to fit ulw-plan's grammar, and ONE `category: architect` review
+checks it. No approval question goes to the requester.
+
+The ulw-plan branch: ulw-plan runs whole, with its approval gate, and the plan gets BOTH reviews — the
+`plan-reviewer` agent and the one `category: architect` review. No third round is added in either branch.
+
+A host that offers neither role leaves the review with the session, which records that in the plan's review
+record. Either way the plan records one fix per blocker and is not re-reviewed; the final ultrabrain review
+confirms those fixes.
