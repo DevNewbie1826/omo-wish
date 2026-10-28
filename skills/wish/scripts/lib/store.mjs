@@ -47,7 +47,7 @@ import {
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { dirname, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
 
 // --------------------------------------------------------------------- errors
 
@@ -874,14 +874,19 @@ export function setGap(root, id, patch) {
         // before receipt for this gap is not a capture. A gap may hold more than
         // one valid capture (several trees, several formats), so the selector
         // matches the requested path rather than the first receipt in sort order.
+        // Relative paths resolve against the receipts directory, and the register
+        // stores the canonical absolute path so the pr-body table is
+        // location-independent.
         const receipts = listReceipts(root);
         const candidates = receipts.filter((receipt) =>
           receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
         ).map((receipt) => join(paths.receipts, receipt.name));
-        if (!candidates.includes(path)) {
+        const requested = isAbsolute(path) ? path : join(paths.receipts, path);
+        if (!candidates.includes(requested)) {
           throw checkFailed(`gap ${id}: --before-artifact names no existing before receipt`
             + (candidates.length > 0 ? `; the gap's before receipts are ${candidates.join(", ")}` : ""));
         }
+        path = requested;
       } else {
         // No explicit flag: bind the existing before receipt automatically.
         path = beforeReceiptPath();
@@ -906,13 +911,11 @@ export function setGap(root, id, patch) {
     if (patch.status !== undefined && row.status !== patch.status) return false;
     if (patch.pr !== undefined && row.pr !== String(patch.pr)) return false;
     if (patch.fixedHead !== undefined && row.fixed_head !== (patch.fixedHead === "-" ? "-" : patch.fixedHead)) return false;
-    // The stored before_artifact is the canonical receipt path, not the raw flag
-    // value: verify it is non-dash when the patch required one, and matches the
-    // flag exactly when the flag was given.
-    if (patch.beforeArtifact !== undefined && row.before_artifact !== patch.beforeArtifact) return false;
     // A capture this setGap bound (automatic or explicit) must still be present
     // in the swapped bytes: a competing writer that cleared it while our status
-    // patch held must not let this verification pass.
+    // patch held must not let this verification pass. An explicit --before-artifact
+    // stores the canonical absolute receipt path, so the bound value, not the raw
+    // flag value, is the value to confirm.
     if (boundBeforeArtifact !== null && row.before_artifact !== boundBeforeArtifact) return false;
     return true;
   });

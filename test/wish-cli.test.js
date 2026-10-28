@@ -754,6 +754,15 @@ describe("gaps", () => {
     ]);
     expect(fixedWithFlag.code).toBe(0);
     expect(JSON.parse(fixedWithFlag.out).before_artifact).toBe(join(receiptsDir, beforeName));
+    // Relative paths resolve against the evidence root's receipts directory, then
+    // are stored as the canonical absolute receipt path.
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
+    const relativePath = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", beforeName, "--root", state.root,
+    ]);
+    expect(relativePath.code).toBe(0);
+    expect(JSON.parse(relativePath.out).before_artifact).toBe(join(receiptsDir, beforeName));
     // Reopen again for the bad-path case.
     expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
     // An explicit --before-artifact that does not name any existing receipt: refused.
@@ -769,7 +778,6 @@ describe("gaps", () => {
       join(state.root, "gaps.tsv"),
       [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
     );
-    writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`), "png");
     writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`), "webp");
     const secondFormat = cli([
       "gaps", "set", "--id", "G1", "--status", "planned",
@@ -777,6 +785,19 @@ describe("gaps", () => {
     ]);
     expect(secondFormat.code).toBe(0);
     expect(JSON.parse(secondFormat.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
+    // A relative path resolves against the evidence root and stores the
+    // canonical absolute receipt path in the register.
+    writeFileSync(
+      join(state.root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
+    );
+    writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`), "png");
+    const relative = cli([
+      "gaps", "set", "--id", "G1", "--status", "planned",
+      "--before-artifact", `before-G1-${state.repo.tree.slice(0, 7)}.png`, "--root", state.root,
+    ]);
+    expect(relative.code).toBe(0);
+    expect(JSON.parse(relative.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
     rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
     rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
 
