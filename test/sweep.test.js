@@ -817,6 +817,35 @@ test("a symlinked sweep root reads the changed docs exactly as the physical root
   }
 }, 120000);
 
+test("a diff.relative checkout keeps the toplevel-relative diff the probe needs", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The checkout's configuration makes git diff report paths relative to the
+  // nested root; the probe must force the toplevel form back with
+  // --no-relative, or the prefix filter would discard the changed doc and
+  // the run would silently skip.
+  expect(git("config", "diff.relative", "true").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "guide.md"), "# guide\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "guide").exitCode).toBe(0);
+  writeFileSync(join(nested, "guide.md"), readFileSync(join(nested, "guide.md"), "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeFileSync(join(nested, ".wish-sweep.json"), JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["guide.md"], base: "HEAD~1" } } }, null, 2));
+  const out = join(nested, "out");
+  const run = invoke(nested, ["--root", nested, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", nested, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
 test("the docs help command is supervised by the same bounded runner", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });

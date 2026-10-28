@@ -69,14 +69,17 @@ async function toplevelPrefix(root) {
 }
 
 // The file set the diff against "base" changed, as paths relative to the
-// root; `null` when the diff cannot be read, in which case the caller falls
-// back to the full set. `-z` names one file per NUL-delimited entry, so a
-// git-quoted (non-ASCII or special-character) path is never misparsed;
-// `--no-renames` keeps a moved doc's old path in the list, so the base side
-// of the move is still readable and its documented flags are not lost.
+// repository toplevel; `null` when the diff cannot be read, in which case
+// the caller falls back to the full set. `--no-relative` keeps the toplevel-
+//relative form even when the checkout's configuration sets `diff.relative`,
+// so the prefix arithmetic below stays valid; `-z` names one file per NUL-
+// delimited entry, so a git-quoted (non-ASCII or special-character) path is
+// never misparsed; `--no-renames` keeps a moved doc's old path in the list,
+// so the base side of the move is still readable and its documented flags are
+// not lost.
 async function changedFiles(root, base, prefix) {
   const out = await runCommand({
-    cmd: ["git", "-C", q(root), "diff", "-z", "--no-renames", "--name-only", q(`${base}...HEAD`)].join(" "),
+    cmd: ["git", "-C", q(root), "diff", "-z", "--no-relative", "--no-renames", "--name-only", q(`${base}...HEAD`)].join(" "),
     cwd: root, timeoutMs: 60000,
   });
   if (out.code !== 0) return null;
