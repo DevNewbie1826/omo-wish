@@ -755,15 +755,23 @@ describe("gaps", () => {
     ]);
     expect(fixedWithFlag.code).toBe(0);
     expect(JSON.parse(fixedWithFlag.out).before_artifact).toBe(join(receiptsDir, beforeName));
-    // Relative paths resolve against the evidence root's receipts directory, then
-    // are stored as the canonical absolute receipt path.
+    // A relative path is not a location-independent capture: it is refused, and
+    // the register is left unchanged so the session must name the absolute
+    // receipt path instead.
     expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
     const relativePath = cli([
       "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
       "--before-artifact", beforeName, "--root", state.root,
     ]);
-    expect(relativePath.code).toBe(0);
-    expect(JSON.parse(relativePath.out).before_artifact).toBe(join(receiptsDir, beforeName));
+    expect(relativePath.code).toBe(1);
+    expect(relativePath.err).toContain("must name an absolute receipt path");
+    // An absolute receipt path still binds the capture.
+    const absoluteAgain = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", join(receiptsDir, beforeName), "--root", state.root,
+    ]);
+    expect(absoluteAgain.code).toBe(0);
+    expect(JSON.parse(absoluteAgain.out).before_artifact).toBe(join(receiptsDir, beforeName));
     // Reopen again for the bad-path case.
     expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
     // An explicit --before-artifact that does not name any existing receipt: refused.
@@ -786,8 +794,8 @@ describe("gaps", () => {
     ]);
     expect(secondFormat.code).toBe(0);
     expect(JSON.parse(secondFormat.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
-    // A relative path resolves against the evidence root and stores the
-    // canonical absolute receipt path in the register.
+    // A relative path is refused wherever it is given, so the register never
+    // stores a capture whose location depends on the caller's working directory.
     writeFileSync(
       join(state.root, "gaps.tsv"),
       [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
@@ -797,8 +805,8 @@ describe("gaps", () => {
       "gaps", "set", "--id", "G1", "--status", "planned",
       "--before-artifact", `before-G1-${state.repo.tree.slice(0, 7)}.png`, "--root", state.root,
     ]);
-    expect(relative.code).toBe(0);
-    expect(JSON.parse(relative.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
+    expect(relative.code).toBe(1);
+    expect(relative.err).toContain("must name an absolute receipt path");
     rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
     rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
 

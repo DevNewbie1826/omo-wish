@@ -896,19 +896,20 @@ export function setGap(root, id, patch) {
         // before receipt for this gap is not a capture. A gap may hold more than
         // one valid capture (several trees, several formats), so the selector
         // matches the requested path rather than the first receipt in sort order.
-        // Relative paths resolve against the receipts directory, and the register
-        // stores the canonical absolute path so the pr-body table is
-        // location-independent.
+        // A relative path is not a location-independent capture: it is refused,
+        // and the session must name the absolute receipt path instead.
         const receipts = listReceipts(root);
         const candidates = receipts.filter((receipt) =>
           receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
         ).map((receipt) => containedPath(receipt.name)).filter((entry) => entry !== null);
-        const requested = isAbsolute(path) ? path : join(paths.receipts, path);
-        if (!candidates.includes(requested)) {
+        if (!isAbsolute(path)) {
+          throw checkFailed(`gap ${id}: --before-artifact must name an absolute receipt path`
+            + (candidates.length > 0 ? `; the gap's before receipts are ${candidates.join(", ")}` : ""));
+        }
+        if (!candidates.includes(path)) {
           throw checkFailed(`gap ${id}: --before-artifact names no existing before receipt`
             + (candidates.length > 0 ? `; the gap's before receipts are ${candidates.join(", ")}` : ""));
         }
-        path = requested;
       } else {
         // No explicit flag: bind the existing before receipt automatically.
         path = beforeReceiptPath();
