@@ -23,6 +23,7 @@ const STEP = /^- \[ \] (\d+)\. ([A-Z][A-Z-]*):/;
 const PLAN_FORMAT = "skills/wish/references/plan-format.md";
 const PROMPTS = "skills/wish/references/prompts.md";
 const CODE_PLAYBOOK = "skills/wish/playbooks/code.md";
+const DESIGN_PLAYBOOK = "skills/wish/playbooks/design.md";
 
 function linesOf(file) {
   return readFileSync(join(ROOT, file), "utf8").split("\n");
@@ -57,6 +58,19 @@ function executionSentence() {
   return lines[fence + 1];
 }
 
+function promptsPlanSentences() {
+  const lines = linesOf(PROMPTS);
+  const anchor = lines.findIndex((line) => line.startsWith("The plan carries these sentences verbatim"));
+  expect(anchor).toBeGreaterThanOrEqual(0);
+  const heading = lines.slice(0, anchor).reverse().find((line) => line.startsWith("### "));
+  expect(heading.startsWith("### 4.1 ")).toBe(true);
+  const open = lines.findIndex((line, index) => index > anchor && line.trim() === "```");
+  expect(open).toBeGreaterThan(anchor);
+  const close = lines.findIndex((line, index) => index > open && line.trim() === "```");
+  expect(close).toBeGreaterThan(open);
+  return lines.slice(open + 1, close).map((line) => line.trim()).filter((line) => line !== "");
+}
+
 function stepsOf(file) {
   const lines = linesOf(file);
   const marks = [];
@@ -70,8 +84,8 @@ function stepsOf(file) {
   }));
 }
 
-function stepNamed(name) {
-  const found = stepsOf(CODE_PLAYBOOK).filter((step) => step.name === name);
+function stepNamed(file, name) {
+  const found = stepsOf(file).filter((step) => step.name === name);
   expect(found).toHaveLength(1);
   return found[0].body;
 }
@@ -92,13 +106,26 @@ describe("carried passages", () => {
     expect(copiesOf(PROMPTS, PASSAGES.d)).toHaveLength(1);
   });
 
+  test("prompts carries (a), (b) and (c) in the plan-review step", () => {
+    expect(promptsPlanSentences()).toEqual([PASSAGES.a, PASSAGES.b, PASSAGES.c]);
+    expect(copiesOf(PROMPTS, PASSAGES.a)).toHaveLength(1);
+    expect(copiesOf(PROMPTS, PASSAGES.b)).toHaveLength(1);
+    expect(copiesOf(PROMPTS, PASSAGES.c)).toHaveLength(1);
+  });
+
+  test("the design playbook carries (c) in PLAN, its owning step", () => {
+    expect(copiesOf(DESIGN_PLAYBOOK, PASSAGES.c)).toHaveLength(1);
+    expect(countIn(stepNamed(DESIGN_PLAYBOOK, "PLAN"), PASSAGES.c)).toBe(1);
+    expect(countIn(stepNamed(DESIGN_PLAYBOOK, "BUILD"), PASSAGES.c)).toBe(0);
+  });
+
   test("the code playbook carries (a), (b) and (c) in PLAN and (d) in BUILD", () => {
-    const plan = stepNamed("PLAN");
+    const plan = stepNamed(CODE_PLAYBOOK, "PLAN");
     expect(countIn(plan, PASSAGES.a)).toBe(1);
     expect(countIn(plan, PASSAGES.b)).toBe(1);
     expect(countIn(plan, PASSAGES.c)).toBe(1);
     expect(countIn(plan, PASSAGES.d)).toBe(0);
-    const build = stepNamed("BUILD");
+    const build = stepNamed(CODE_PLAYBOOK, "BUILD");
     expect(countIn(build, PASSAGES.d)).toBe(1);
     expect(countIn(build, PASSAGES.a)).toBe(0);
     expect(countIn(build, PASSAGES.b)).toBe(0);
