@@ -11,7 +11,7 @@
 // flag the diff itself documents still FAILs when it is missing, so the probe
 // keeps deciding the one defect the change can be blamed for.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { resolve, sep } from "node:path";
 import { assertRevision, globToRegExp, gitLines, matchFiles, q, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
@@ -42,16 +42,28 @@ command (its own process session, killed on timeout), with "helpTimeoutMs"
 is not decided here; that row goes to the checklist pass.`;
 
 // Paths git names are relative to the repository toplevel, but a sweep root
-// may be the toplevel or a subdirectory of it. Normalizing both sides to the
-// root makes a nested root read the same doc set it walks. `null` when the
-// root is not inside a repository the diff can be read from.
+// may be the toplevel or a subdirectory of it, and either side can reach the
+// checkout through a symlink. Canonicalizing both with realpath before the
+// containment check keeps a symlink alias from reading as "outside" the
+// repository and falling back to the full set. `null` when the root is not
+// inside a repository the diff can be read from.
 async function toplevelPrefix(root) {
   const out = await gitLines(root, ["rev-parse", "--show-toplevel"]);
   const toplevel = out?.trim() ?? null;
   if (toplevel === null) return null;
-  if (resolve(toplevel) === resolve(root)) return "";
-  const rootResolved = resolve(root);
-  const topResolved = resolve(toplevel);
+  let topResolved;
+  try {
+    topResolved = resolve(realpathSync(toplevel));
+  } catch {
+    topResolved = resolve(toplevel);
+  }
+  let rootResolved;
+  try {
+    rootResolved = resolve(realpathSync(root));
+  } catch {
+    rootResolved = resolve(root);
+  }
+  if (rootResolved === topResolved) return "";
   if (!rootResolved.startsWith(`${topResolved}${sep}`)) return null;
   return rootResolved.slice(topResolved.length + 1).split(sep).join("/");
 }
@@ -70,9 +82,11 @@ async function changedFiles(root, base, prefix) {
   if (out.code !== 0) return null;
   const files = out.stdout.split("\0").filter(Boolean);
   if (prefix === "") return files;
-  // Prefix off the git path: the root's own files are `prefix/name`, and a
-  // moved file's old path keeps its old directory.
-  return files.map((rel) => (rel.startsWith(`${prefix}/`) ? rel.slice(prefix.length + 1) : rel));
+  // Only the root's own files are judged: a changed doc outside the prefix
+  // (for example a sibling of a nested root) is not part of this run and must
+  // not select an unchanged file that happens to share a name.
+  const inside = files.filter((rel) => rel.startsWith(`${prefix}/`));
+  return inside.map((rel) => rel.slice(prefix.length + 1));
 }
 
 // The commit both diff sides actually compare against: `base...HEAD` diffs
@@ -132,7 +146,12 @@ export async function run(config, ctx) {
     const changed = await changedFiles(ctx.root, base, prefix);
     if (changed !== null) {
       const changedSet = new Set(changed);
-      checkedFiles = docs.filter((file) => changedSet.has(file.slice(ctx.root.length + 1).split(sep).join("/")));
+      const relOf = (file) => {
+        const rel = file.slice(ctx.root.length + 1);
+        const norm = rel.split(sep).join("/");
+        return norm === "" ? "." : norm;
+      };
+      checkedFiles = docs.filter((file) => changedSet.has(relOf(file)));
       if (checkedFiles.length === 0) {
         return [row({
           id: "docs", verdict: "SKIP", observable: "at least one changed doc is declared", cls,
