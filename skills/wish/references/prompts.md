@@ -1,6 +1,6 @@
-# wish v2 — delegation prompts (M5)
+# wish v3 — delegation prompts
 
-Every prompt wish v2 dispatches lives here. A child prompt is the only thing its worker sees: it has no
+Every prompt wish v3 dispatches lives here. A child prompt is the only thing its worker sees: it has no
 conversation history, cannot ask questions, and cannot see this file's neighbors. Write each dispatch so a
 competent stranger executes it exactly.
 
@@ -18,13 +18,13 @@ child's prompt is.
 
 1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
    lane vocabulary.
-2. Build prompts - `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
+2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
    `define-report`, `decide-batch`, `execution`.
 3. Verify-wave lanes — `tests-lane`, `sweep-lane`, `qa-lane`, `code-review-lane`, `adversarial-lane`,
    `gate-repro`.
 4. Review prompts — `plan-review`, `premise-review`, `ultrabrain-r1`, `ultrabrain-r2`, `gate-checkpoint`,
    `blind-review`.
-5. Work-type lanes - `collect-harvest`, `collect-extract`, `collect-reduce`, `collect-explore`, `audit-lint`,
+5. Work-type lanes — `collect-harvest`, `collect-extract`, `collect-reduce`, `collect-explore`, `audit-lint`,
    `audit-spot`, `audit-register-schema`, `slop-report`, `capture-lane`, `vqa-passA`, `vqa-passB`,
    `reference-compare`, `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate`.
 6. Goal — `goal-brief`.
@@ -138,9 +138,9 @@ and of the `verify_lane` ledger event. The set is `REQUIRED_RECEIPTS` in `script
 A `SKIP` receipt never satisfies a required lane: when a lane truly does not apply, the plan records why, and
 `status` still enforces the type's required set. A prompt cannot waive a required lane.
 
-Stage names a prompt may name (`ledger.md` §9.1, all 25):
+Stage names a prompt may name (`ledger.md` §9.1, all 26):
 `intake, collect, define, before, plan, plan_lint, plan_review, decide, goal, build, verify_lane, triage,
-fix, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint, cleanup,
+fix, reuse, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint, cleanup,
 resume`.
 
 Switch kinds (`ledger.md` §9.4): `premise`, `family`, `strategy`, `split` (program mode only), `rediscover`.
@@ -305,7 +305,7 @@ Kinds, from `ledger.md` §9.4 — pick one that differs from the kinds already u
   rather than patch it.
 - `split` — program mode only: the failing component becomes its own unit and PR; its gap row stays `open`,
   and the `switch` event carries `program_id` (the contract rejects a split without it).
-- `rediscover` - re-run COLLECT for the component with the lens and sweep variants of the class.
+- `rediscover` — re-run COLLECT for the component with the `collect-*` and sweep variants of the class.
 
 Record the `switch` **before the next review round is dispatched**. `ledger.md` §9.4 accepts a third-or-later
 REVISE's switch only in the window before the next `round` event for that unit: a switch recorded after the
@@ -314,7 +314,7 @@ next round leaves the review continuing without a change of approach, which the 
 Review continues after the switch with no round ceiling. Only `APPROVED` ends it. The owner is asked only
 when the decision is theirs (irreversible, destructive, a spend, or accepting a contract `LIMIT`).
 
-### 2.5 `collect-run` - the one mass-ulw run of COLLECT
+### 2.5 `collect-run` — the one mass-ulw run of COLLECT
 
 **TEMPLATE:** `collect-run`
 
@@ -348,7 +348,7 @@ REPORT: the node list with each handoff path, the `UNREAD:` list, and the total 
 An unreadable source is named as unread, never omitted. Over-collecting is deliberate: DEFINE drops what does
 not matter, and a dropped element costs less than a missed one.
 
-### 2.6 `define-report` - the DEFINE stage
+### 2.6 `define-report` — the DEFINE stage
 
 **TEMPLATE:** `define-report`
 
@@ -367,7 +367,7 @@ DELIVERABLE: `<ER>/define.md` with three parts: the end user and how they use th
   change; the ideal state as rows, `<state> | <reason>`; every difference from today as rows,
   `<difference> | <reason> | <affected party>`. The same difference rows go to `<ER>/gaps.tsv` in the
   register shape of `ledger.md` §6.
-SCOPE: read <ER>/collect.md, <ER>/collect/, <worktree>; write only `<ER>/define.md` and `<ER>/gaps.tsv`.
+SCOPE: read <ER>/collect.md, <ER>/lens/, <ER>/receipts/collect-*, <worktree>; write only `<ER>/define.md` and `<ER>/gaps.tsv`.
   OUT OF SCOPE: a plan, a unit split, a test plan, any repository file.
 VERIFY: every difference row in `define.md` has a matching row in `gaps.tsv`, and each row passes the
   boundary of `contract.md` §3.
@@ -378,7 +378,7 @@ FORBIDDEN: writing a plan, a unit split or a test plan; a row outside the bounda
 REPORT: the counts of ideal rows and difference rows, then both file paths.
 ```
 
-### 2.7 `decide-batch` - the one decision batch
+### 2.7 `decide-batch` — the one decision batch
 
 **TEMPLATE:** `decide-batch`
 
@@ -390,11 +390,15 @@ Blockers: a decision only the requester can make. Everything the session can set
 Separate findings: a decision outside the request's boundary is a follow-up, never a batch row.
 
 TASK: write `<ER>/gates.md` with every decision the requester owns, then ask them once in one call.
-DELIVERABLE: `<ER>/gates.md`, one row per decision: `<decision> | <recommended default> | <one line of
-  reasoning>`; one question call carrying all rows; the answers recorded beside their rows.
+DELIVERABLE: `<ER>/gates.md` in the `ledger.md` §13 shape: a `# Gates` heading, a blank line, then one
+  `## <id>` block per question whose fields are `- Key: value` lines named `Status`, `Question`, `Options`,
+  `Default`, and `Answer` only once resolved; `Options` lists at least two choices separated by ` | `;
+  `Default` must be one of them; `Status: open` has no `Answer`. Write each block with
+  `wish gate add --id <id> --question <text> --options <a|b> --default <a>` and record each answer with
+  `wish gate resolve --id <id> --answer <text>`. One question call carries all blocks.
 SCOPE: read the plan, <ER>/define.md, <ER>/gaps.tsv; write only `<ER>/gates.md`. OUT OF SCOPE: settling a
   decision the requester owns, editing the plan, starting a build lane.
-VERIFY: every row has a recommended default and a reason line, and exactly one question call was made.
+VERIFY: every block has `Options` with at least two choices and a `Default` among them, and exactly one question call was made.
 STOP WHEN: the batch is asked and every answer, or its absence, is recorded.
 TIMEBOX: <minutes; default 10>.
 FORBIDDEN: a second question call; a row without a recommended default; asking about something the
@@ -406,7 +410,7 @@ A decision that appears mid-run parks only its lane: the lane's state is `parked
 continues, and the `PROGRESS:` line names it in its `waiting` field. Which decisions belong to the requester
 is owned by `SKILL.md`.
 
-### 2.8 `execution` - the base execution step
+### 2.8 `execution` — the base execution step
 
 **TEMPLATE:** `execution`
 
@@ -903,7 +907,7 @@ numbers.
 
 ## 5. Work-type lanes
 
-### 5.1 `collect-harvest` - read one corpus slice
+### 5.1 `collect-harvest` — read one corpus slice
 
 **TEMPLATE:** `collect-harvest`
 
@@ -928,7 +932,7 @@ REPORT: the handoff path, the row count, and the slice's coverage (pages/paragra
 Read the omo-distilled rules first — the `visual-qa` checklist, the `frontend` build rules, the
 `remove-ai-slops` categories — as the reducer's first rows. The harvest hunts only what those lists miss.
 
-### 5.2 `collect-extract` - cluster the candidates into universal rules
+### 5.2 `collect-extract` — cluster the candidates into universal rules
 
 **TEMPLATE:** `collect-extract`
 
@@ -950,7 +954,7 @@ FORBIDDEN: paraphrasing a rule so far that its anchor no longer shows it; keepin
 REPORT: kept count, dropped count with reasons, and the file path.
 ```
 
-### 5.3 `collect-reduce` - one lens file
+### 5.3 `collect-reduce` — one lens file
 
 **TEMPLATE:** `collect-reduce`
 
@@ -960,9 +964,11 @@ Scope: all extract files for this run.
 
 TASK: reduce the extracts into the candidate lens file `<ER>/lens/reduce-<run>.md` in the `ledger.md` §7
   grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/collect.md`.
-DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (`rules_total`, slices,
-  clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the `artifact` and
-  `rules_total` values of the `collect` event.
+DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (rule count, slices,
+  clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the counts of the
+  `collect` event: `{"event":"collect","sources":<count>,"elements":<count>,"report":"$ER/collect.md"}`.
+  The rule count feeds `elements`. A collect event with zero elements doesn't complete the stage, because an
+  empty extraction is not a collection.
 SCOPE: the extract files; write the candidate lens file and its run artifact only. OUT OF SCOPE: the project,
   the plan, `<ER>/collect.md` itself (the session publishes it), other receipts.
 VERIFY: every row has six non-empty fields, ids are unique, scope is `universal` or `platform`; the first
@@ -971,10 +977,11 @@ STOP WHEN: the candidate parses as the §7 grammar and the run artifact is writt
 TIMEBOX: 20 minutes.
 FORBIDDEN: a rule without an anchor; two ids with the same string; dropping an anchor to shorten a row;
   writing `<ER>/collect.md` or the ledger.
-REPORT: `rules_total`, the dropped list size, and the candidate path.
+REPORT: the rule count (it feeds `elements`), the sources read (it feeds `sources`), the dropped list size,
+  and the candidate path.
 ```
 
-### 5.4 `collect-explore` - collection steered by the lens
+### 5.4 `collect-explore` — collection steered by the lens
 
 **TEMPLATE:** `collect-explore`
 
@@ -1054,7 +1061,7 @@ Scope: `gaps.tsv`, `collect.md`, `define.md` and the coverage matrix.
 TASK: validate the register against its schema and compute coverage as rules × surfaces judged.
 DELIVERABLE: `LANE: register-schema`, the receipt `verify_lane-register-schema-<head7>.json`, the parse
   result, and the coverage matrix (`<judged>/<total>` per rule, `N/A` counted and listed).
-SCOPE: read the register, the lens, the ideal and the surface enumeration; write only its receipt. OUT OF
+SCOPE: read `gaps.tsv`, `collect.md`, `define.md` and the surface enumeration; write only its receipt. OUT OF
   SCOPE: adding rows, editing the register, judging product behavior.
 VERIFY: the register parses with the contract's column order and value sets; every `defect` row has a
   `before` capture; every surface in the enumeration has a verdict for every applicable rule; a rule with no
@@ -1508,7 +1515,7 @@ truth and `test/schema.test.js` guards it.
 | Lane receipt name | `<stage>-<lane>-<head7>.json` | `ledger.md` §4.2 |
 | Gap receipt names | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` | `ledger.md` §4.2 |
 | Lane names | the `REQUIRED_RECEIPTS` table of §1.5 | `schema.mjs` |
-| Stage names | the 25 of §1.5 | `ledger.md` §9.1 |
+| Stage names | the 26 of §1.5 | `ledger.md` §9.1 |
 | Switch kinds | `premise, family, strategy, split, rediscover` | `ledger.md` §9.4 |
 | Device rows | `DEVICE: guard <INVARIANT> -> <node>`, `DEVICE: qa <command> => <observation>`, `DEVICE: vqa <ids> @ <cells> pair <case>-<state>-<width>-<theme>`, `DEVICE: claim C<n> gate(primary, domains>=<n>, counter-search)`, `DEVICE: lint <command> exit 0`, `DEVICE: spot <n> rows reproduce` | `ledger.md` §8.2 |
 | Class sets | per type, `ledger.md` §5.1 | `FINDINGS_CLASSES` |
