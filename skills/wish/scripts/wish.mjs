@@ -339,9 +339,10 @@ function verbInit(parsed, root) {
       // these flags would erase values (program_id, unit, branch) that a resume did
       // not repeat on its command line.
       const events = readLedger(root);
-      const already = events.some((event) => event.event === "intake" && event.unit === existing.wish.unit);
+      const already = events.find((event) => event.event === "intake" && event.unit === existing.wish.unit);
       if (already) {
-        return { run_id: runId, root: paths.root, plan: planPath, intake: null, note: "already initialized" };
+        printInitResult({ run_id: runId, root: paths.root, plan: planPath, intake: already, note: "already initialized" });
+        return null;
       }
     }
     const wish = {
@@ -358,8 +359,11 @@ function verbInit(parsed, root) {
     };
     writeFrontMatter(planPath, wish);
     const events = readLedger(root);
-    const already = events.some((event) => event.event === "intake" && event.unit === unit);
-    if (already) return { run_id: runId, root: paths.root, plan: planPath, intake: null, note: "already initialized" };
+    const already = events.find((event) => event.event === "intake" && event.unit === unit);
+    if (already) {
+      printInitResult({ run_id: runId, root: paths.root, plan: planPath, intake: already, note: "already initialized" });
+      return null;
+    }
     const facts = parsed.get("--fact");
     const event = appendEvent(root, {
       event: "intake",
@@ -373,8 +377,14 @@ function verbInit(parsed, root) {
       facts,
       ...(type === "mixed" ? { primary, secondary } : {}),
     }, { plan: planPath, sessionId: sessionId(parsed) });
-    return { run_id: runId, root: paths.root, plan: planPath, intake: event, note: "initialized" };
+    const result = { run_id: runId, root: paths.root, plan: planPath, intake: event, note: "initialized" };
+    printInitResult(result);
+    return null;
   });
+}
+
+function printInitResult(result) {
+  process.stdout.write(`${JSON.stringify(result)}\n`);
 }
 
 function verbStatus(parsed, root) {
