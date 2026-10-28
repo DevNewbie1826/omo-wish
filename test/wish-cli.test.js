@@ -900,6 +900,15 @@ describe("gaps", () => {
     const escapedDirectory = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
     expect(escapedDirectory.code).toBe(1);
     expect(escapedDirectory.err).toContain("needs a before receipt");
+    rmSync(raceDir, { recursive: true, force: true });
+    writeFileSync(
+      join(root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"),
+    );
+    const missingReceiptsDir = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(missingReceiptsDir.code).toBe(1);
+    expect(missingReceiptsDir.err).toContain("needs a before receipt");
+    expect(missingReceiptsDir.err).not.toContain("internal error");
   });
 });
 

@@ -838,8 +838,14 @@ export function setGap(root, id, patch) {
     } catch {
       return null; // dangling link or unreadable target: not a capture
     }
-    const evidenceRootReal = realpathSync(paths.root);
-    const rootReal = realpathSync(paths.receipts);
+    let evidenceRootReal;
+    let rootReal;
+    try {
+      evidenceRootReal = realpathSync(paths.root);
+      rootReal = realpathSync(paths.receipts);
+    } catch {
+      return null; // the evidence or receipts directory disappeared: not a capture
+    }
     const insideRoot = rootReal === evidenceRootReal || rootReal.startsWith(evidenceRootReal + sep);
     const insideReceipts = real === rootReal || real.startsWith(rootReal + sep);
     return insideRoot && insideReceipts ? path : null;
