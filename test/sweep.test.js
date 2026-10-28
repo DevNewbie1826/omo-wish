@@ -540,6 +540,72 @@ test("a candidate path that escapes the throwaway copy is invalid and writes not
   expect(run.exit).toBe(0);
 });
 
+test("a git fixture with a pre-existing documented flag: the diff-introduced flag fails and the pre-existing one only warns", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const usageMd = join(dir, "usage.md");
+  writeFileSync(usageMd, "# cli\n\n`cli.js send --text <value>` sends one message. `--fail` makes the transport refuse it. `--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff introduces a new documented flag that the program does not have.
+  writeFileSync(usageMd, readFileSync(usageMd, "utf8") + "`cli send --brand-new` documents a new flag the program lacks.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  // New flag the diff documents wrongly: still a FAIL, so the probe keeps deciding it.
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  // Pre-existing documented flag missing from the stub help: WARN, not FAIL.
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(receipt.rows.find((entry) => entry.id === "docs/--dry-run").note).toContain("pre-existing");
+  // A flag that exists in the help output still passes.
+  expect(verdictOf(receipt, "docs/--fail")).toBe("PASS");
+  // A WARN-only row keeps the run from failing: exit is decided by the FAIL row.
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("the docs probe skips when a declared diff changed no doc", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // Only a code file changes; the docs the diff touched are none.
+  writeFileSync(join(dir, "cli.js"), readFileSync(join(dir, "cli.js"), "utf8") + "// touched\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "code").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(receipt.rows.find((entry) => entry.id === "docs").verdict).toBe("SKIP");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a git fixture documents a flag the diff itself documents wrongly and it still fails", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff documents --brand-new, which the program lacks: a FAIL even with a diff in play.
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`cli send --brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
 test("the docs help command is supervised by the same bounded runner", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });
