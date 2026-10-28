@@ -11,6 +11,7 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
+  cpSync,
   existsSync,
   linkSync,
   mkdirSync,
@@ -872,11 +873,35 @@ describe("resume-plan", () => {
 });
 
 describe("module-owned verbs", () => {
-  test("exit 3 and name the missing script instead of pretending to work", () => {
-    for (const verb of ["reuse-check", "metrics"]) {
-      const result = cli([verb, "--root", join(sandbox().root)]);
-      expect(result.code).toBe(3);
-      expect(result.err).toContain(`${verb}.mjs`);
+  test("every module-owned verb names its missing script and exits 3", () => {
+    // The sibling modules land on the integration branch one at a time, so the absence
+    // case is not "the scripts do not exist yet" - the test has to create it.
+    //
+    // The set is discovered from the tree and the CLI's own verb list, never from the
+    // dispatch source text: a quoted comparison or a guard that moves behind a comment
+    // cannot make a verb disappear from this check the way a regex over the source can.
+    const scriptsDir = join(HERE, "..", "skills", "wish", "scripts");
+    const moduleVerbs = readdirSync(scriptsDir)
+      .filter((name) => name.endsWith(".mjs") && name !== "wish.mjs")
+      .map((name) => name.slice(0, -4))
+      .filter((name) => CLI_VERBS.includes(name));
+    expect(moduleVerbs.length).toBeGreaterThan(0);
+    expect(moduleVerbs).toContain("reuse-check");
+    for (const verb of moduleVerbs) {
+      const box = sandbox();
+      const skill = join(box.dir, "wish");
+      cpSync(join(HERE, "..", "skills", "wish"), skill, { recursive: true });
+      const scripts = join(skill, "scripts");
+      // With the script present the verb runs (and may well fail on an incomplete
+      // argv) but it must never claim the module is not installed.
+      const present = spawnSync(process.execPath, [join(scripts, "wish.mjs"), verb, "--root", join(box.dir, "er")], { encoding: "utf8" });
+      expect(present.stderr).not.toContain("is not installed");
+      rmSync(join(scripts, `${verb}.mjs`));
+      const missing = spawnSync(process.execPath, [join(scripts, "wish.mjs"), verb, "--root", join(box.dir, "er")], { encoding: "utf8" });
+      expect(missing.status).toBe(3);
+      expect(missing.stderr).toContain(`${verb}.mjs`);
+      expect(missing.stderr).toContain("is not installed");
+      expect(missing.stdout.trim()).toBe("");
     }
   });
 
