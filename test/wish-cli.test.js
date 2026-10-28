@@ -338,6 +338,32 @@ describe("init", () => {
     expect(reported.json.blocking).toEqual([]);
   });
 
+  test("prints the appended intake event so a session can observe init", () => {
+    const box = sandbox();
+    const repo = makeRepo(box);
+    writePlan(box.plan, { runId: "w-print-20261028-1200", tier: "M", type: "code", unit: "u1", worktree: repo.dir });
+    const first = cli([
+      "init", "--run-id", "w-print-20261028-1200", "--type", "code", "--tier", "M", "--plan", box.plan,
+      "--root", box.root, "--unit", "u1", "--worktree", repo.dir, "--branch", "fixture", "--fact", "printable",
+    ]);
+    expect(first.code).toBe(0);
+    const firstResult = JSON.parse(first.out);
+    expect(firstResult).toMatchObject({ run_id: "w-print-20261028-1200", note: "initialized" });
+    expect(firstResult.intake).toMatchObject({ event: "intake", unit: "u1", tier: "M", facts: ["printable"] });
+    expect(ledgerEvents({ box, root: box.root }).length).toBe(1);
+
+    const again = cli([
+      "init", "--run-id", "w-print-20261028-1200", "--type", "code", "--tier", "M", "--plan", box.plan,
+      "--root", box.root, "--unit", "u1", "--worktree", repo.dir, "--branch", "fixture", "--fact", "again",
+    ]);
+    expect(again.code).toBe(0);
+    const againResult = JSON.parse(again.out);
+    expect(againResult).toMatchObject({ run_id: "w-print-20261028-1200", note: "already initialized" });
+    expect(againResult.intake).toMatchObject({ event: "intake", unit: "u1" });
+    expect(ledgerEvents({ box, root: box.root }).length).toBe(1);
+    expect(append({ box, root: box.root, unit: "u1", type: "code", tier: "M" }, { event: "collect", sources: 1, elements: 1, report: join(box.root, "collect.md") }).code).toBe(0);
+  });
+
   test("is idempotent for the same run and refuses a second run on the same plan", () => {
     const state = scene();
     const again = cli([
