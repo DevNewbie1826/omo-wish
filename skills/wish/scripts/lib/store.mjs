@@ -865,19 +865,16 @@ export function setGap(root, id, patch) {
         }
         // The explicit path must be an existing before-<id>-<tree7> receipt in the
         // evidence root; a file outside receipts/ or that does not parse as a
-        // before receipt for this gap is not a capture.
+        // before receipt for this gap is not a capture. A gap may hold more than
+        // one valid capture (several trees, several formats), so the selector
+        // matches the requested path rather than the first receipt in sort order.
         const receipts = listReceipts(root);
-        const matched = receipts.find((receipt) =>
+        const candidates = receipts.filter((receipt) =>
           receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
-        );
-        const expectedPath = matched ? join(paths.receipts, matched.name) : null;
-        if (expectedPath !== null && path !== expectedPath) {
-          throw checkFailed(`gap ${id}: --before-artifact ${path} does not match the existing before receipt ${matched.name}`);
-        }
-        if (expectedPath === null) {
-          // No before receipt exists for this gap yet: the path is not a capture
-          // and the register would carry a fabricated artifact.
-          throw checkFailed(`gap ${id}: --before-artifact names a path but no before receipt exists for this gap`);
+        ).map((receipt) => join(paths.receipts, receipt.name));
+        if (!candidates.includes(path)) {
+          throw checkFailed(`gap ${id}: --before-artifact names no existing before receipt`
+            + (candidates.length > 0 ? `; the gap's before receipts are ${candidates.join(", ")}` : ""));
         }
       } else {
         // No explicit flag: bind the existing before receipt automatically.

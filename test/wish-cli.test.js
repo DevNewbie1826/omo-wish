@@ -756,21 +756,36 @@ describe("gaps", () => {
     expect(JSON.parse(fixedWithFlag.out).before_artifact).toBe(join(receiptsDir, beforeName));
     // Reopen again for the bad-path case.
     expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
-    // An explicit --before-artifact that does not match the existing receipt: refused.
+    // An explicit --before-artifact that does not name any existing receipt: refused.
     const badPath = cli([
       "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
       "--before-artifact", "/tmp/made-up.png", "--root", state.root,
     ]);
     expect(badPath.code).toBe(1);
-    expect(badPath.err).toContain("does not match the existing before receipt");
-    // Reopen again for the no-receipt case: reset the register to an open row
-    // with no capture (gaps set cannot clear before_artifact by design).
+    expect(badPath.err).toContain("names no existing before receipt");
+    // A gap may hold more than one valid before capture (several trees or
+    // formats): the flag must bind any of them, not only the first in sort order.
     writeFileSync(
       join(state.root, "gaps.tsv"),
       [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
     );
-    // Remove the before receipt; now moving to fixed fails.
-    rmSync(join(receiptsDir, beforeName));
+    writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`), "png");
+    writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`), "webp");
+    const secondFormat = cli([
+      "gaps", "set", "--id", "G1", "--status", "planned",
+      "--before-artifact", join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`), "--root", state.root,
+    ]);
+    expect(secondFormat.code).toBe(0);
+    expect(JSON.parse(secondFormat.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
+    rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
+    rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
+    // Reopen again for the no-receipt case: reset the register to an open row
+    // with no capture (gaps set cannot clear before_artifact by design); the
+    // two format receipts were removed above.
+    writeFileSync(
+      join(state.root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
+    );
     const noReceipt = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--root", state.root]);
     expect(noReceipt.code).toBe(1);
     expect(noReceipt.err).toContain("needs a before receipt");
