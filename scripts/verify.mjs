@@ -5,6 +5,8 @@ import { homedir } from "node:os";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 export const HELP_TIMEOUT_MS = 20_000;
+// A public tool's help must carry a real synopsis line, not just any output.
+export const USAGE_LINE = /^\s*(usage|synopsis)\b/im;
 const SCRIPTS_DIR = "skills/wish/scripts";
 
 export function scriptsUnder(dir) {
@@ -61,8 +63,9 @@ export function smokeScript(root, file, run = spawnSync) {
   if (result.error || result.status !== 0) {
     throw new Error(`${rel} --help failed: ${describeFailure(result)}`);
   }
-  if (isPublicTool(root, file) && (result.stdout ?? "").trim() === "") {
-    throw new Error(`${rel} --help printed no usage line`);
+  if (isPublicTool(root, file) && !USAGE_LINE.test(result.stdout ?? "")) {
+    const first = (result.stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean)[0] ?? "(no output)";
+    throw new Error(`${rel} --help printed no usage line; first line: ${first.slice(0, 160)}`);
   }
   return { file, rel, bytes: (result.stdout ?? "").length };
 }

@@ -240,6 +240,17 @@ test("verify.mjs fails and names a shipped script that does not answer --help", 
   expect(output).toContain("skills/wish/scripts/patch-id.mjs --help failed");
 }, 120_000);
 
+test("verify.mjs fails when --help output is not a usage line", () => {
+  const dir = packageCopy();
+  writeFileSync(join(dir, "skills/wish/scripts/patch-id.mjs"),
+    "#!/usr/bin/env node\n" +
+    "if (process.argv.includes(\"--help\")) { console.log(\"BROKEN_HELP_SENTINEL\"); process.exit(0); }\n");
+  const result = verifyRun(dir);
+  const output = `${result.stdout}${result.stderr}`;
+  expect(result.status).not.toBe(0);
+  expect(output).toContain("skills/wish/scripts/patch-id.mjs --help printed no usage line");
+}, 120_000);
+
 test("verify.mjs fails and names a skill file the loader cannot find", () => {
   const dir = packageCopy();
   rmSync(join(dir, "skills/wish/SKILL.md"));
