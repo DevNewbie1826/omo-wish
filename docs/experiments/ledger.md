@@ -165,6 +165,18 @@ C1 사전 등록 취소 기준은 위 실험 목록의 C1 행(계속 조건·취
 - 테스트 전용 REVISE 회차는 별도 열로 보고합니다(`metrics.md` §5): `rounds` 행 중 `finding_scope = test`이고 `defect_count > 0`인 행. 이 열은 위 취소 기준을 바꾸지 않습니다.
 - 프로그램 모드의 첫 실행은 대조군이 없으므로 **진단만** 하고, 두 번째 프로그램부터 판정합니다.
 
+### 파일럿 계획 (2026-10-28, M8)
+
+등록 기준은 위 v2 행이 그대로 권위입니다. 이 절은 실행 계획만 정하며 임계값·판정 시점·CSV 열을 바꾸지 않습니다.
+
+- **대상**: genie 저장소의 신선 PR(같은 창). 한 PR = 한 단위입니다.
+- **교대 배정**: 규모 층(`size_bucket` S/M) 안에서 도착 순서대로 v1과 v2를 1:1로 교대 배정합니다. 각 팔이 S 5건·M 5건이 되도록 층화하고, 배정은 측정 뒤에 바꾸지 않습니다.
+- **같은 창**: 처치(v2)와 대조(v1)를 같은 기간에 돌립니다. 다른 시기의 v1 수치를 대조로 쓰지 않습니다.
+- **중간 점검**: v2 10건(각 층 5건)은 **진단만** 합니다. 이 시점에는 계속/취소를 판정하지 않습니다.
+- **판정**: v2 20건 + 같은 창 v1 대조 ≥10건에서 위 v2 행의 계속/취소/연장 규칙으로 판정합니다.
+- **비코드 유형 슬라이스**: design S 1건(genie TUI, xterm.js 캡처), research 1건(보고서 산출물까지), audit 1건(등록부만), program 1건(오너의 HIG형 요청). 이 행들은 같은 CSV에 기록하되 대조군이 없으므로 **진단 전용**이고 코드 비교의 판정에 섞지 않습니다. 프로그램 첫 실행이 진단 전용인 규칙과 같습니다.
+- **기록**: `measurements.csv`의 `arm`은 `v1`/`v2`, `size_bucket`은 층, `common_arms`는 공통 기반만 적습니다. `rounds.csv`는 회차마다 한 행입니다. `invalid_flag`와 분모 유지 규칙은 위 공통 규칙 그대로입니다.
+
 ### 측정 파일
 
 - `measurements.csv`·`rounds.csv`는 이제 M0 계약의 기본 열 뒤에 v2 열(`type, unit, program_id, switch_count, rounds_after_switch, lens_rules, gaps_total, gaps_fixed, before_receipts` / `type, unit, program_id, switch_count, switch_kinds`)을 붙인 헤더를 씁니다.
