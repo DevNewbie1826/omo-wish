@@ -853,9 +853,23 @@ describe("gaps", () => {
     const escaped = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
     expect(escaped.code).toBe(1);
     expect(escaped.err).toContain("needs a before receipt");
+    // A lexically-earlier escaping symlink must not shadow a later, valid,
+    // contained receipt: auto-bind binds the first receipt that is both valid
+    // and contained, so the contained one wins even when it sorts later. The
+    // escape receipt sorts first (0000001), the contained receipt sorts after
+    // (89abcde), so the ordering the guarantee depends on is explicit.
+    unlinkSync(join(raceDir, escapeName));
+    symlinkSync(outside, join(raceDir, "before-G1-0000001.png"));
+    const shadowName = `before-G1-89abcde.png`;
+    writeFileSync(join(raceDir, shadowName), "contained");
+    const shadowed = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(shadowed.code).toBe(0);
+    expect(JSON.parse(shadowed.out).before_artifact).toBe(join(raceDir, shadowName));
     // Reopen again for the no-receipt case: reset the register to an open row
     // with no capture (gaps set cannot clear before_artifact by design); the
-    // two format receipts were removed above.
+    // escape and shadow receipts are removed above.
+    rmSync(join(raceDir, "before-G1-0000001.png"));
+    rmSync(join(raceDir, shadowName));
     writeFileSync(
       join(state.root, "gaps.tsv"),
       [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),

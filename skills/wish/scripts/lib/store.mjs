@@ -845,12 +845,17 @@ export function setGap(root, id, patch) {
   // the only value that can satisfy the rule: a fixed defect row carries a real
   // pre-edit capture. A path that does not match a before-<id>-<tree7> receipt
   // is not a capture, and a made-up path must not be written into the register.
+  // The selector binds the first receipt that is both valid and contained:
+  // an earlier-sorting escaping symlink must not shadow a later, valid,
+  // contained receipt.
   const beforeReceiptPath = () => {
     const receipts = listReceipts(root);
-    const match = receipts.find((receipt) =>
-      receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
-    );
-    return match ? containedPath(match.name) : null;
+    for (const receipt of receipts) {
+      if (!(receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok)) continue;
+      const path = containedPath(receipt.name);
+      if (path !== null) return path;
+    }
+    return null;
   };
   mutateText(paths.gaps, (current) => {
     if (current === null) throw stateMismatch(`no register: ${paths.gaps}`);
