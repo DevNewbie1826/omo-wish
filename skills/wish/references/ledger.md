@@ -67,7 +67,7 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 
 | Value | Definition | Format | Source |
 | --- | --- | --- | --- |
-| `head` | `git rev-parse HEAD`; for the `research` type, the frozen artifact's sha256 | 40 lowercase hex; `research` uses 64 lowercase hex | D §2.8, A §C.1 (freeze identity), O `ulw-research` `artifact_sha256` |
+| `head` | `git rev-parse HEAD`; for the `research` type, the frozen artifact's sha256 | 40 lowercase hex; `research` uses 64 lowercase hex | D §2.8, A §C.1 (the design's freeze head), O `ulw-research` `artifact_sha256` |
 | `head7` | `head.slice(0, 7)`, derived, never stored | 7 lowercase hex | D §4 filename rule |
 | `tree` | `git rev-parse HEAD^{tree}`, always full | 40 or 64 lowercase hex; `research` has none (`null`) | D §2.7/§2.8, L |
 | `patch_id` | first field of `git diff <base>...<head> \| git patch-id --verbatim` | 40 hex | C44, v1 skills/wish/references/review.md:40 at cbbfbf8 |
@@ -135,7 +135,7 @@ one binary observation that decided it, and `artifact` is a path or `null`.
 | --- | --- | --- | --- |
 | `PASS` | every row passed | no | D §2.8 |
 | `FAIL` | a row failed inside the finite contract | yes, after the session reproduces it and files a blocking finding | D §2.6/§2.8 |
-| `WARN` | a memo; nothing inside the contract failed | **no** — at most a `note` finding | D §6 (WARN never blocks) |
+| `WARN` | a memo; nothing inside the contract failed | **no** — at most a `note` finding | D §6 (the design's WARN-is-not-blocking rule) |
 | `SKIP` | the lane did not apply; the reason is in `note` | no, but it never satisfies a required lane | D §2.8 |
 | `INVALID` | a row only: the probe could not decide (did not compile, no marker) | no; it is unproven, never a PASS | O `exp/x1` |
 
@@ -190,7 +190,7 @@ One alphabet per type; M3's dictionary key, M5's axis name and this column are t
 | `code` | `S` (state/lifetime/cancel/ownership), `C` (input, IO, error boundary), `D` (reconstructed instead of the original), `O` (real shipping path missing), `T` (a test that passes when wrong, including a vacuous guard), `W` (write/ownership boundary), `SEC` (secret in logs/artifacts), `DOC` (code and docs disagree), `CFG` (config accepted/rejected wrongly), `PANIC` (crash on a contract input), `REGRESS` (a prior fix regressed — named `REGRESS`, not `C4`, because `C4` is visual-qa's truncation item) | D §1.2 measured classes S/C/D/O/T/W (343 findings) plus the independent-review rows SEC/T/DOC/CFG/PANIC/C4 (PR #47 table); the `REGRESS` rename is M0's collision fix |
 | `design` | the 69 `visual-qa` item ids `A1`–`J2`, the draft-guard and accent-stripe rule ids (`edge-stripe`, `pseudo-bar`, `inset-shadow-stripe`, `gradient-stripe`, `accent-outline`, `promo-copy`, `emoji-icon`, `decorative-badge`, `vanity-stat`), and `taste` | A §C.1, O `visual-qa:128-218`, O `frontend/scripts/perfection/{draft-guard,accent-stripes}/findings.ts` |
 | `research` | the gate codes (`untraceable_number`, `value_mismatch`, `quote_not_verbatim`, `unbound_sentence`, `meaning_drift_confirmed`, `meaning_drift_warn`, `fidelity_unresolved`), the nine `drift_kind` values (`subject_changed`, `scope_widened`, `hedge_dropped`, `certainty_added`, `causality_added`, `direction_flipped`, `population_changed`, `evidence_grade_raised`, `other`), and the claim states `claim_unresolved`, `claim_refuted` (M0's names for ulw-research's `unresolved`/`refuted`) | A §C.1/§B10, O `ulw-research:168,427,439` |
-| `audit` | the audited rule corpus' own ids, `^[a-z][a-z0-9._-]*$` (open set by design) | A §C.1 (rule ids) |
+| `audit` | the audited rule corpus' own ids, `^[a-z][a-z0-9._-]*$` (open set by design) | A §C.1 (the design's rule-id set) |
 | `mixed` | the union of `primary` and `secondary` | A §C.2 |
 
 Adding, renaming or removing a class is a contract change: it edits this table, `FINDINGS_CLASSES`, M3's
