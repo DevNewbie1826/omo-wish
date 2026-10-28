@@ -2021,6 +2021,20 @@ describe("reopen", () => {
     expect(reopened.code).toBe(0);
     expect(JSON.parse(reopened.out)).toMatchObject({ event: "reopen", round: 1, reason: "author-found-defect", head: fix.head });
 
+    // The reopen voids the approval: until the new round is judged nothing merges.
+    const pending = status(state);
+    expect(pending.code).toBe(0);
+    expect(pending.json.next).not.toBe("merge");
+    expect(pending.json.blocking.some((reason) => reason.includes("awaited after the reopen"))).toBe(true);
+    const reopenedBody = join(state.root, "reopened.md");
+    writeFileSync(reopenedBody, `## Verdict\n\nVERDICT: APPROVED round 1 head ${fix.head}\n`);
+    const gated = cli(["merge-ready", "--body", reopenedBody, "--root", state.root]);
+    expect(gated.code).toBe(1);
+    expect(gated.err).toContain("is re-opened");
+    const noLine = cli(["pr-body", "--root", state.root]);
+    expect(noLine.code).toBe(0);
+    expect(noLine.out).not.toContain("VERDICT:");
+
     const second = append(state, { event: "round", round: 2, verdict: "APPROVED", head: fix.head });
     expect(second.code).toBe(0);
 

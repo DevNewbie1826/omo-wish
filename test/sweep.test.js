@@ -735,6 +735,32 @@ test("a guard that imports a package is killed in the copy, never invalid", () =
   expect(run.exit).toBe(1);
 });
 
+test("a candidate inside the linked install is refused, never mutated", () => {
+  const dir = stage("clean");
+  mkdirSync(join(dir, "node_modules", "tiny-verify"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", "tiny-verify", "package.json"),
+    JSON.stringify({ name: "tiny-verify", version: "1.0.0", main: "index.js" }));
+  const installed = join(dir, "node_modules", "tiny-verify", "index.js");
+  writeFileSync(installed, "export function verify(value) {\n  return value === \"ok\";\n}\n");
+  const before = readFileSync(installed, "utf8");
+  writeConfig(dir, {
+    probes: {
+      mutation: {
+        testCmd: "true",
+        failMarker: "CHECK FAILED",
+        candidates: [{ file: "node_modules/tiny-verify/index.js", line: 2 }],
+      },
+    },
+  });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--probe", "mutation", "--lane", "sweep", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const row = receipt.rows.find((entry) => entry.id === "mutation/node_modules/tiny-verify/index.js:2");
+  expect(row.verdict).toBe("INVALID");
+  expect(row.note).toContain("resolves outside the throwaway copy");
+  expect(readFileSync(installed, "utf8")).toBe(before);
+  expect(run.exit).toBe(0);
+});
+
 test("the lifecycle timeouts are clamped to the command ceiling", () => {
   expect(clampMs(999999, 5000)).toBe(300000);
   expect(clampMs(1, 5000)).toBe(1);

@@ -34,6 +34,7 @@ import {
   listReceipts,
   mergeFrontMatter,
   nowIso,
+  pendingReopen,
   progressLine,
   readFindings,
   readGaps,
@@ -925,8 +926,9 @@ function verbPrBody(parsed, root) {
   const lastRound = rounds[rounds.length - 1];
   // The body a reviewer and the owner read has to end with the line the merge rests
   // on, generated from the ledger so a hand-copied verdict cannot drift from it. A
-  // round that is REVISE or judged another head writes no verdict line at all.
+  // round that is REVISE, judged another head, or re-opened writes no verdict line.
   const verdictLine = lastRound && lastRound.verdict === "APPROVED" && lastRound.head === frozen.head
+    && !pendingReopen(events, unit)
     ? `VERDICT: APPROVED round ${lastRound.round} head ${lastRound.head}`
     : null;
   const lines = [
@@ -1060,6 +1062,10 @@ function verbMergeReady(parsed, root) {
     .sort((left, right) => left.round - right.round);
   const last = rounds[rounds.length - 1];
   if (!last) throw checkFailed("no round event: the frozen head has not been reviewed");
+  const reopened = pendingReopen(events, unit);
+  if (reopened) {
+    throw checkFailed(`the approval of round ${reopened.round} is re-opened; round ${Number(reopened.round) + 1} has not been judged`);
+  }
   if (last.verdict !== "APPROVED") throw checkFailed(`the last round is ${last.verdict}; review continues until APPROVED`);
   if (last.head !== frozen.head) {
     throw checkFailed(`the last round judged ${String(last.head).slice(0, 7)}, not the frozen head ${String(frozen.head).slice(0, 7)}`);

@@ -433,6 +433,23 @@ export function switchesOf(events, unit) {
   return events.filter((event) => event.event === "switch" && event.unit === unit);
 }
 
+// §9.4: a reopen voids the approval it names until a later round is judged. The
+// obligation lives in the ledger, so the stage machine and the merge-ready gate read
+// it from the same place the sequence rule does — a reopen the session forgets keeps
+// the run open instead of unlocking a merge. A finished unit has no obligation left.
+export function pendingReopen(events, unit) {
+  if (isDone(events, unit)) return null;
+  const ordered = events.filter((event) => event.unit === unit
+    && (event.event === "reopen" || event.event === "round"));
+  for (const [index, item] of ordered.entries()) {
+    if (item.event !== "reopen") continue;
+    const closed = ordered.slice(index + 1).some((event) => event.event === "round"
+      && Number(event.round) > Number(item.round));
+    if (!closed) return item;
+  }
+  return null;
+}
+
 // ---------------------------------------------------------- plan front matter
 
 // §8.1: the YAML shape M1 reads and writes. Only the front-matter block is
@@ -1112,6 +1129,15 @@ export function deriveNext(stage, context) {
   if (stage === "done") return "done";
   const rounds = roundsOf(events, unit);
   const last = rounds[rounds.length - 1];
+  const reopened = pendingReopen(events, unit);
+  if (reopened) {
+    // A re-opened approval is not a merge: the run walks the same ladder a REVISE
+    // does, ending at the round whose verdict it now waits for.
+    if (!context.lanes.ok) return "verify_lane";
+    if (blockingFindings(findings).length > 0) return "fix";
+    if (frozenHead !== head) return "freeze";
+    return "round";
+  }
   if (last && last.verdict === "APPROVED") {
     const merged = events.some((event) => event.event === "merge" && event.unit === unit);
     if (!merged) return "merge";
@@ -1229,11 +1255,17 @@ export function blockingFor(context) {
   for (const id of [...openGates].sort()) reasons.push("gate:".concat(id, " open"));
   const rounds = roundsOf(events, unit);
   const last = rounds[rounds.length - 1];
-  if (frozenHead) {
+  const reopened = pendingReopen(events, unit);
+  // A voided approval says nothing about the frozen head, so its head mismatch is not
+  // reported beside the obligation that replaced it.
+  if (frozenHead && !reopened) {
     if (!last) reasons.push("verdict:missing");
     else if (last.head !== frozenHead) {
       reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", frozenHead.slice(0, 7)));
     }
+  }
+  if (reopened) {
+    reasons.push("verdict:round ".concat(String(Number(reopened.round) + 1), " awaited after the reopen of round ", String(reopened.round)));
   }
   if (frozenHead && head && frozenHead !== head) reasons.push("head:moved");
   if (last && last.verdict === "REVISE" && last.round >= 3

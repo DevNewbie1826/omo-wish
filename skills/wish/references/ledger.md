@@ -345,9 +345,11 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.
 5. No event carries `[~]` or a terminal marker.
 
-A `reopen` adds no outcome: review still ends only at `APPROVED`, and the re-opened round re-runs the same
-lanes, the same gate and a fresh reviewer. The sentences above are the whole rule, so a cap stays an approach
-switch and the owner is still never asked whether to keep reviewing.
+A `reopen` adds no outcome: review still ends only at `APPROVED`, and the re-opened round goes through the same
+lanes, gate and a fresh reviewer as any other round. Until that round is judged the obligation is read from
+the ledger: `status` lists `verdict:round <n+1> awaited after the reopen of round <n>` in `blocking`, `next`
+is the round (or the `freeze` that must precede it), and `merge-ready` refuses. The sentences above are the
+whole rule, so a cap stays an approach switch and the owner is still never asked whether to keep reviewing.
 
 `switch.kind` values (A §C.6.2): `premise` (the architect premise review has not run), `family` (the fix
 node moves to a model family different from the one that produced the failed fix), `strategy` (a
