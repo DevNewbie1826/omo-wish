@@ -208,7 +208,7 @@ Fifteen columns, header first, same TSV rules as §5 (A §B2/§C.4):
 | `area`, `surface` | non-empty | the area and the surface (route, screen, file, artifact) | A §B2 |
 | `rule` | `L<n>` or `skill:<skill>:<code>` (the skill's own id form, e.g. `skill:visual-qa:B1`) | the lens rule or omo rule that judges it | A §B1/§B2 |
 | `current`, `ideal` | non-empty | observed state and ideal state | A §B2 |
-| `before_artifact` | path or `-` | the pre-edit capture; required once a defect row is planned | A §B3 |
+| `before_artifact` | path or `-` | the pre-edit capture; required once a defect row leaves `open` — the `gaps set` bind of the existing `before-<gap>-<tree7>` receipt | A §B3 |
 | `severity` | §5 severity | defect severity | A §B2 |
 | `kind` | `defect` \| `taste` | visual-qa's own split; both are listed, only `defect` blocks | A §B2, O `visual-qa:227,367` |
 | `class` | the row type's §5.1 set | the defect class | A §C.1 |
@@ -495,7 +495,7 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `status` | `[--json] [--progress] [--head <sha>]` | replay the ledger, re-judge receipts, print §11 | 0 ok; 2 usage; 3 state unreadable or the head contradicts `frozen_head` | D §4 |
 | `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it | 0 ok; 1 schema failure; 2 usage; 3 out of stage order | U, D §2.8 |
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
-| `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>]`; `list [--json]` | maintain the register | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
+| `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing `before-<gap>-<tree7>` receipt is bound automatically or with the flag | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
 | `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |

@@ -818,6 +818,17 @@ export function addGaps(root, text) {
 export function setGap(root, id, patch) {
   const paths = rootPaths(root);
   let updated = null;
+  // Find the existing before receipt for this gap, if any. Its absolute path is
+  // the only value that can satisfy the rule: a fixed defect row carries a real
+  // pre-edit capture. A path that does not match a before-<id>-<tree7> receipt
+  // is not a capture, and a made-up path must not be written into the register.
+  const beforeReceiptPath = () => {
+    const receipts = listReceipts(root);
+    const match = receipts.find((receipt) =>
+      receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
+    );
+    return match ? join(paths.receipts, match.name) : null;
+  };
   mutateText(paths.gaps, (current) => {
     if (current === null) throw stateMismatch(`no register: ${paths.gaps}`);
     const rows = rowsFromText(current, GAPS_COLUMNS, (value) => parseGapsTsv(value));
@@ -839,6 +850,44 @@ export function setGap(root, id, patch) {
     if (patch.fixedHead !== undefined) {
       row.fixed_head = patch.fixedHead === "-" ? "-" : tsvCell(patch.fixedHead, "--fixed-head");
     }
+    // A non-open defect row must carry its pre-edit capture. When the row was
+    // registered with before_artifact "-" and a before receipt now exists, bind
+    // the receipt's absolute path into the row so the M0 rule can pass.
+    // An explicit --before-artifact flag must name an existing receipt file; a
+    // made-up path is refused, because a path that is not a receipt is not a capture.
+    if (patch.beforeArtifact !== undefined || (row.kind === "defect" && row.status !== "open" && row.before_artifact === "-")) {
+      const explicit = patch.beforeArtifact;
+      let path;
+      if (explicit !== undefined) {
+        path = tsvCell(explicit, "--before-artifact");
+        if (path === "-") {
+          throw checkFailed(`gap ${id}: --before-artifact must name an existing before receipt, not "-"`);
+        }
+        // The explicit path must be an existing before-<id>-<tree7> receipt in the
+        // evidence root; a file outside receipts/ or that does not parse as a
+        // before receipt for this gap is not a capture.
+        const receipts = listReceipts(root);
+        const matched = receipts.find((receipt) =>
+          receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
+        );
+        const expectedPath = matched ? join(paths.receipts, matched.name) : null;
+        if (expectedPath !== null && path !== expectedPath) {
+          throw checkFailed(`gap ${id}: --before-artifact ${path} does not match the existing before receipt ${matched.name}`);
+        }
+        if (expectedPath === null) {
+          // No before receipt exists for this gap yet: the path is not a capture
+          // and the register would carry a fabricated artifact.
+          throw checkFailed(`gap ${id}: --before-artifact names a path but no before receipt exists for this gap`);
+        }
+      } else {
+        // No explicit flag: bind the existing before receipt automatically.
+        path = beforeReceiptPath();
+        if (path === null) {
+          throw checkFailed(`gap ${id}: a non-open defect row needs a before receipt before it can move to ${row.status}`);
+        }
+      }
+      row.before_artifact = path;
+    }
     // Leaving "fixed" clears the fix head, exactly as findings.set does: a row that
     // is open again must not claim a commit that no longer closes it.
     if (row.status !== "fixed") row.fixed_head = "-";
@@ -853,6 +902,10 @@ export function setGap(root, id, patch) {
     if (patch.status !== undefined && row.status !== patch.status) return false;
     if (patch.pr !== undefined && row.pr !== String(patch.pr)) return false;
     if (patch.fixedHead !== undefined && row.fixed_head !== (patch.fixedHead === "-" ? "-" : patch.fixedHead)) return false;
+    // The stored before_artifact is the canonical receipt path, not the raw flag
+    // value: verify it is non-dash when the patch required one, and matches the
+    // flag exactly when the flag was given.
+    if (patch.beforeArtifact !== undefined && row.before_artifact !== patch.beforeArtifact) return false;
     return true;
   });
   return updated;

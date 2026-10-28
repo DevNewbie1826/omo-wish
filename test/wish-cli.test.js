@@ -729,6 +729,52 @@ describe("gaps", () => {
     expect(cli(["gaps", "set", "--id", "nope", "--status", "open", "--root", state.root]).code).toBe(3);
     expect(addGaps(state, [gapRow()]).code).toBe(1);
   });
+
+  test("a defect row stored with before_artifact '-' binds its before receipt on move to fixed", () => {
+    const state = scene({ type: "design" });
+    // Register a defect row in 'open' with no before artifact (legal: only 'open' allows '-').
+    const added = addGaps(state, [gapRow({ before_artifact: "-", status: "open" })]);
+    expect(added.code).toBe(0);
+    // Write a before receipt for G1 into the evidence root.
+    const receiptsDir = join(state.root, "receipts");
+    mkdirSync(receiptsDir, { recursive: true });
+    const beforeName = `before-G1-${state.repo.tree.slice(0, 7)}.png`;
+    writeFileSync(join(receiptsDir, beforeName), "png");
+    // Move to fixed without the flag: the existing before receipt is bound automatically.
+    const fixedNoFlag = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--root", state.root]);
+    expect(fixedNoFlag.code).toBe(0);
+    const noFlagRow = JSON.parse(fixedNoFlag.out);
+    expect(noFlagRow.before_artifact).toBe(join(receiptsDir, beforeName));
+    // Reopen for the next case.
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
+    // Move to fixed with an explicit --before-artifact that names the existing receipt: succeeds.
+    const fixedWithFlag = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", join(receiptsDir, beforeName), "--root", state.root,
+    ]);
+    expect(fixedWithFlag.code).toBe(0);
+    expect(JSON.parse(fixedWithFlag.out).before_artifact).toBe(join(receiptsDir, beforeName));
+    // Reopen again for the bad-path case.
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
+    // An explicit --before-artifact that does not match the existing receipt: refused.
+    const badPath = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", "/tmp/made-up.png", "--root", state.root,
+    ]);
+    expect(badPath.code).toBe(1);
+    expect(badPath.err).toContain("does not match the existing before receipt");
+    // Reopen again for the no-receipt case: reset the register to an open row
+    // with no capture (gaps set cannot clear before_artifact by design).
+    writeFileSync(
+      join(state.root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
+    );
+    // Remove the before receipt; now moving to fixed fails.
+    rmSync(join(receiptsDir, beforeName));
+    const noReceipt = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--root", state.root]);
+    expect(noReceipt.code).toBe(1);
+    expect(noReceipt.err).toContain("needs a before receipt");
+  });
 });
 
 describe("gates", () => {

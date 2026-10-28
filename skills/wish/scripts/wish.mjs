@@ -89,7 +89,8 @@ const VERB_USAGE = {
   ],
   gaps: [
     "gaps add --tsv <file|->",
-    "gaps set --id <G<n>> [--status <status>] [--pr <n>] [--fixed-head <sha>]",
+    "gaps set --id <G<n>> [--status <status>] [--pr <n>] [--fixed-head <sha>] [--before-artifact <path>]",
+    "     A non-open defect row needs its before capture; without the flag the existing before receipt is bound.",
     "gaps list [--json]",
   ],
   gate: [
@@ -527,7 +528,8 @@ function verbGaps(parsed, root) {
     if (parsed.has("--status")) patch.status = parsed.get("--status");
     if (parsed.has("--pr")) patch.pr = parsed.get("--pr");
     if (parsed.has("--fixed-head")) patch.fixedHead = parsed.get("--fixed-head");
-    if (Object.keys(patch).length === 0) throw usage("gaps set needs --status, --pr or --fixed-head");
+    if (parsed.has("--before-artifact")) patch.beforeArtifact = parsed.get("--before-artifact");
+    if (Object.keys(patch).length === 0) throw usage("gaps set needs --status, --pr, --fixed-head or --before-artifact");
     const row = withLock(root, () => setGap(root, id, patch));
     process.stdout.write(`${JSON.stringify(row)}\n`);
     return null;
@@ -1182,6 +1184,7 @@ const SPECS = {
     "--status": { kind: "value" },
     "--pr": { kind: "value" },
     "--fixed-head": { kind: "value" },
+    "--before-artifact": { kind: "value" },
   },
   gate: {
     ...COMMENT_FLAGS,
