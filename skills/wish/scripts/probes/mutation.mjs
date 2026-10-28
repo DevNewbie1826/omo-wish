@@ -4,7 +4,7 @@
 // the #63 REVISE chain. The probe deletes one added production line in a
 // throwaway copy and requires the declared suite to fail.
 
-import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { addedLines, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
@@ -59,7 +59,9 @@ function sealTree(target, directoryMode, fileMode) {
       chmodSync(full, directoryMode);
       continue;
     }
-    chmodSync(full, fileMode);
+    // A binstub stays executable: the copy is read-only, not inert.
+    const executable = (statSync(full).mode & 0o111) !== 0;
+    chmodSync(full, executable ? fileMode | 0o111 : fileMode);
   }
   return outside;
 }

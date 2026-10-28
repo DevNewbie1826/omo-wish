@@ -735,6 +735,50 @@ test("a guard that imports a package is killed in the copy, never invalid", () =
   expect(run.exit).toBe(1);
 });
 
+test("a binstub in the dependency copy still runs", () => {
+  const dir = stage("clean");
+  mkdirSync(join(dir, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", ".bin", "tiny-cli"), "#!/usr/bin/env bun\nconsole.log(\"binstub ran\");\n", { mode: 0o755 });
+  writeFileSync(join(dir, "guard.js"), [
+    "export const version = 1;",
+    "export function allow(value) {",
+    "  if (value === \"bad\") return false;",
+    "  return true;",
+    "}",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    "import { allow } from \"./guard.js\";",
+    "const out = Bun.spawnSync([\"./node_modules/.bin/tiny-cli\"]);",
+    "if (!out.stdout.toString().includes(\"binstub ran\")) {",
+    "  console.log(\"CHECK FAILED: the binstub did not run\");",
+    "  process.exit(1);",
+    "}",
+    "if (allow(\"bad\")) {",
+    "  console.log(\"CHECK FAILED: a bad value was allowed\");",
+    "  process.exit(1);",
+    "}",
+    "console.log(\"ok\");",
+    "",
+  ].join("\n"));
+  const guardLine = lineOf(dir, "guard.js", "if (value === \"bad\") return false;");
+  writeConfig(dir, {
+    probes: {
+      mutation: {
+        testCmd: "bun check.js",
+        failMarker: "CHECK FAILED",
+        candidates: [{ file: "guard.js", line: guardLine }],
+      },
+    },
+  });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--probe", "mutation", "--lane", "sweep", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const row = receipt.rows.find((entry) => entry.id === `mutation/guard.js:${guardLine}`);
+  expect(row.verdict).toBe("PASS");
+  expect(readFileSync(join(dir, "node_modules", ".bin", "tiny-cli"), "utf8")).toContain("binstub ran");
+  expect(run.exit).toBe(0);
+});
+
 test("a mutant cannot write through the dependency copy or earn a kill", () => {
   const dir = stage("clean");
   mkdirSync(join(dir, "node_modules", "tiny-verify"), { recursive: true });
