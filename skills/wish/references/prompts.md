@@ -1,6 +1,6 @@
-# wish v2 — delegation prompts (M5)
+# wish v3 — delegation prompts
 
-Every prompt wish v2 dispatches lives here. A child prompt is the only thing its worker sees: it has no
+Every prompt wish v3 dispatches lives here. A child prompt is the only thing its worker sees: it has no
 conversation history, cannot ask questions, and cannot see this file's neighbors. Write each dispatch so a
 competent stranger executes it exactly.
 
@@ -18,12 +18,13 @@ child's prompt is.
 
 1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
    lane vocabulary.
-2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`.
+2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
+   `define-report`, `decide-batch`, `execution`.
 3. Verify-wave lanes — `tests-lane`, `sweep-lane`, `qa-lane`, `code-review-lane`, `adversarial-lane`,
    `gate-repro`.
 4. Review prompts — `plan-review`, `premise-review`, `ultrabrain-r1`, `ultrabrain-r2`, `gate-checkpoint`,
    `blind-review`.
-5. Work-type lanes — `lens-harvest`, `lens-extract`, `lens-reduce`, `lens-explore`, `audit-lint`,
+5. Work-type lanes — `collect-harvest`, `collect-extract`, `collect-reduce`, `collect-explore`, `audit-lint`,
    `audit-spot`, `audit-register-schema`, `slop-report`, `capture-lane`, `vqa-passA`, `vqa-passB`,
    `reference-compare`, `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate`.
 6. Goal — `goal-brief`.
@@ -80,7 +81,7 @@ Rules that make a frame obeyed:
 - **FORBIDDEN always names**: edits outside `SCOPE`; `git commit --amend`, `rebase`, `push --force`, or
   `--no-verify`; deleting, skipping or `.only`-ing a test; adding a dependency the plan does not list;
   writing another lane's receipt; writing `<ER>/ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `gates.md`,
-  `lens.md`, `ideal.md` or the plan (the session alone writes those); asking the requester a question.
+  `collect.md`, `define.md` or the plan (the session alone writes those); asking the requester a question.
 
 ### 1.3 The five shared fields
 
@@ -137,10 +138,10 @@ and of the `verify_lane` ledger event. The set is `REQUIRED_RECEIPTS` in `script
 A `SKIP` receipt never satisfies a required lane: when a lane truly does not apply, the plan records why, and
 `status` still enforces the type's required set. A prompt cannot waive a required lane.
 
-Stage names a prompt may name (`ledger.md` §9.1, all 27):
-`intake, lens, discover, ideal, gap, before, plan, plan_lint, plan_review, goal, build, verify_lane,
-triage, fix, reuse, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint,
-cleanup, resume`.
+Stage names a prompt may name (`ledger.md` §9.1, all 26):
+`intake, collect, define, before, plan, plan_lint, plan_review, decide, goal, build, verify_lane, triage,
+fix, reuse, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint, cleanup,
+resume`.
 
 Switch kinds (`ledger.md` §9.4): `premise`, `family`, `strategy`, `split` (program mode only), `rediscover`.
 
@@ -188,7 +189,7 @@ DELIVERABLE: the changed files for <node-id>; for every guard row the node owns,
   artifact `<ER>/build/<node-id>-<head7>.json` with one row per guard row (a build node is not a verify
   lane, so it writes no `kind: lane` receipt); the result of the literal VERIFY below.
 SCOPE: read <worktree> and <ER>; write only <paths this node owns>. OUT OF SCOPE: <paths other nodes own>,
-  the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md, lens.md, ideal.md. Never edit a file another
+  the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md, collect.md, define.md. Never edit a file another
   node is writing.
 VERIFY: `cd <worktree> && <the repository test command>` for the touched area, then, per guard row,
   `cd <worktree> && <guard test command>` unmutated (must pass).
@@ -304,7 +305,7 @@ Kinds, from `ledger.md` §9.4 — pick one that differs from the kinds already u
   rather than patch it.
 - `split` — program mode only: the failing component becomes its own unit and PR; its gap row stays `open`,
   and the `switch` event carries `program_id` (the contract rejects a split without it).
-- `rediscover` — re-run DISCOVER for the component with the lens and sweep variants of the class.
+- `rediscover` — re-run COLLECT for the component with the `collect-*` and sweep variants of the class.
 
 Record the `switch` **before the next review round is dispatched**. `ledger.md` §9.4 accepts a third-or-later
 REVISE's switch only in the window before the next `round` event for that unit: a switch recorded after the
@@ -312,6 +313,147 @@ next round leaves the review continuing without a change of approach, which the 
 
 Review continues after the switch with no round ceiling. Only `APPROVED` ends it. The owner is asked only
 when the decision is theirs (irreversible, destructive, a spend, or accepting a contract `LIMIT`).
+
+### 2.5 `collect-run` — the one mass-ulw run of COLLECT
+
+**TEMPLATE:** `collect-run`
+
+COLLECT is one mass-ulw run. This prompt briefs the run, and each node gets its own prompt from §5:
+`collect-harvest` (§5.1) reads every named source in full, `collect-extract` (§5.2) reduces the harvest to the
+important elements with their locators, `collect-reduce` (§5.3) merges the extracts into one file, and
+`collect-explore` (§5.4) spawns `explore` lanes and a `librarian` for outside sources and reads from the
+viewpoint of the project the request serves. The stage, its receipt and its order are owned by `SKILL.md`.
+
+```
+Purpose: <the original requested outcome>.
+Scope: run COLLECT for <the request>; read only, nodes write only their own handoff files.
+Contract: none yet. COLLECT runs before any plan exists.
+Blockers: none. A node never blocks; it reports what it read and what it could not read.
+Separate findings: a defect seen while reading is a note with its locator, never a fix.
+
+TASK: run one mass-ulw run over <source list> with the node families collect-harvest, collect-extract,
+  collect-reduce and collect-explore, each dispatched with its §5 prompt.
+DELIVERABLE: every node's handoff file under <ER>, and one `UNREAD:` list naming every source no node could
+  read and why, for the session to assemble into <ER>/collect.md.
+SCOPE: read <worktree>, the named sources and <ER>; nodes write only their own files. OUT OF SCOPE: editing
+  any repository file, the plan, <ER>/collect.md (the session assembles it), deciding anything.
+VERIFY: every named source is either covered by a node's rows or listed under `UNREAD:`.
+STOP WHEN: every node has reported and every source is read in full or named as unread.
+TIMEBOX: <minutes; default 40>. At expiry list every unread source and every unreported node by name.
+FORBIDDEN: omitting an unreadable source instead of naming it; trimming the result to look tidy; restating
+  a node prompt instead of dispatching it; asking the requester anything.
+REPORT: the node list with each handoff path, the `UNREAD:` list, and the total row count.
+```
+
+An unreadable source is named as unread, never omitted. Over-collecting is deliberate: DEFINE drops what does
+not matter, and a dropped element costs less than a missed one.
+
+### 2.6 `define-report` — the DEFINE stage
+
+**TEMPLATE:** `define-report`
+
+`define-report` and `decide-batch` brief the session's own work, so they write `gaps.tsv` and `gates.md`,
+which §1.2 keeps away from lanes.
+
+```
+Purpose: <the original requested outcome>.
+Scope: define what the request means for its end user, from <ER>/collect.md; no plan.
+Contract: none yet. DEFINE writes the input the plan's contract rows come from.
+Blockers: none. A missing fact is a row marked `unknown` with the source that would settle it.
+Separate findings: anything outside the request's boundary goes to `<ER>/follow-ups.md`, never into a row.
+
+TASK: write `<ER>/define.md` and `<ER>/gaps.tsv` for <the request>.
+DELIVERABLE: `<ER>/define.md` with three parts: the end user and how they use the result now and after the
+  change; the ideal state as rows, `<state> | <reason>`; every difference from today as rows,
+  `<difference> | <reason> | <affected party>`. The same difference rows go to `<ER>/gaps.tsv` in the
+  register shape of `ledger.md` §6.
+SCOPE: read <ER>/collect.md, <ER>/lens/, <ER>/receipts/collect-*, <worktree>; write only `<ER>/define.md` and `<ER>/gaps.tsv`.
+  OUT OF SCOPE: a plan, a unit split, a test plan, any repository file.
+VERIFY: every difference row in `define.md` has a matching row in `gaps.tsv`, and each row passes the
+  boundary of `contract.md` §3.
+STOP WHEN: both files exist and every difference row carries a reason and an affected party.
+TIMEBOX: <minutes; default 20>. At expiry report the rows written and every unexamined collect element.
+FORBIDDEN: writing a plan, a unit split or a test plan; a row outside the boundary of `contract.md` §3;
+  asking the requester anything.
+REPORT: the counts of ideal rows and difference rows, then both file paths.
+```
+
+### 2.7 `decide-batch` — the one decision batch
+
+**TEMPLATE:** `decide-batch`
+
+```
+Purpose: <the original requested outcome>.
+Scope: gather every decision the requester owns into one batch; decide none of them.
+Contract: <IS/COMPANION/INVARIANT/LIMIT rows verbatim>.
+Blockers: a decision only the requester can make. Everything the session can settle is not one.
+Separate findings: a decision outside the request's boundary is a follow-up, never a batch row.
+
+TASK: write `<ER>/gates.md` with every decision the requester owns, then ask them once in one call.
+DELIVERABLE: `<ER>/gates.md` in the `ledger.md` §13 shape: a `# Gates` heading, a blank line, then one
+  `## <id>` block per question whose fields are `- Key: value` lines named `Status`, `Question`, `Options`,
+  `Default`, and `Answer` only once resolved; `Options` lists at least two choices separated by ` | `;
+  `Default` must be one of them; `Status: open` has no `Answer`. Write each block with
+  `wish gate add --id <id> --question <text> --options <a|b> --default <a>` and record each answer with
+  `wish gate resolve --id <id> --answer <text>`. One question call carries all blocks.
+  Zero decisions: when the batch holds no decision the requester owns, write no gates file at all (or
+  leave it empty) and make no question call, because a `# Gates` heading with no `## <id>` block is
+  rejected by the parser. Record the `decide` event with `count: 0` and empty `gates` and `recommended` arrays.
+SCOPE: read the plan, <ER>/define.md, <ER>/gaps.tsv; write only `<ER>/gates.md`. OUT OF SCOPE: settling a
+  decision the requester owns, editing the plan, starting a build lane.
+VERIFY: every block that exists has `Options` with at least two choices and a `Default` among them, and
+  exactly one question call was made when the batch is non-empty (zero calls when it is empty).
+STOP WHEN: the batch is asked and every answer, or its absence, is recorded.
+TIMEBOX: <minutes; default 10>.
+FORBIDDEN: a second question call; a row without a recommended default; asking about something the
+  session can settle.
+REPORT: the row count, the file path, and each row's recorded answer.
+```
+
+A decision that appears mid-run parks only its lane: the lane's state is `parked`, every other lane
+continues, and the `PROGRESS:` line names it in its `waiting` field. Which decisions belong to the requester
+is owned by `SKILL.md`.
+
+### 2.8 `execution` — the base execution step
+
+**TEMPLATE:** `execution`
+
+The execution step restates the requester's base sentence before it dispatches any build lane:
+
+```
+After that, don't ask the requester. Proceed exactly as written in this content with mass-ulw, ulw-loop, and ulw-execute, at maximum parallelism, verifying rigorously. Deliver the work as several pull requests, include the before/after directly inside each pull request, and make the improvements clearly visible. As you proceed, report status to the requester very frequently, every time, saying how much of the whole work is done and which parts are done.
+```
+
+```
+Purpose: <the original requested outcome>.
+Scope: run the approved plan <plan path> to merged, verified PRs.
+Contract: <IS/COMPANION/INVARIANT/LIMIT rows verbatim>.
+Blockers: an IS or COMPANION row not delivered, or a listed INVARIANT shown violated.
+Separate findings: recorded in `<ER>/follow-ups.md`, never fixed in this run.
+
+TASK: execute <plan path> unit by unit, one PR per unit, reporting progress at every milestone.
+DELIVERABLE: one PR per independently verifiable unit, each with `## Before` and `## After` in its body;
+  the `PROGRESS:` line at every milestone.
+SCOPE: each unit writes only its own disjoint write scope from the plan. OUT OF SCOPE: another unit's
+  files, a decision the requester owns (it parks its lane, §2.7).
+VERIFY: every unit's devices pass at its head, and each PR body has both `## Before` and `## After`.
+STOP WHEN: every unit's PR is merged and its post-merge verification passes, or its lane is parked.
+TIMEBOX: <from the plan>. At expiry report every unit's state by name.
+FORBIDDEN: two units writing the same file; a PR without `## Before` / `## After`; a shortened PROGRESS line;
+  asking the requester anything outside the decision batch.
+REPORT: one `PROGRESS:` line per milestone, then the PR list.
+```
+
+Units and PRs: one PR per independently verifiable unit, and units have disjoint write scopes. A PR may hold
+several commits. Its body carries `## Before` and `## After`. A request that is one unit stays one PR; it is
+never split to look like several.
+
+Progress: print the `PROGRESS:` line at every milestone, in its exact v2 shape from `ledger.md` §11, never a
+shortened form:
+
+```
+PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<round> on <#pr|none> · switch <count> · waiting <what|none>
+```
 
 ---
 
@@ -433,6 +575,9 @@ REPORT: the slop-check line (`remove-ai-slops: ran|not run; programming: ran|not
   then notes and follow-ups separately. Use the reviewer rule of §1.1 verbatim.
 ```
 
+The lane runs at the frozen head before the `round` stage. A code-review receipt for another head never
+satisfies the gate.
+
 In a REVISE round the lane sees only the delta diff since the last reviewed commit, plus the findings table
 it must verify. Fix every reproduced in-contract code blocker once; that round gets no second code-review
 pass.
@@ -505,7 +650,7 @@ Scope: judge the plan; do not rewrite it.
 TASK: review <plan path> against the request and answer OKAY or BLOCKERS with one fix per blocker.
 DELIVERABLE: `VERDICT: OKAY` or `VERDICT: BLOCKERS <n>` and, per blocker, the failing part of the plan and
   the concrete fix; a memo list for typos and wording.
-SCOPE: read the plan, the request, <ER>/receipts/discover-*. OUT OF SCOPE: implementing, editing the plan
+SCOPE: read the plan, the request, <ER>/receipts/collect-*. OUT OF SCOPE: implementing, editing the plan
   (the session records fixes), re-reviewing after the fixes.
 VERIFY: every blocker names either a request `IS`/`COMPANION` row the plan would fail, a regression the plan
   would introduce, or a proof that rests on a behavior the code does not have.
@@ -522,9 +667,26 @@ rows carry a reason; companion rows pass the guards; the front matter parses. Al
 sources of authority — a second parser, a reconstructed path, a duplicate identity, an enumeration of a
 domain the change does not own — and require the plan to name the authoritative source or a `LIMIT`.
 
+The plan carries these sentences verbatim, and the review checks that they are there, unreworded:
+
+```
+Implement it, and also include, strictly, a device that confirms the implementation was done.
+
+In addition, fix it, and also include, strictly, a device that confirms the fix was made.
+
+Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
+```
+
+The third sentence applies to a plan with a rendered surface or a visual QA scenario.
+A plan forces no test code, because the confirmation device fills that role (`plan-format.md` §3).
+
 If the host lists no `architect` category, use the highest-capability category it does list and record it.
-`plan-reviewer` is a plan-gated, one-shot agent: use it only when the requester explicitly chose the
-`ulw-plan` workflow; otherwise the architect review is the one round.
+
+The plan has two branches (`SKILL.md` owns them). By default the session writes the plan and this one
+architect review checks it, with no approval question to the requester. When the requester's own message asked
+for the ulw-plan workflow, ulw-plan runs whole and the plan gets both `plan-reviewer` and this architect
+review. A skill's text can't make `plan-reviewer` spawnable: the host refuses it outside that branch, so a
+refusal falls back to this review and is recorded in the plan's review record.
 
 ### 4.2 `premise-review` — two strikes, or the `premise` switch kind
 
@@ -574,6 +736,9 @@ FORBIDDEN: a verdict covering a head other than <head>; a 7-character head; a se
 REPORT: the findings table, then `AXES:` one line per axis from the type's list (§4.3.2), each saying what
   was checked and the counterexample found or `none`, then memos, then the VERDICT line.
 ```
+
+The dispatch is refused (exit 3) unless a valid `code-review` receipt exists at the frozen head, for a work
+type whose required lanes name `code-review`.
 
 The prompt also carries, pasted in full:
 
@@ -644,7 +809,7 @@ model the host routes to a different family. Neither reviewer sees the other's r
 - `APPROVED` in round 1 requires both to approve. One `REVISE` makes the round `REVISE`.
 - Record the head before dispatch. If a commit lands while the two run, both reports become history and
   round 1 runs again at the new head.
-- Later rounds stay single-reviewer: the second family exists to widen round 1's discovery, not to double
+- Later rounds stay single-reviewer: the second family exists to widen round 1's search, not to double
   every round's cost.
 
 With the default `round1_families: 1`, one reviewer carries round 1 and this subsection does not apply.
@@ -673,6 +838,9 @@ FORBIDDEN: reverting a prior APPROVED finding without a changed patch; treating 
 REPORT: prior-findings table (`id | class | head_found | gate | verdict at <head> | repro`); axis lines;
   new findings; memos; the VERDICT line. Use §1.1 verbatim.
 ```
+
+The dispatch is refused (exit 3) unless a valid `code-review` receipt exists at the frozen head, for a work
+type whose required lanes name `code-review`.
 
 The prompt carries the round-1 inputs plus:
 
@@ -743,9 +911,9 @@ numbers.
 
 ## 5. Work-type lanes
 
-### 5.1 `lens-harvest` — read one corpus slice
+### 5.1 `collect-harvest` — read one corpus slice
 
-**TEMPLATE:** `lens-harvest`
+**TEMPLATE:** `collect-harvest`
 
 ```
 Purpose: turn <the named standard/corpus> into judgment rules the plan can check against.
@@ -756,7 +924,7 @@ DELIVERABLE: a handoff file `<ER>/lens/harvest-<slice>.md` with one row per cand
   `<rule> | <source anchor: page/section/heading + short verbatim quote> | <universal|platform> | <persona or
   journey it serves> | <surface kinds it applies to>`.
 SCOPE: the slice's files/pages only; write only that handoff file. OUT OF SCOPE: other slices, the project,
-  lens.md, any code.
+  collect.md, any code.
 VERIFY: every rule has a source anchor a reader can open; a rule without one is dropped.
 STOP WHEN: the slice is read to its end and every rule it states has a row or is listed as `no rule`.
 TIMEBOX: <minutes per slice; default 20>.
@@ -768,9 +936,9 @@ REPORT: the handoff path, the row count, and the slice's coverage (pages/paragra
 Read the omo-distilled rules first — the `visual-qa` checklist, the `frontend` build rules, the
 `remove-ai-slops` categories — as the reducer's first rows. The harvest hunts only what those lists miss.
 
-### 5.2 `lens-extract` — cluster the candidates into universal rules
+### 5.2 `collect-extract` — cluster the candidates into universal rules
 
-**TEMPLATE:** `lens-extract`
+**TEMPLATE:** `collect-extract`
 
 ```
 Purpose: keep the rules that generalize and drop the ones that describe one platform's habit.
@@ -782,7 +950,7 @@ DELIVERABLE: `<ER>/lens/extract-<cluster>.md`, one row per kept rule in the harv
   (the reducer adds the `L<n>` id), with the platform tag justified when `platform`, and a `dropped` list with
   a one-line reason each.
 SCOPE: the cluster's harvest files; write only the extract file. OUT OF SCOPE: other clusters, the project,
-  lens.md.
+  collect.md.
 VERIFY: every kept row keeps at least one source anchor; every dropped row has a reason.
 STOP WHEN: every harvest row of the cluster is kept or dropped with a reason.
 TIMEBOX: 15 minutes.
@@ -790,45 +958,48 @@ FORBIDDEN: paraphrasing a rule so far that its anchor no longer shows it; keepin
 REPORT: kept count, dropped count with reasons, and the file path.
 ```
 
-### 5.3 `lens-reduce` — one lens file
+### 5.3 `collect-reduce` — one lens file
 
-**TEMPLATE:** `lens-reduce`
+**TEMPLATE:** `collect-reduce`
 
 ```
 Purpose: produce the lens the plan's rules and the reviews are judged against.
 Scope: all extract files for this run.
 
 TASK: reduce the extracts into the candidate lens file `<ER>/lens/reduce-<run>.md` in the `ledger.md` §7
-  grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/lens.md`.
-DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (`rules_total`, slices,
-  clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the `artifact` and
-  `rules_total` values of the `lens` event.
+  grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/collect.md`.
+DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (rule count, slices,
+  clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the counts of the
+  `collect` event: `{"event":"collect","sources":<count>,"elements":<count>,"report":"$ER/collect.md"}`.
+  The rule count feeds `elements`. A collect event with zero elements doesn't complete the stage, because an
+  empty extraction is not a collection.
 SCOPE: the extract files; write the candidate lens file and its run artifact only. OUT OF SCOPE: the project,
-  the plan, `<ER>/lens.md` itself (the session publishes it), other receipts.
+  the plan, `<ER>/collect.md` itself (the session publishes it), other receipts.
 VERIFY: every row has six non-empty fields, ids are unique, scope is `universal` or `platform`; the first
   rows are the omo-distilled rules named in the plan.
 STOP WHEN: the candidate parses as the §7 grammar and the run artifact is written.
 TIMEBOX: 20 minutes.
 FORBIDDEN: a rule without an anchor; two ids with the same string; dropping an anchor to shorten a row;
-  writing `<ER>/lens.md` or the ledger.
-REPORT: `rules_total`, the dropped list size, and the candidate path.
+  writing `<ER>/collect.md` or the ledger.
+REPORT: the rule count (it feeds `elements`), the sources read (it feeds `sources`), the dropped list size,
+  and the candidate path.
 ```
 
-### 5.4 `lens-explore` — discovery steered by the lens
+### 5.4 `collect-explore` — collection steered by the lens
 
-**TEMPLATE:** `lens-explore`
+**TEMPLATE:** `collect-explore`
 
 ```
 Purpose: find where the product violates the lens, not where the request happens to point.
-Scope: explore lane <N> of the discovery wave.
+Scope: explore lane <N> of the COLLECT run.
 
 TASK: apply rules <L ids> to <surfaces> and report every place they are violated.
 DELIVERABLE: one row per observation: `<L id> | <surface> | <current state> | <evidence path or file:line> |
   <severity guess> | <defect|taste>`; an `axes covered` line; and the lane receipt
-  `<ER>/receipts/discover-explore-<lane>-<head7>.md` (`kind: lane`, `stage: discover`, `lane: explore-<lane>`,
+  `<ER>/receipts/collect-explore-<lane>-<head7>.md` (`kind: lane`, `stage: collect`, `lane: explore-<lane>`,
   `head`/`tree` at <head>).
-SCOPE: read the repository/surface; write only that receipt. OUT OF SCOPE: fixing, writing gaps.tsv, lens.md
-  or ideal.md, judging rules you were not given.
+SCOPE: read the repository/surface; write only that receipt. OUT OF SCOPE: fixing, writing gaps.tsv, collect.md
+  or define.md, judging rules you were not given.
 VERIFY: every row's evidence is a path or line a reader can open; a rule with no instance is `N/A`, never
   an observation.
 STOP WHEN: every assigned rule × surface pair has a verdict (violation, holds, N/A).
@@ -838,7 +1009,7 @@ FORBIDDEN: a sampled surface when the plan enumerates all surfaces; a defect wit
 REPORT: the rows, then `rules × surfaces: <judged>/<total>`.
 ```
 
-The session turns these rows into `ideal.md` paragraphs and `gaps.tsv` rows; lanes never write the register.
+The session turns these rows into `define.md` paragraphs and `gaps.tsv` rows; lanes never write the register.
 
 ### 5.5 `audit-lint` — the rule corpus' lint, report only
 
@@ -889,12 +1060,12 @@ REPORT: sample size, seed, reproduces/contradicts counts, then the rows. A contr
 
 ```
 Purpose: prove the register is complete and well formed, so the audit's "every gap" claim is true.
-Scope: `gaps.tsv`, `lens.md`, `ideal.md` and the coverage matrix.
+Scope: `gaps.tsv`, `collect.md`, `define.md` and the coverage matrix.
 
 TASK: validate the register against its schema and compute coverage as rules × surfaces judged.
 DELIVERABLE: `LANE: register-schema`, the receipt `verify_lane-register-schema-<head7>.json`, the parse
   result, and the coverage matrix (`<judged>/<total>` per rule, `N/A` counted and listed).
-SCOPE: read the register, the lens, the ideal and the surface enumeration; write only its receipt. OUT OF
+SCOPE: read `gaps.tsv`, `collect.md`, `define.md` and the surface enumeration; write only its receipt. OUT OF
   SCOPE: adding rows, editing the register, judging product behavior.
 VERIFY: the register parses with the contract's column order and value sets; every `defect` row has a
   `before` capture; every surface in the enumeration has a verdict for every applicable rule; a rule with no
@@ -916,8 +1087,8 @@ Scope: the branch diff or the explicit file list; report only.
 
 TASK: apply the `remove-ai-slops` categories to <scope> and report every instance without fixing it.
 DELIVERABLE: one row per instance: `<category> | file:line | what | why it is slop | suggested fix`; the
-  `remove-ai-slops: ran` line; and the lane receipt `<ER>/receipts/discover-slop-<lane>-<head7>.md`
-  (`kind: lane`, `stage: discover`, `lane: slop-<lane>`, `head`/`tree` at <head>).
+  `remove-ai-slops: ran` line; and the lane receipt `<ER>/receipts/collect-slop-<lane>-<head7>.md`
+  (`kind: lane`, `stage: collect`, `lane: slop-<lane>`, `head`/`tree` at <head>).
 SCOPE: the named diff/files; write only that receipt. OUT OF SCOPE: edits, test changes, reclassifying a
   behavior-preserving pattern as slop.
 VERIFY: every row names a category from the skill's list and a file:line.
@@ -1348,7 +1519,7 @@ truth and `test/schema.test.js` guards it.
 | Lane receipt name | `<stage>-<lane>-<head7>.json` | `ledger.md` §4.2 |
 | Gap receipt names | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` | `ledger.md` §4.2 |
 | Lane names | the `REQUIRED_RECEIPTS` table of §1.5 | `schema.mjs` |
-| Stage names | the 27 of §1.5 | `ledger.md` §9.1 |
+| Stage names | the 26 of §1.5 | `ledger.md` §9.1 |
 | Switch kinds | `premise, family, strategy, split, rediscover` | `ledger.md` §9.4 |
 | Device rows | `DEVICE: guard <INVARIANT> -> <node>`, `DEVICE: qa <command> => <observation>`, `DEVICE: vqa <ids> @ <cells> pair <case>-<state>-<width>-<theme>`, `DEVICE: claim C<n> gate(primary, domains>=<n>, counter-search)`, `DEVICE: lint <command> exit 0`, `DEVICE: spot <n> rows reproduce` | `ledger.md` §8.2 |
 | Class sets | per type, `ledger.md` §5.1 | `FINDINGS_CLASSES` |
