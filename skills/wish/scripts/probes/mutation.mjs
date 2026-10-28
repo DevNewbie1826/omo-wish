@@ -4,7 +4,7 @@
 // the #63 REVISE chain. The probe deletes one added production line in a
 // throwaway copy and requires the declared suite to fail.
 
-import { cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { addedLines, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
@@ -22,8 +22,9 @@ export const usage = `config:
 
 The suite must be green first. Each candidate line is then deleted in its own
 copy of the tree and the suite is re-run. The copy leaves node_modules out and
-links the repository's install read-only, so a guard that imports a package
-still compiles and an INVALID row means the mutation, not a missing dependency:
+borrows a read-only copy of the repository's install, made once per run, so a
+guard that imports a package still compiles, a mutant cannot write through into
+the install, and an INVALID row means the mutation, not a missing dependency:
   PASS    the suite failed with a test-failure marker (the mutation was killed)
   FAIL    the suite stayed green (SURVIVED: nothing tests this line)
   INVALID the mutation did not compile, or the run failed without a failure
@@ -39,14 +40,67 @@ one WARN row so an unprobed line can never read as covered.`;
 const SKIP_DIRS = new Set([".git", "node_modules", ".omo", "dist", "build", ".next", "target"]);
 
 // A guard that imports a package cannot compile without the installed tree, so the
-// copy reuses the repository's node_modules through a link instead of reinstalling
-// it: the install is read-only input to the probe, never a mutation target (a
-// candidate inside it is refused by the copy-containment check below).
-function linkInstalledModules(root, tree) {
-  const installed = join(root, "node_modules");
-  if (existsSync(join(tree, "node_modules")) || !existsSync(installed)) return null;
+// copy reuses it — through a read-only copy made once per run, never through a link
+// to the repository's own install. A writable share lets the suite write into the
+// install through the copy: that corrupts the repository and can fail a test for a
+// reason the mutation did not cause, which the probe would then count as a kill.
+function sealTree(target, directoryMode, fileMode) {
+  let outside = 0;
+  for (const entry of readdirSync(target, { withFileTypes: true })) {
+    const full = join(target, entry.name);
+    // chmod follows a link; a link is either refused by prepareInstall or shipped as a
+    // real file above, so nothing here may follow one.
+    if (entry.isSymbolicLink()) {
+      outside += 1;
+      continue;
+    }
+    if (entry.isDirectory()) {
+      outside += sealTree(full, directoryMode, fileMode);
+      chmodSync(full, directoryMode);
+      continue;
+    }
+    chmodSync(full, fileMode);
+  }
+  return outside;
+}
+
+function prepareInstall(root) {
+  const source = join(root, "node_modules");
+  if (!existsSync(source)) return { path: null };
+  const scratch = mkdtempSync(join(tmpdir(), "wish-sweep-install-"));
+  const copy = join(scratch, "node_modules");
   try {
-    symlinkSync(installed, join(tree, "node_modules"), "dir");
+    // Dereferenced: a package manager that links its store into node_modules would
+    // otherwise leave the copy pointing at a writable tree outside it.
+    cpSync(source, copy, { recursive: true, dereference: true });
+    const outside = sealTree(copy, 0o555, 0o444);
+    chmodSync(copy, 0o555);
+    if (outside > 0) {
+      releaseInstall({ scratch });
+      return { error: "the install has links the copy could not make read-only; the mutation row is refused" };
+    }
+    return { path: copy, scratch };
+  } catch (error) {
+    rmSync(scratch, { recursive: true, force: true });
+    return { error: `the copy could not prepare a read-only node_modules: ${error?.code ?? error}` };
+  }
+}
+
+function releaseInstall(install) {
+  if (!install?.scratch) return;
+  try {
+    sealTree(install.scratch, 0o755, 0o644);
+    chmodSync(install.scratch, 0o755);
+  } catch {
+    // a mode that cannot be restored must not hide the scratch removal below
+  }
+  rmSync(install.scratch, { recursive: true, force: true });
+}
+
+function linkInstalledModules(install, tree) {
+  if (!install?.path || existsSync(join(tree, "node_modules"))) return null;
+  try {
+    symlinkSync(install.path, join(tree, "node_modules"), "dir");
     return null;
   } catch (error) {
     return `the copy could not reuse node_modules: ${error?.code ?? error}`;
@@ -116,7 +170,10 @@ export async function run(config, ctx) {
 
   const failMarker = new RegExp(config.failMarker ?? "--- FAIL:|^FAIL\\b|✗|\\(fail\\)|AssertionError|not ok \\d+", "m");
   const compileError = new RegExp(config.compileErrorPattern ?? "BuildMessage|build failed|setup failed|syntax error|SyntaxError|Cannot find module|error TS\\d+|undefined reference|^error: (?:Unexpected|Expected)", "m");
-  const results = await mapPool(candidates, Math.min(8, ctx.parallel), async (candidate) => {
+  const install = prepareInstall(ctx.root);
+  if (install.error) return [...checks, row({ id: "mutation", command: config.testCmd, observable: "the copy reuses a read-only install", verdict: "INVALID", cls, note: install.error })];
+  let results;
+  results = await mapPool(candidates, Math.min(8, ctx.parallel), async (candidate) => {
     const id = `mutation/${candidate.file}:${candidate.line}`;
     const observable = "removing this line makes the declared suite fail";
     const scratch = mkdtempSync(join(tmpdir(), "wish-sweep-mutant-"));
@@ -130,7 +187,7 @@ export async function run(config, ctx) {
           return !SKIP_DIRS.has(first);
         },
       });
-      const linkError = linkInstalledModules(ctx.root, tree);
+      const linkError = linkInstalledModules(install, tree);
       if (linkError) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: linkError });
       const target = resolve(tree, candidate.file);
       if (!target.startsWith(`${tree}${sep}`)) {
@@ -163,7 +220,7 @@ export async function run(config, ctx) {
     } finally {
       ctx.cleanup(scratch);
     }
-  });
+  }).finally(() => releaseInstall(install));
   return [...checks, ...results];
 }
 

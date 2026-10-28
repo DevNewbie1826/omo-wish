@@ -735,6 +735,53 @@ test("a guard that imports a package is killed in the copy, never invalid", () =
   expect(run.exit).toBe(1);
 });
 
+test("a mutant cannot write through the dependency copy or earn a kill", () => {
+  const dir = stage("clean");
+  mkdirSync(join(dir, "node_modules", "tiny-verify"), { recursive: true });
+  writeFileSync(join(dir, "node_modules", "tiny-verify", "package.json"),
+    JSON.stringify({ name: "tiny-verify", version: "1.0.0", main: "index.js" }));
+  writeFileSync(join(dir, "node_modules", "tiny-verify", "index.js"),
+    "export const verify = (value) => value === \"ok\";\n");
+  const sentinel = join(dir, "node_modules", "tiny-verify", "sentinel.txt");
+  writeFileSync(sentinel, "ORIGINAL");
+  writeFileSync(join(dir, "guard.js"), [
+    "import { writeFileSync } from \"node:fs\";",
+    "export function run() {",
+    "  return;",
+    "  writeFileSync(new URL(\"./node_modules/tiny-verify/sentinel.txt\", import.meta.url), \"MUTANT WROTE THE INSTALL\");",
+    "}",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    "import { readFileSync } from \"node:fs\";",
+    "import { run } from \"./guard.js\";",
+    "run();",
+    "if (readFileSync(new URL(\"./node_modules/tiny-verify/sentinel.txt\", import.meta.url), \"utf8\") !== \"ORIGINAL\") {",
+    "  console.error(\"CHECK FAILED: the install was written\");",
+    "  process.exit(1);",
+    "}",
+    "console.log(\"ok\");",
+    "",
+  ].join("\n"));
+  const guardLine = lineOf(dir, "guard.js", "  return;");
+  writeConfig(dir, {
+    probes: {
+      mutation: {
+        testCmd: "bun check.js",
+        failMarker: "CHECK FAILED",
+        candidates: [{ file: "guard.js", line: guardLine }],
+      },
+    },
+  });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--probe", "mutation", "--lane", "sweep", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const row = receipt.rows.find((entry) => entry.id === `mutation/guard.js:${guardLine}`);
+  expect(row.verdict).toBe("INVALID");
+  expect(row.note).toContain("without a test-failure marker");
+  expect(readFileSync(sentinel, "utf8")).toBe("ORIGINAL");
+  expect(run.exit).toBe(0);
+});
+
 test("a candidate inside the linked install is refused, never mutated", () => {
   const dir = stage("clean");
   mkdirSync(join(dir, "node_modules", "tiny-verify"), { recursive: true });

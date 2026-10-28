@@ -338,10 +338,10 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 1. `round` events for a unit are `1, 2, 3, …` with no gap.
 2. No further `round` follows an `APPROVED` round for that unit unless a `reopen` event for that unit sits
    between them, naming that round, a `reason` from the set above, and the head the coming round judges.
-   The round it names is the unit's latest approved round, and no `reopen` follows `cleanup` — a defect
-   found after the run closed starts a new run. A real approval that a later defect disproves is re-opened
-   on the record; it is never silently overridden, and the re-opened round is judged at the head the
-   `reopen` names.
+   The round it names is the unit's latest approved round, one reopen is open at a time, and no `reopen`
+   follows `cleanup` — a defect found after the run closed starts a new run. A real approval that a later
+   defect disproves is re-opened on the record; it is never silently overridden, and the re-opened round is
+   judged at the head the `reopen` names.
 3. A third-or-later `REVISE` round requires a `switch` event for the same round **before the next round** —
    otherwise the review continued without a change of approach, which is not an outcome.
 4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.
@@ -446,7 +446,7 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
 | `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>]`; `list [--json]` | maintain the register | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
 | `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt or unknown gate | D §2.6, P |
-| `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
+| `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit, or a frozen head that does not descend from the last judged round; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table; when the last round is `APPROVED` at the frozen head the body ends with its `VERDICT:` line | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
 | `merge-ready` | `--body <path>` | refuse the merge-ready state until that body's last line is the `APPROVED` verdict on the frozen head and the ledger's last round names the same round and head | 0 merge ready; 1 not merge ready; 2 usage; 3 no freeze | D §2.2, §12 |
 | `reuse-check` | `<receipt> --head <sha>` | tree match → VALID; else intersect changed files and their reference holders with `scope` | 0 VALID; 1 STALE; 2 usage; 3 unparseable or another run's receipt | D §2.7 |

@@ -772,6 +772,19 @@ describe("freeze and pr-body", () => {
     expect(moved.err).toContain("head moved");
   });
 
+  test("freeze --check accepts a fix frozen on top of the judged head", () => {
+    const state = scene();
+    upToBuild(state);
+    ["tests", "qa", "sweep", "code-review"].forEach((name) => lane(state, { lane: name }));
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "round", round: 1, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
+    const fix = commitFile(state.repo, "fix.txt", "fixed\n", "fix it");
+    expect(cli(["freeze", "--head", fix.head, "--root", state.root]).code).toBe(0);
+    const checked = cli(["freeze", "--check", "--head", fix.head, "--root", state.root]);
+    expect(checked.code).toBe(0);
+    expect(checked.out).toContain(fix.head.slice(0, 7));
+  });
+
   test("freeze refuses a dirty worktree and a verdict on another head", () => {
     const state = scene();
     upToBuild(state);
@@ -2066,6 +2079,9 @@ describe("reopen", () => {
     expect(unapproved.err).toContain("APPROVED round of the same round number");
 
     expect(append(state, { event: "reopen", round: 1, reason: "author-found-defect", head: fix.head }).code).toBe(0);
+    const twice = append(state, { event: "reopen", round: 1, reason: "owner-found-defect", head: state.repo.head });
+    expect(twice.code).toBe(3);
+    expect(twice.err).toContain("a reopen is already open");
     const otherHead = append(state, { event: "round", round: 2, verdict: "APPROVED", head: state.repo.head });
     expect(otherHead.code).toBe(3);
     expect(otherHead.err).toContain("the head the next round judges");

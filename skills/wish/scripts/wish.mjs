@@ -804,7 +804,13 @@ function verbFreeze(parsed, root) {
     const lastRound = [...readLedger(root)].reverse().find((event) => event.event === "round"
       && event.unit === (plan.wish.unit ?? "u1"));
     if (lastRound && lastRound.head !== frozen) {
-      throw checkFailed(`the last round judged ${String(lastRound.head).slice(0, 7)}, not the frozen head ${frozen.slice(0, 7)}`);
+      // A fix lands on top of a judged head and is frozen before it is judged again —
+      // the playbooks freeze, then re-review. Only a frozen head that does not descend
+      // from the judged one means the reviewed patch is gone; the verdict coverage
+      // itself is the merge-ready gate's question, not the freeze's.
+      const descends = identity !== "research"
+        && git(plan.wish.worktree, ["merge-base", "--is-ancestor", lastRound.head, frozen]) !== null;
+      if (!descends) throw checkFailed(`the last round judged ${String(lastRound.head).slice(0, 7)}, not the frozen head ${frozen.slice(0, 7)}`);
     }
     process.stdout.write(`frozen ${frozen.slice(0, 7)} holds${observed.tree ? ` (tree ${observed.tree.slice(0, 7)})` : ""}\n`);
     return null;

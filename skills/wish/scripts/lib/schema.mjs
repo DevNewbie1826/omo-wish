@@ -602,6 +602,15 @@ export function validateLedgerSequence(events) {
         continue;
       }
       const at = valid.indexOf(item);
+      // One reopen at a time: a second one before the round it named is judged would
+      // let one review absorb two separate claims, silently dropping the other.
+      const earlier = valid.filter((other) => other.unit === unit && other.event === "reopen"
+        && valid.indexOf(other) < at);
+      const lastEarlier = earlier[earlier.length - 1];
+      if (lastEarlier && !valid.slice(valid.indexOf(lastEarlier) + 1, at)
+        .some((event) => event.unit === unit && event.event === "round")) {
+        fail(errors, `unit ${unit} round ${item.round}`, "a reopen is already open; judge the round it named first");
+      }
       // Only the approval in force can be re-opened: a later round judged after it means
       // this reopen names history, and the obligation it opens would name a round that
       // already exists.
