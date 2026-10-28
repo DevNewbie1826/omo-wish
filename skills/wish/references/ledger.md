@@ -67,7 +67,7 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | `head` | `git rev-parse HEAD`; for the `research` type, the frozen artifact's sha256 | 40 lowercase hex; `research` uses 64 lowercase hex | D §2.8, A §C.1 ("FREEZE의 head"), O `ulw-research` `artifact_sha256` |
 | `head7` | `head.slice(0, 7)`, derived, never stored | 7 lowercase hex | D §4 filename rule |
 | `tree` | `git rev-parse HEAD^{tree}`, always full | 40 or 64 lowercase hex; `research` has none (`null`) | D §2.7/§2.8, L |
-| `patch_id` | first field of `git diff <base>...<head> \| git patch-id --verbatim` | 40 hex | C44, v1 `references/review.md:40` |
+| `patch_id` | first field of `git diff <base>...<head> \| git patch-id --verbatim` | 40 hex | C44, v1 skills/wish/references/review.md:40 at cbbfbf8 |
 | `artifact_sha256` | sha256 of the frozen research artifact; equals `head` for a research unit | 64 lowercase hex | A §C.1, O `ulw-research` |
 
 A receipt is valid while its `tree` (or, for research, its `artifact_sha256` in `head`) matches; a verdict

@@ -8,8 +8,9 @@ this file and `ledger.md` could disagree, `ledger.md` wins and this file has a b
 
 Sources: D = the wish v2 design (§2.3, §4 row M2); A = its general-flow addendum (§B4 device rows, §B5 unit
 contract, §C.1 per-type contract rows, §C.6 switch rows, §F M2 delta); U = omo's `ulw-plan` skill (the checkbox
-grammar and the `## Final verification wave` section); v1 = `references/plan.md` and `SKILL.md:32-44` on `main`
-(the `IS`/`COMPANION`/`INVARIANT`/`LIMIT` rows, the risk list, the pinned rules); o3 = branch `exp/o3`,
+grammar and the `## Final verification wave` section); v1 = skills/wish/references/plan.md at cbbfbf8 and
+skills/wish/SKILL.md:32-44 at cbbfbf8 on `main` (the `IS`/`COMPANION`/`INVARIANT`/`LIMIT` rows, the risk list,
+the pinned rules); o3 = branch `exp/o3`,
 `scripts/check-plan.mjs` (the lint arm this file ports and narrows). The two design documents are build-time
 sources: they are named, never linked, because they do not ship with the skill.
 

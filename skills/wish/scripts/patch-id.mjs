@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 // wish v2 — module M4: is the patch a verdict covers still the patch under review?
 //
-// `references/review.md` step 11 and `references/ledger.md` §2: a verdict covers a
-// patch, not a commit. When the head moved only by a rebase, the same command that
-// the step names decides it —
+// A verdict covers a patch, not a commit: `references/ledger.md` §2 defines the
+// `patch_id`, and `playbooks/revise.md` step 9 (FINAL REVIEW, NEW REVIEWER) is the
+// step a changed patch takes. When the head moved only by a rebase, the command
+// below decides it —
 //
 //   git diff <old-base>...<verdict-head> | git patch-id --verbatim
 //   git diff <new-base>...<new-head>    | git patch-id --verbatim
