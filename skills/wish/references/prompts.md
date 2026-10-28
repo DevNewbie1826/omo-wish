@@ -305,7 +305,7 @@ Kinds, from `ledger.md` §9.4 — pick one that differs from the kinds already u
   rather than patch it.
 - `split` — program mode only: the failing component becomes its own unit and PR; its gap row stays `open`,
   and the `switch` event carries `program_id` (the contract rejects a split without it).
-- `rediscover` — re-run DISCOVER for the component with the lens and sweep variants of the class.
+- `rediscover` — re-run COLLECT for the component with the lens and sweep variants of the class.
 
 Record the `switch` **before the next review round is dispatched**. `ledger.md` §9.4 accepts a third-or-later
 REVISE's switch only in the window before the next `round` event for that unit: a switch recorded after the
@@ -642,7 +642,7 @@ Scope: judge the plan; do not rewrite it.
 TASK: review <plan path> against the request and answer OKAY or BLOCKERS with one fix per blocker.
 DELIVERABLE: `VERDICT: OKAY` or `VERDICT: BLOCKERS <n>` and, per blocker, the failing part of the plan and
   the concrete fix; a memo list for typos and wording.
-SCOPE: read the plan, the request, <ER>/receipts/discover-*. OUT OF SCOPE: implementing, editing the plan
+SCOPE: read the plan, the request, <ER>/receipts/collect-*. OUT OF SCOPE: implementing, editing the plan
   (the session records fixes), re-reviewing after the fixes.
 VERIFY: every blocker names either a request `IS`/`COMPANION` row the plan would fail, a regression the plan
   would introduce, or a proof that rests on a behavior the code does not have.
@@ -801,7 +801,7 @@ model the host routes to a different family. Neither reviewer sees the other's r
 - `APPROVED` in round 1 requires both to approve. One `REVISE` makes the round `REVISE`.
 - Record the head before dispatch. If a commit lands while the two run, both reports become history and
   round 1 runs again at the new head.
-- Later rounds stay single-reviewer: the second family exists to widen round 1's discovery, not to double
+- Later rounds stay single-reviewer: the second family exists to widen round 1's search, not to double
   every round's cost.
 
 With the default `round1_families: 1`, one reviewer carries round 1 and this subsection does not apply.
@@ -962,7 +962,7 @@ TASK: reduce the extracts into the candidate lens file `<ER>/lens/reduce-<run>.m
   grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/collect.md`.
 DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (`rules_total`, slices,
   clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the `artifact` and
-  `rules_total` values of the `lens` event.
+  `rules_total` values of the `collect` event.
 SCOPE: the extract files; write the candidate lens file and its run artifact only. OUT OF SCOPE: the project,
   the plan, `<ER>/collect.md` itself (the session publishes it), other receipts.
 VERIFY: every row has six non-empty fields, ids are unique, scope is `universal` or `platform`; the first
@@ -974,18 +974,18 @@ FORBIDDEN: a rule without an anchor; two ids with the same string; dropping an a
 REPORT: `rules_total`, the dropped list size, and the candidate path.
 ```
 
-### 5.4 `collect-explore` - discovery steered by the lens
+### 5.4 `collect-explore` - collection steered by the lens
 
 **TEMPLATE:** `collect-explore`
 
 ```
 Purpose: find where the product violates the lens, not where the request happens to point.
-Scope: explore lane <N> of the discovery wave.
+Scope: explore lane <N> of the COLLECT run.
 
 TASK: apply rules <L ids> to <surfaces> and report every place they are violated.
 DELIVERABLE: one row per observation: `<L id> | <surface> | <current state> | <evidence path or file:line> |
   <severity guess> | <defect|taste>`; an `axes covered` line; and the lane receipt
-  `<ER>/receipts/discover-explore-<lane>-<head7>.md` (`kind: lane`, `stage: discover`, `lane: explore-<lane>`,
+  `<ER>/receipts/collect-explore-<lane>-<head7>.md` (`kind: lane`, `stage: collect`, `lane: explore-<lane>`,
   `head`/`tree` at <head>).
 SCOPE: read the repository/surface; write only that receipt. OUT OF SCOPE: fixing, writing gaps.tsv, collect.md
   or define.md, judging rules you were not given.
@@ -1076,8 +1076,8 @@ Scope: the branch diff or the explicit file list; report only.
 
 TASK: apply the `remove-ai-slops` categories to <scope> and report every instance without fixing it.
 DELIVERABLE: one row per instance: `<category> | file:line | what | why it is slop | suggested fix`; the
-  `remove-ai-slops: ran` line; and the lane receipt `<ER>/receipts/discover-slop-<lane>-<head7>.md`
-  (`kind: lane`, `stage: discover`, `lane: slop-<lane>`, `head`/`tree` at <head>).
+  `remove-ai-slops: ran` line; and the lane receipt `<ER>/receipts/collect-slop-<lane>-<head7>.md`
+  (`kind: lane`, `stage: collect`, `lane: slop-<lane>`, `head`/`tree` at <head>).
 SCOPE: the named diff/files; write only that receipt. OUT OF SCOPE: edits, test changes, reclassifying a
   behavior-preserving pattern as slop.
 VERIFY: every row names a category from the skill's list and a file:line.
