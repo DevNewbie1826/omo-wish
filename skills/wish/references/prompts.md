@@ -18,7 +18,8 @@ child's prompt is.
 
 1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
    lane vocabulary.
-2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`.
+2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
+   `define-report`, `decide-batch`.
 3. Verify-wave lanes — `tests-lane`, `sweep-lane`, `qa-lane`, `code-review-lane`, `adversarial-lane`,
    `gate-repro`.
 4. Review prompts — `plan-review`, `premise-review`, `ultrabrain-r1`, `ultrabrain-r2`, `gate-checkpoint`,
@@ -312,6 +313,103 @@ next round leaves the review continuing without a change of approach, which the 
 
 Review continues after the switch with no round ceiling. Only `APPROVED` ends it. The owner is asked only
 when the decision is theirs (irreversible, destructive, a spend, or accepting a contract `LIMIT`).
+
+### 2.5 `collect-run` - the one mass-ulw run of COLLECT
+
+**TEMPLATE:** `collect-run`
+
+COLLECT is one mass-ulw run with three node families: `harvest`, `extract` and `explore`. Each node gets this
+prompt with its family line filled in. The stage itself, its receipt and its order are owned by `SKILL.md`;
+this prompt only briefs the nodes.
+
+```
+Purpose: <the original requested outcome>.
+Scope: collect for <the request>; read only, write only this node's notes.
+Contract: none yet. COLLECT runs before any plan exists.
+Blockers: none. A collect node never blocks; it reports what it read and what it could not read.
+Separate findings: a defect seen while reading is a note with its locator, never a fix.
+
+FAMILY: <harvest | extract | explore>
+  harvest: read every named source in full: <source list with paths, URLs or ids>. No skimming, no sampling.
+  extract: reduce the harvest notes to the important elements, each with its locator (`path:line`, URL with
+    anchor, or message id), so a later step can open the exact spot.
+  explore: spawn `explore` lanes for the repository and one `librarian` for outside sources, and read from the
+    viewpoint of the project the request serves: how that project uses what the request touches.
+
+TASK: <family>: collect everything that bears on <the request> from <sources> and write it down with locators.
+DELIVERABLE: `<ER>/collect/<family>-<node-id>.md`: one row per element, `<element> | <locator> | <why it
+  matters>`, then an `UNREAD:` list naming every source this node could not read and why.
+SCOPE: read <worktree>, the named sources and <ER>; write only `<ER>/collect/<family>-<node-id>.md`. OUT OF
+  SCOPE: editing any repository file, the plan, <ER>/collect.md (the session assembles it), deciding
+  anything.
+VERIFY: every row has a locator that opens; every named source is either read or listed under `UNREAD:`.
+STOP WHEN: every assigned source is read in full or named as unread.
+TIMEBOX: <minutes; default 20>. At expiry list every unread source under `UNREAD:` by name.
+FORBIDDEN: omitting an unreadable source instead of naming it; trimming the list to look tidy; edits
+  outside SCOPE; asking the requester anything.
+REPORT: the row count, the `UNREAD:` list, and the file path.
+```
+
+An unreadable source is named as unread, never omitted. Over-collecting is deliberate: DEFINE drops what does
+not matter, and a dropped element costs less than a missed one.
+
+### 2.6 `define-report` - the DEFINE stage
+
+**TEMPLATE:** `define-report`
+
+`define-report` and `decide-batch` brief the session's own work, so they write `gaps.tsv` and `gates.md`,
+which §1.2 keeps away from lanes.
+
+```
+Purpose: <the original requested outcome>.
+Scope: define what the request means for its end user, from <ER>/collect.md; no plan.
+Contract: none yet. DEFINE writes the input the plan's contract rows come from.
+Blockers: none. A missing fact is a row marked `unknown` with the source that would settle it.
+Separate findings: anything outside the request's boundary goes to `<ER>/follow-ups.md`, never into a row.
+
+TASK: write `<ER>/define.md` and `<ER>/gaps.tsv` for <the request>.
+DELIVERABLE: `<ER>/define.md` with three parts: the end user and how they use the result now and after the
+  change; the ideal state as rows, `<state> | <reason>`; every difference from today as rows,
+  `<difference> | <reason> | <affected party>`. The same difference rows go to `<ER>/gaps.tsv` in the
+  register shape of `ledger.md` §6.
+SCOPE: read <ER>/collect.md, <ER>/collect/, <worktree>; write only `<ER>/define.md` and `<ER>/gaps.tsv`.
+  OUT OF SCOPE: a plan, a unit split, a test plan, any repository file.
+VERIFY: every difference row in `define.md` has a matching row in `gaps.tsv`, and each row passes the
+  boundary of `contract.md` §3.
+STOP WHEN: both files exist and every difference row carries a reason and an affected party.
+TIMEBOX: <minutes; default 20>. At expiry report the rows written and every unexamined collect element.
+FORBIDDEN: writing a plan, a unit split or a test plan; a row outside the boundary of `contract.md` §3;
+  asking the requester anything.
+REPORT: the counts of ideal rows and difference rows, then both file paths.
+```
+
+### 2.7 `decide-batch` - the one decision batch
+
+**TEMPLATE:** `decide-batch`
+
+```
+Purpose: <the original requested outcome>.
+Scope: gather every decision the requester owns into one batch; decide none of them.
+Contract: <IS/COMPANION/INVARIANT/LIMIT rows verbatim>.
+Blockers: a decision only the requester can make. Everything the session can settle is not one.
+Separate findings: a decision outside the request's boundary is a follow-up, never a batch row.
+
+TASK: write `<ER>/gates.md` with every decision the requester owns, then ask them once in one call.
+DELIVERABLE: `<ER>/gates.md`, one row per decision: `<decision> | <recommended default> | <one line of
+  reasoning>`; one question call carrying all rows; the answers recorded beside their rows.
+SCOPE: read the plan, <ER>/define.md, <ER>/gaps.tsv; write only `<ER>/gates.md`. OUT OF SCOPE: settling a
+  decision the requester owns, editing the plan, starting a build lane.
+VERIFY: every row has a recommended default and a reason line, and exactly one question call was made.
+STOP WHEN: the batch is asked and every answer, or its absence, is recorded.
+TIMEBOX: <minutes; default 10>.
+FORBIDDEN: a second question call; a row without a recommended default; asking about something the
+  session can settle.
+REPORT: the row count, the file path, and each row's recorded answer.
+```
+
+A decision that appears mid-run parks only its lane: the lane's state is `parked`, every other lane
+continues, and the `PROGRESS:` line names it in its `waiting` field. Which decisions belong to the requester
+is owned by `SKILL.md`.
 
 ---
 
