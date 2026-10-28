@@ -599,6 +599,19 @@ export function validateLedgerSequence(events) {
       const judged = rounds.find(({ event }) => event.round === item.round);
       if (!judged || valid.indexOf(judged.event) > valid.indexOf(item) || judged.event.verdict !== "APPROVED") {
         fail(errors, `unit ${unit} round ${item.round}`, "a reopen follows an APPROVED round of the same round number");
+        continue;
+      }
+      const at = valid.indexOf(item);
+      // Only the approval in force can be re-opened: a later round judged after it means
+      // this reopen names history, and the obligation it opens would name a round that
+      // already exists.
+      if (rounds.some(({ event }) => event.round > item.round && valid.indexOf(event) < at)) {
+        fail(errors, `unit ${unit} round ${item.round}`, "a reopen names the unit's latest approved round");
+      }
+      // A closed run has nothing left to re-open: a defect found then is a new run.
+      if (valid.some((event) => event.unit === unit && event.event === "cleanup"
+        && Array.isArray(event.cleanup) && event.cleanup.length > 0 && valid.indexOf(event) < at)) {
+        fail(errors, `unit ${unit} round ${item.round}`, "a reopen cannot follow cleanup; the defect starts a new run");
       }
     }
     const kinds = [];

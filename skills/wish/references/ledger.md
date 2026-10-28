@@ -338,8 +338,10 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 1. `round` events for a unit are `1, 2, 3, …` with no gap.
 2. No further `round` follows an `APPROVED` round for that unit unless a `reopen` event for that unit sits
    between them, naming that round, a `reason` from the set above, and the head the coming round judges.
-   A real approval that a later defect disproves is re-opened on the record; it is never silently
-   overridden, and the re-opened round is judged at the head the `reopen` names.
+   The round it names is the unit's latest approved round, and no `reopen` follows `cleanup` — a defect
+   found after the run closed starts a new run. A real approval that a later defect disproves is re-opened
+   on the record; it is never silently overridden, and the re-opened round is judged at the head the
+   `reopen` names.
 3. A third-or-later `REVISE` round requires a `switch` event for the same round **before the next round** —
    otherwise the review continued without a change of approach, which is not an outcome.
 4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.

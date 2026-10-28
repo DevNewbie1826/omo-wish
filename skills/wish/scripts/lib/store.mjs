@@ -436,9 +436,9 @@ export function switchesOf(events, unit) {
 // §9.4: a reopen voids the approval it names until a later round is judged. The
 // obligation lives in the ledger, so the stage machine and the merge-ready gate read
 // it from the same place the sequence rule does — a reopen the session forgets keeps
-// the run open instead of unlocking a merge. A finished unit has no obligation left.
+// the run open instead of unlocking a merge. (The sequence rule refuses a reopen on a
+// closed run, so only an open unit is ever asked.)
 export function pendingReopen(events, unit) {
-  if (isDone(events, unit)) return null;
   const ordered = events.filter((event) => event.unit === unit
     && (event.event === "reopen" || event.event === "round"));
   for (const [index, item] of ordered.entries()) {

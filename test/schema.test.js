@@ -202,6 +202,17 @@ test("an APPROVED review is re-opened only by an explicit reopen naming its roun
   ];
   expect(validateLedgerSequence(reopenedTwice).ok).toBe(true);
   expect(LEDGER_EVENTS).toContain("reopen");
+
+  const staleReopen = [
+    round(1, "APPROVED"), reopen(1, OTHER), round(2, "APPROVED", OTHER), reopen(1, HEAD),
+  ];
+  expect(validateLedgerSequence(staleReopen).errors.map((entry) => entry.message)).toContain("a reopen names the unit's latest approved round");
+
+  const afterCleanup = [
+    round(1, "APPROVED"), { ...base, event: "cleanup", stage: "cleanup", cleanup: ["branch deleted"] }, reopen(1, HEAD),
+  ];
+  expect(validateLedgerSequence(afterCleanup).errors.map((entry) => entry.message))
+    .toContain("a reopen cannot follow cleanup; the defect starts a new run");
 });
 
 test("the switch cycle never caps the round count", () => {

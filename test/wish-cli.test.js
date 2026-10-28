@@ -2069,5 +2069,15 @@ describe("reopen", () => {
     const otherHead = append(state, { event: "round", round: 2, verdict: "APPROVED", head: state.repo.head });
     expect(otherHead.code).toBe(3);
     expect(otherHead.err).toContain("the head the next round judges");
+
+    // Only the approval in force can be re-opened, and a closed run opens a new one.
+    expect(append(state, { event: "round", round: 2, verdict: "APPROVED", head: fix.head }).code).toBe(0);
+    const stale = append(state, { event: "reopen", round: 1, reason: "owner-found-defect", head: fix.head });
+    expect(stale.code).toBe(3);
+    expect(stale.err).toContain("latest approved round");
+    expect(append(state, { event: "cleanup", cleanup: ["branch deleted (exit 0)"] }).code).toBe(0);
+    const closed = append(state, { event: "reopen", round: 2, reason: "owner-found-defect", head: fix.head });
+    expect(closed.code).toBe(3);
+    expect(closed.err).toContain("cannot follow cleanup");
   });
 });
