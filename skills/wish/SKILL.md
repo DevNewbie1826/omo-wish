@@ -77,7 +77,8 @@ Review has no round ceiling. `APPROVED` is the only end.
 3. After the switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain reviewer on the delta and the prior findings.
 4. The owner is never asked whether to keep reviewing; only for a decision that is theirs — and while a gate is open, other units keep running.
 
-A defect found after `APPROVED` is real work: the approved round is re-opened on the record — `reopen` with the round, a reason and the new head — and the re-opened round goes through the same lanes, gate and a fresh reviewer as any other round. Review therefore still ends only at `APPROVED`; the re-open changes which head is judged, never how much is reviewed.
+A defect found after `APPROVED` re-opens the approved round on the record — `reopen` with its round, reason and
+new head (`references/ledger.md` §9.4).
 
 `references/contract.md` §6 and `references/ledger.md` §9.4 are the binding statements; `playbooks/revise.md` runs them.
 
