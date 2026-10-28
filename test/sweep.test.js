@@ -675,6 +675,86 @@ test("a git fixture documents a flag the diff itself documents wrongly and it st
   expect(run.exit).toBe(1);
 }, 120000);
 
+test("a git-quoted non-ASCII doc path is not misparsed into a silent skip", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const docName = "docs-한글.md";
+  writeFileSync(join(dir, docName), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff documents a new, unsupported flag in the non-ASCII-named doc: the
+  // -z delimited diff must name that file (not a quoted string) so the probe
+  // checks it instead of silently skipping it.
+  writeFileSync(join(dir, docName), readFileSync(join(dir, docName), "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["*.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a nested sweep root under the git toplevel reads the changed docs relative to the root", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "guide.md"), "# guide\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "guide").exitCode).toBe(0);
+  writeFileSync(join(nested, "guide.md"), readFileSync(join(nested, "guide.md"), "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeFileSync(join(nested, ".wish-sweep.json"), JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["guide.md"], base: "HEAD~1" } } }, null, 2));
+  const out = join(nested, "out");
+  const run = invoke(nested, ["--root", nested, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", nested, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a diverged base compares the merge base, not the branch tip, for the pre-existing side", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  expect(git("branch", "upstream").exitCode).toBe(0);
+  // Upstream documents --upstream-flag after the fork: it is not part of the
+  // reviewed diff and must not be blamed on it.
+  expect(git("checkout", "-q", "upstream").exitCode).toBe(0);
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--upstream-flag` is an upstream flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "upstream").exitCode).toBe(0);
+  expect(git("checkout", "-q", "-b", "fork", "upstream~1").exitCode).toBe(0);
+  // The fork documents a new, unsupported flag.
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "fork").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "upstream" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  // The fork's own new flag still fails: the change is blamed for it.
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  // The pre-existing flag is compared against the merge base, not the
+  // diverged branch tip, so it stays on the WARN side.
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
 test("the docs help command is supervised by the same bounded runner", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });

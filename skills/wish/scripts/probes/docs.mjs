@@ -12,8 +12,8 @@
 // keeps deciding the one defect the change can be blamed for.
 
 import { readFileSync } from "node:fs";
-import { sep } from "node:path";
-import { assertRevision, globToRegExp, gitLines, matchFiles, row, runCommand, isMain, probeCli } from "./lib.mjs";
+import { resolve, sep } from "node:path";
+import { assertRevision, globToRegExp, gitLines, matchFiles, q, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
 export const name = "docs";
 export const types = ["code"];
@@ -27,39 +27,75 @@ export const usage = `config:
 
 Every token matched by "flagPattern" in the changed docs must appear in the
 output of "helpCmd" or in "known". A flag the diff itself documents and the
-program lacks FAILs; a flag already documented at "base" is a pre-existing row
-and only WARNs, because the declared help command is not required to list every
-historical flag. "base" must be a revision, never an option, and it defaults
-to "origin/main" like the other diff-aware probes, so a sweep config that
-omits the key still gets the diff scoping that keeps pre-existing flags from
-failing the run. When the diff against the base cannot be read (not a
-checkout, or the base revision does not exist) the probe falls back to the
-full declared doc set and every absent flag FAILs, so it never passes
-silently on a state it cannot see. The help command runs once through the
-same supervised runner as every other command (its own process session,
-killed on timeout), with "helpTimeoutMs" (default: the run's "timeoutMs").
-A documented flag with a wrong description is not decided here; that row
-goes to the checklist pass.`;
+program lacks FAILs; a flag already documented at the merge base of "base"
+and HEAD is a pre-existing row and only WARNs, because the declared help
+command is not required to list every historical flag. "base" must be a
+revision, never an option, and it defaults to "origin/main" like the other
+diff-aware probes, so a sweep config that omits the key still gets the diff
+scoping that keeps pre-existing flags from failing the run. When the diff
+against the base cannot be read (not a checkout, or the base revision does
+not exist) the probe falls back to the full declared doc set and every
+absent flag FAILs, so it never passes silently on a state it cannot see.
+The help command runs once through the same supervised runner as every other
+command (its own process session, killed on timeout), with "helpTimeoutMs"
+(default: the run's "timeoutMs"). A documented flag with a wrong description
+is not decided here; that row goes to the checklist pass.`;
 
-// The file set the diff against "base" changed, as relative paths; `null`
-// when the diff cannot be read, in which case the caller falls back to the
-// full set. `--no-renames` keeps a moved doc's old path in the list, so the
-// base side of the move is still readable and its documented flags are not
-// lost.
-async function changedFiles(root, base) {
-  const text = await gitLines(root, ["diff", "--no-renames", "--name-only", `${base}...HEAD`]);
-  return text === null ? null : text.split("\n").map((line) => line.trim()).filter(Boolean);
+// Paths git names are relative to the repository toplevel, but a sweep root
+// may be the toplevel or a subdirectory of it. Normalizing both sides to the
+// root makes a nested root read the same doc set it walks. `null` when the
+// root is not inside a repository the diff can be read from.
+async function toplevelPrefix(root) {
+  const out = await gitLines(root, ["rev-parse", "--show-toplevel"]);
+  const toplevel = out?.trim() ?? null;
+  if (toplevel === null) return null;
+  if (resolve(toplevel) === resolve(root)) return "";
+  const rootResolved = resolve(root);
+  const topResolved = resolve(toplevel);
+  if (!rootResolved.startsWith(`${topResolved}${sep}`)) return null;
+  return rootResolved.slice(topResolved.length + 1).split(sep).join("/");
 }
 
-// The flags "base" already documented in the doc files the diff touched, so a
-// row can tell a new promise from an old one it is not being blamed for. Only
-// the declared doc globs are read at the base: a comment in a code file is
-// not a documentation promise.
-async function preExistingFlags(root, base, changed, globs, pattern) {
+// The file set the diff against "base" changed, as paths relative to the
+// root; `null` when the diff cannot be read, in which case the caller falls
+// back to the full set. `-z` names one file per NUL-delimited entry, so a
+// git-quoted (non-ASCII or special-character) path is never misparsed;
+// `--no-renames` keeps a moved doc's old path in the list, so the base side
+// of the move is still readable and its documented flags are not lost.
+async function changedFiles(root, base, prefix) {
+  const out = await runCommand({
+    cmd: ["git", "-C", q(root), "diff", "-z", "--no-renames", "--name-only", q(`${base}...HEAD`)].join(" "),
+    cwd: root, timeoutMs: 60000,
+  });
+  if (out.code !== 0) return null;
+  const files = out.stdout.split("\0").filter(Boolean);
+  if (prefix === "") return files;
+  // Prefix off the git path: the root's own files are `prefix/name`, and a
+  // moved file's old path keeps its old directory.
+  return files.map((rel) => (rel.startsWith(`${prefix}/`) ? rel.slice(prefix.length + 1) : rel));
+}
+
+// The commit both diff sides actually compare against: `base...HEAD` diffs
+// the merge base, so the base-side file reads use the same commit, and a
+// flag upstream documented after the fork is never mistaken for one the
+// diff introduced. `null` when the merge base cannot be resolved.
+async function mergeBase(root, base) {
+  const out = await gitLines(root, ["merge-base", base, "HEAD"]);
+  const commit = out?.trim();
+  return commit && /^[0-9a-f]{40}$/.test(commit) ? commit : null;
+}
+
+// The flags the merge base already documented in the doc files the diff
+// touched, so a row can tell a new promise from an old one it is not being
+// blamed for. Only the declared doc globs are read at the base: a comment in
+// a code file is not a documentation promise. The path git shows is the same
+// root-relative path the diff named, so a nested root keeps working.
+async function preExistingFlags(root, baseCommit, changed, globs, pattern, prefix) {
   const flags = new Set();
   const regexes = (globs ?? []).map(globToRegExp);
   for (const rel of changed.filter((candidate) => regexes.some((regex) => regex.test(candidate)))) {
-    const atBase = await gitLines(root, ["show", `${base}:${rel}`]);
+    const gitPath = prefix === "" ? rel : `${prefix}/${rel}`;
+    const atBase = await gitLines(root, ["show", `${baseCommit}:${gitPath}`]);
     if (atBase !== null) for (const match of atBase.matchAll(pattern)) flags.add(match[0]);
   }
   return flags;
@@ -83,25 +119,38 @@ export async function run(config, ctx) {
   const helpText = `${help.stdout}\n${help.stderr}`;
   const known = new Set(config.known ?? []);
   const pattern = new RegExp(config.flagPattern ?? "--[a-z][a-z0-9-]{2,}", "g");
+  const prefix = await toplevelPrefix(ctx.root);
   // Diff-aware: check only the doc files the diff touched, and read each
-  // flagged file's base revision for the flags that pre-date it. When the
-  // diff cannot be read the probe falls back to the full declared doc set and
-  // every absent flag FAILs, so it never passes silently on a state it
+  // flagged file's merge-base revision for the flags that pre-date it. When
+  // the diff cannot be read the probe falls back to the full declared doc set
+  // and every absent flag FAILs, so it never passes silently on a state it
   // cannot see. When the diff is readable and it touched no doc, the probe
   // has nothing new to judge and skips.
   let preExisting = null;
   let checkedFiles = docs;
-  const changed = await changedFiles(ctx.root, base);
-  if (changed !== null) {
-    const changedSet = new Set(changed);
-    checkedFiles = docs.filter((file) => changedSet.has(file.slice(ctx.root.length + 1).split(sep).join("/")));
-    if (checkedFiles.length === 0) {
-      return [row({
-        id: "docs", verdict: "SKIP", observable: "at least one changed doc is declared", cls,
-        note: `the diff against ${base} changed no doc matching the declared globs; the changed rows belong to the checklist pass`,
-      })];
+  if (prefix !== null) {
+    const changed = await changedFiles(ctx.root, base, prefix);
+    if (changed !== null) {
+      const changedSet = new Set(changed);
+      checkedFiles = docs.filter((file) => changedSet.has(file.slice(ctx.root.length + 1).split(sep).join("/")));
+      if (checkedFiles.length === 0) {
+        return [row({
+          id: "docs", verdict: "SKIP", observable: "at least one changed doc is declared", cls,
+          note: `the diff against ${base} changed no doc matching the declared globs; the changed rows belong to the checklist pass`,
+        })];
+      }
+      const baseCommit = await mergeBase(ctx.root, base);
+      if (baseCommit === null) {
+        // The diff read but the base side cannot be resolved: the probe
+        // cannot see the pre-existing side, so it judges nothing it is not
+        // sure of and falls back to the full set with every absent flag
+        // FAILing.
+        preExisting = new Set();
+        checkedFiles = docs;
+      } else {
+        preExisting = await preExistingFlags(ctx.root, baseCommit, changed, globs, pattern, prefix);
+      }
     }
-    preExisting = await preExistingFlags(ctx.root, base, changed, globs, pattern);
   }
   const documented = new Set();
   for (const file of checkedFiles) {
@@ -130,15 +179,15 @@ export async function run(config, ctx) {
       continue;
     }
     // Absent from the help output: FAIL when the diff introduced the promise,
-    // or when the diff side could not be read; WARN when the flag was already
-    // documented at the base revision.
+    // or when the base side could not be resolved; WARN when the flag was
+    // already documented at the merge base of base and HEAD.
     const oldRow = preExisting?.has(token) ?? false;
     checks.push(row({
       id: `docs/${token}`, command: config.helpCmd,
       observable: "a documented flag is in the help output or the known list",
       verdict: oldRow ? "WARN" : "FAIL", cls,
       note: oldRow
-        ? `pre-existing documented flag: already documented at ${base} but missing from the help output; the change is not blamed for it`
+        ? `pre-existing documented flag: already documented at the merge base of ${base} and HEAD but missing from the help output; the change is not blamed for it`
         : "documented flag does not exist in help output or the known list",
     }));
   }
