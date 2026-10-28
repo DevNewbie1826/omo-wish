@@ -6,9 +6,9 @@ file fixes the boundary every review judges against. When this file and `ledger.
 `ledger.md` wins.
 
 Sources: D = the wish v2 design (§2.5-§2.6, §4); A = its general-flow addendum (§B4 device rows, §B5 unit
-contract, §C.6 the cap is a switch); v1 = `SKILL.md:32-56` and `references/plan.md` on `main` (the contract rows,
-the companion guards, the reviewer rule). The design documents are build-time sources: named, never linked,
-because they do not ship with the skill.
+contract, §C.6 the cap is a switch); v1 skills/wish/SKILL.md:32-56 and skills/wish/references/plan.md at cbbfbf8
+on `main` (the contract rows, the companion guards, the reviewer rule). The design documents are build-time
+sources: named, never linked, because they do not ship with the skill.
 
 ## 1. What the contract is
 
@@ -26,7 +26,7 @@ contract, and they are the only thing a reviewer may block on (`plan-format.md` 
   wording, no evidence format.
 
 The plan review (PLAN-REVIEW, §4) judges the contract itself: whether the invariants and limits cover what the
-request needs kept (`references/plan.md` Step 3 at `main` is this judgment). Because nothing outside the
+request needs kept (skills/wish/references/plan.md Step 3 at cbbfbf8 is this judgment). Because nothing outside the
 contract can block later, a contract with a hole is a contract defect that only that review can catch.
 
 ## 2. The unit's contract is the unit's IS rows only
@@ -78,8 +78,9 @@ stay byte-identical.
 
 Evidence problems are never a REVISE reason. Typos, number errors, and wording or format problems in evidence or reports do not cause REVISE. Write each one as a correction memo in your report; do not fix the evidence yourself and do not request a re-review for it. Only a problem in CODE can cause REVISE, and only inside the plan's finite contract: a listed invariant violated, shown by a failing test (or, for a behavior the plan marks no-test, by its failing QA scenario), or an IS or COMPANION row not delivered. Report every other finding as a note or a follow-up, never as a blocker; a known limit listed in the plan is not a finding. The plan review of step 3 judges the contract itself and keeps the blocker definition of references/plan.md, Step 3.
 
-That last sentence names `references/plan.md` and its Step 3 because the paragraph is carried verbatim from v1;
-in v2 that file is replaced by this one, and step 3's plan review is §4 above.
+That last sentence names the v1 file skills/wish/references/plan.md at cbbfbf8 and its Step 3 because the
+paragraph is carried verbatim from v1; in v2 that file is replaced by this one, and step 3's plan review is §4
+above.
 
 ## 6. A cap is a switch, never an exit
 
