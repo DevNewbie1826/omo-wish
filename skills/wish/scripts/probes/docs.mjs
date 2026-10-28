@@ -160,13 +160,6 @@ async function preExistingFlags(root, baseCommit, changed, globs, pattern, prefi
       // there is nothing pre-existing to exempt. No blob read is needed.
       continue;
     }
-    if (entry.blobSha === "0000000000000000000000000000000000000000") {
-      // A tree entry is membership proof: the base lists the path. When
-      // the tree entry points at an empty tree (a dir moved into for the
-      // first time) there is no pre-existing flag to exempt, so this is
-      // the genuinely-new case, not a failure.
-      continue;
-    }
     const atBase = await gitLines(root, ["show", `${baseCommit}:${gitPath}`]);
     if (atBase !== null) {
       for (const match of atBase.matchAll(pattern)) flags.add(match[0]);

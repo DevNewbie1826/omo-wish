@@ -853,6 +853,9 @@ test("an unreadable base document forces the full doc set and drops every pre-ex
   const nested = join(dir, "nested");
   mkdirSync(nested, { recursive: true });
   writeFileSync(join(nested, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  // The unchanged top-level doc documents a distinct flag, --unchanged-only,
+  // that lives nowhere in the diff: only a full-set fallback can judge it.
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--unchanged-only` is a top-level flag.\n");
   expect(git("add", "-A").exitCode).toBe(0);
   expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
   // The diff touches the nested doc and adds prose: with the base blob
@@ -940,8 +943,12 @@ test("an unreadable base document forces the full doc set and drops every pre-ex
   const dryRun = receiptAfter.rows.find((entry) => entry.id === "docs/--dry-run");
   expect(dryRun?.verdict).toBe("FAIL");
   expect(dryRun?.note).not.toContain("pre-existing");
-  // The fallback keeps the full declared doc set: the unchanged top-level
-  // doc's flag is judged too, so its absent flag FAILs alongside it.
+  // The fallback keeps the full declared doc set: a flag that exists only in
+  // the unchanged top-level doc is judged too. The pre-fix probe judges the
+  // changed file only, so this row does not exist before the fix and the
+  // fixture fails on both the missing-blob and the old show-only reads.
+  const unchangedOnly = receiptAfter.rows.find((entry) => entry.id === "docs/--unchanged-only");
+  expect(unchangedOnly?.verdict).toBe("FAIL");
   expect(receiptAfter.rows.some((entry) => entry.id === "docs" && entry.verdict === "SKIP")).toBe(false);
   expect(runAfter.exit).toBe(1);
 }, 120000);
