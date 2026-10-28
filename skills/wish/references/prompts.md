@@ -396,9 +396,13 @@ DELIVERABLE: `<ER>/gates.md` in the `ledger.md` §13 shape: a `# Gates` heading,
   `Default` must be one of them; `Status: open` has no `Answer`. Write each block with
   `wish gate add --id <id> --question <text> --options <a|b> --default <a>` and record each answer with
   `wish gate resolve --id <id> --answer <text>`. One question call carries all blocks.
+  Zero decisions: when the batch holds no decision the requester owns, write no gates file at all (or
+  leave it empty) and make no question call, because a `# Gates` heading with no `## <id>` block is
+  rejected by the parser. Record the `decide` event with `count: 0` and empty `gates` and `recommended` arrays.
 SCOPE: read the plan, <ER>/define.md, <ER>/gaps.tsv; write only `<ER>/gates.md`. OUT OF SCOPE: settling a
   decision the requester owns, editing the plan, starting a build lane.
-VERIFY: every block has `Options` with at least two choices and a `Default` among them, and exactly one question call was made.
+VERIFY: every block that exists has `Options` with at least two choices and a `Default` among them, and
+  exactly one question call was made when the batch is non-empty (zero calls when it is empty).
 STOP WHEN: the batch is asked and every answer, or its absence, is recorded.
 TIMEBOX: <minutes; default 10>.
 FORBIDDEN: a second question call; a row without a recommended default; asking about something the
