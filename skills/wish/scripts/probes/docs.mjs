@@ -102,32 +102,80 @@ async function mergeBase(root, base) {
   return commit && /^[0-9a-f]{40}$/.test(commit) ? commit : null;
 }
 
+async function baseTreeMembership(root, baseCommit, changed, globs, prefix) {
+  const regexes = (globs ?? []).map(globToRegExp);
+  const out = await runCommand({
+    cmd: ["git", "-C", q(root), "ls-tree", "-z", "--full-tree", "-r", q(baseCommit)].join(" "),
+    cwd: root, timeoutMs: 60000,
+  });
+  // -z lists one entry per NUL-delimited record of "mode type sha0\tname",
+  // where name is toplevel-relative. The declared doc globs are root-
+  // relative, so strip the prefix off the name before the glob test; a
+  // toplevel file whose name sits outside the prefix is not in this run.
+  const membership = new Map();
+  if (out.code === 0) {
+    for (const entry of out.stdout.split("\0")) {
+      if (!entry) continue;
+      const tab = entry.indexOf("\t");
+      if (tab === -1) continue;
+      const meta = entry.slice(0, tab).split(" ");
+      const toplevelName = entry.slice(tab + 1);
+      if (meta.length !== 3 || meta[1] !== "blob") continue;
+      const rootRel = prefix === "" ? toplevelName : (toplevelName.startsWith(`${prefix}/`) ? toplevelName.slice(prefix.length + 1) : null);
+      if (rootRel === null) continue;
+      // Record every tree entry whose name matches the declared doc globs;
+      // a tree entry is the membership proof, so a path that is listed is
+      // not "new" even when its blob later fails to read.
+      if (regexes.some((regex) => regex.test(rootRel))) {
+        membership.set(toplevelName, { blobSha: meta[2] });
+      }
+    }
+  }
+  const gitPathOf = (rel) => (prefix === "" ? rel : `${prefix}/${rel}`);
+  const result = [];
+  for (const rel of changed) {
+    const entry = membership.get(gitPathOf(rel));
+    result.push({ rel, knownAtBase: entry !== undefined, blobSha: entry?.blobSha ?? null });
+  }
+  return out.code === 0 ? result : null;
+}
 // The flags the merge base already documented in the doc files the diff
 // touched, so a row can tell a new promise from an old one it is not being
 // blamed for. Only the declared doc globs are read at the base: a comment in
-// a code file is not a documentation promise. The path git shows is the same
-// root-relative path the diff named, so a nested root keeps working. When
-// the diff moved a path, the base side may not have it at all; that is the
-// genuinely-new case and not a failure. A path the diff touched that exists
-// in the tree but whose base blob cannot be read is a failure: the caller
-// must fall back to the full set rather than judge with a partial view.
+// a code file is not a documentation promise. A path the diff moved into for
+// the first time is genuinely new, not a failure. A path the base tree lists
+// but whose blob cannot be read is a failure: the caller must fall back to
+// the full set rather than judge with a partial view.
 async function preExistingFlags(root, baseCommit, changed, globs, pattern, prefix) {
   const flags = new Set();
+  const membership = await baseTreeMembership(root, baseCommit, changed, globs, prefix);
+  if (membership === null) return { flags, error: true };
   const regexes = (globs ?? []).map(globToRegExp);
   const gitPathOf = (rel) => (prefix === "" ? rel : `${prefix}/${rel}`);
-  for (const rel of changed.filter((candidate) => regexes.some((regex) => regex.test(candidate)))) {
-    const gitPath = gitPathOf(rel);
-    const knownAtBase = await gitLines(root, ["cat-file", "-e", `${baseCommit}:${gitPath}`]);
+  for (const entry of membership) {
+    if (!regexes.some((regex) => regex.test(entry.rel))) continue;
+    const gitPath = gitPathOf(entry.rel);
+    if (entry.blobSha === null) {
+      // Not listed in the base tree: the diff introduced this file, so
+      // there is nothing pre-existing to exempt. No blob read is needed.
+      continue;
+    }
+    if (entry.blobSha === "0000000000000000000000000000000000000000") {
+      // A tree entry is membership proof: the base lists the path. When
+      // the tree entry points at an empty tree (a dir moved into for the
+      // first time) there is no pre-existing flag to exempt, so this is
+      // the genuinely-new case, not a failure.
+      continue;
+    }
     const atBase = await gitLines(root, ["show", `${baseCommit}:${gitPath}`]);
     if (atBase !== null) {
       for (const match of atBase.matchAll(pattern)) flags.add(match[0]);
       continue;
     }
-    if (knownAtBase !== null) {
-      // The base entry exists but could not be read: the pre-existing side is
-      // only half-known, and half is not enough to downgrade a row to WARN.
-      return { flags, error: true };
-    }
+    // The base tree lists the path but its blob cannot be read: the
+    // pre-existing side is only half-known, and half is not enough to
+    // downgrade a row to WARN.
+    return { flags, error: true };
   }
   return { flags, error: false };
 }

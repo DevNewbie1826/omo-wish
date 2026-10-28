@@ -863,7 +863,7 @@ test("an unreadable base document forces the full doc set and drops every pre-ex
   writeFileSync(join(nested, "usage.md"), readFileSync(join(nested, "usage.md"), "utf8") + "The flag prints the payload without sending.\n");
   expect(git("add", "-A").exitCode).toBe(0);
   expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
-  const nestedConfig = JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["nested/usage.md", "usage.md"], base: "HEAD~1" } } }, null, 2);
+  const nestedConfig = JSON.stringify({ probes: { docs: { helpCmd: "bun cli.js --help", docs: ["nested/usage.md", "usage.md"], base: "HEAD~1" } } }, null, 2);
   writeFileSync(join(dir, ".wish-sweep.json"), nestedConfig);
   // A working run: the pre-existing flag only warns and the run exits 0.
   const out = join(dir, "out");
@@ -874,30 +874,57 @@ test("an unreadable base document forces the full doc set and drops every pre-ex
   expect(runBefore.exit).toBe(0);
   // Break the base read: the merge base of base and HEAD is the commit
   // "docs", so rewrite that commit's tree to point the doc path at a
-  // missing blob. The diff against HEAD~1 still lists the path, but
-  // `git show` at the base fails while `cat-file -e` passes, which is
-  // exactly the half-known state the probe must not treat as pre-existing.
+  // missing blob. The diff against HEAD~1 still lists the path, and the
+  // base tree still names it, but `git show` at the base fails: exactly
+  // the half-known state the probe must not treat as pre-existing. The
+  // top-level doc also carries the flag, so a correct fallback must keep
+  // it in the judged set and let the absent flag FAIL there too.
   const missingBlob = "1234567890abcdef1234567890abcdef12345678";
   const gitRepo = (args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir }).stdout.toString().trim();
   const docsCommit = gitRepo(["-C", dir, "rev-parse", "HEAD~1"]);
   const docsTree = gitRepo(["-C", dir, "rev-parse", "HEAD~1^{tree}"]);
-  const treeEntries = [];
+  expect(docsTree.length).toBe(40);
+  // The broken entry sits two levels deep (nested/usage.md), and mktree
+  // builds one tree level at a time: replace the nested subtree's usage.md
+  // entry with the missing blob, then rebuild the top-level tree around the
+  // broken subtree.
+  const nestedEntry = gitRepo(["-C", dir, "ls-tree", docsTree, "--", "nested"]).trim();
+  const nestedSubTreeSha = nestedEntry.split("\t")[0].split(" ")[2];
+  expect(nestedSubTreeSha.length).toBe(40);
+  const nestedEntries = [];
+  for (const line of gitRepo(["-C", dir, "ls-tree", nestedSubTreeSha]).split("\n")) {
+    if (!line) continue;
+    const [meta, name] = line.split("\t");
+    if (name === "usage.md") {
+      const [mode, type] = meta.split(" ");
+      nestedEntries.push(`${mode} ${type} ${missingBlob}\t${name}`);
+      continue;
+    }
+    nestedEntries.push(line);
+  }
+  const nestedEntriesFile = join(dir, ".mktree-nested");
+  writeFileSync(nestedEntriesFile, nestedEntries.join("\n") + "\n");
+  const brokenNestedTree = Bun.spawnSync(["sh", "-c", `git -C ${JSON.stringify(dir)} mktree --missing < ${JSON.stringify(nestedEntriesFile)}`]).stdout.toString().trim();
+  expect(brokenNestedTree.length).toBe(40);
+  const topEntries = [];
   for (const line of gitRepo(["-C", dir, "ls-tree", docsTree]).split("\n")) {
     if (!line) continue;
     const [meta, name] = line.split("\t");
     if (name === "nested") {
-      const subTree = meta.split(" ")[1];
-      treeEntries.push(`040000 ${subTree}\tnested`);
+      topEntries.push(`040000 tree ${brokenNestedTree}\tnested`);
       continue;
     }
-    if (name === "usage.md") {
-      treeEntries.push(`100644 ${missingBlob}\t${name}`);
-      continue;
-    }
-    treeEntries.push(line);
+    topEntries.push(line);
   }
-  const brokenTreeSha = Bun.spawnSync(["git", "-C", dir, "mktree", "-"], { cwd: dir, input: treeEntries.join("\n") }).stdout.toString().trim();
+  const topEntriesFile = join(dir, ".mktree-top");
+  writeFileSync(topEntriesFile, topEntries.join("\n") + "\n");
+  const brokenTreeSha = Bun.spawnSync(["sh", "-c", `git -C ${JSON.stringify(dir)} mktree < ${JSON.stringify(topEntriesFile)}`]).stdout.toString().trim();
   expect(brokenTreeSha.length).toBe(40);
+  // Membership proof: the broken tree lists the doc path through the broken
+  // subtree, so the entry is not "new" even though the blob cannot be read.
+  const brokenListing = gitRepo(["-C", dir, "ls-tree", brokenTreeSha, "--", "nested/usage.md"]);
+  expect(brokenListing).toContain(missingBlob);
+  expect(gitRepo(["-C", dir, "show", `${brokenTreeSha}:nested/usage.md`]).length).toBe(0);
   const headSha = gitRepo(["-C", dir, "rev-parse", "HEAD"]);
   const headTree = gitRepo(["-C", dir, "rev-parse", "HEAD^{tree}"]);
   const brokenDocsCommit = gitRepo(["-C", dir, "commit-tree", brokenTreeSha, "-m", "docs", "-p", docsCommit]);
@@ -905,12 +932,17 @@ test("an unreadable base document forces the full doc set and drops every pre-ex
   const brokenHeadCommit = gitRepo(["-C", dir, "commit-tree", headTree, "-m", "broken", "-p", brokenDocsCommit]);
   expect(brokenHeadCommit.length).toBe(40);
   expect(git("update-ref", "HEAD", brokenHeadCommit).exitCode).toBe(0);
+  rmSync(join(dir, ".mktree-nested"), { force: true });
+  rmSync(join(dir, ".mktree-top"), { force: true });
   const runAfter = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
   const headAfter = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
   const receiptAfter = JSON.parse(readFileSync(join(out, `verify_lane-docs-${headAfter.slice(0, 7)}.json`), "utf8"));
   const dryRun = receiptAfter.rows.find((entry) => entry.id === "docs/--dry-run");
   expect(dryRun?.verdict).toBe("FAIL");
   expect(dryRun?.note).not.toContain("pre-existing");
+  // The fallback keeps the full declared doc set: the unchanged top-level
+  // doc's flag is judged too, so its absent flag FAILs alongside it.
+  expect(receiptAfter.rows.some((entry) => entry.id === "docs" && entry.verdict === "SKIP")).toBe(false);
   expect(runAfter.exit).toBe(1);
 }, 120000);
 
