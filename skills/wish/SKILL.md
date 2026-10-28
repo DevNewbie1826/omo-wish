@@ -211,6 +211,15 @@ new reviewer for each re-review rather than the same child continued.
 | `references/defect-classes.md` | the class dictionary, probes and review axes |
 | `references/metrics.md` | columns, `pr-watch`, targets and quality guards |
 
+## Language
+
+The skill is written in English. Three things are exempt, and each is exempt because removing it would lose a
+guarantee rather than a preference: the `/wish` menu label in `prompts/wish.md`, which is product copy in the
+requester's language; the verbatim mirror of the visual-QA skill's CJK line-breaking examples, which is a
+visual-QA condition and not prose; and the test suite's non-ASCII path fixtures, which exist to prove the tooling
+survives paths outside ASCII. Everything else — this contract, the readme, the playbooks, the references, the
+script comments — carries no Korean text.
+
 ## Finish
 
 Stop when the register is closed (every `defect` row `fixed`, `accepted-limit` or `out-of-scope`), every unit's PR
