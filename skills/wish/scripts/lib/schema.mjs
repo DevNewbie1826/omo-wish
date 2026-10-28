@@ -36,10 +36,10 @@ export const TIERS = Object.freeze(["S", "M", "L"]);
 export const WORK_TYPES = Object.freeze(["code", "design", "research", "audit", "mixed"]);
 export const PRIMARY_TYPES = Object.freeze(["code", "design", "research", "audit"]);
 
-// D §4 (event names) + A §C.4/F (lens, ideal, gap, before, switch, progress).
+// The current stage map plus side events; the legacy corpus stages are retired.
 export const LEDGER_EVENTS = Object.freeze([
-  "intake", "lens", "discover", "ideal", "gap", "before", "plan", "plan_lint",
-  "plan_review", "goal", "build", "verify_lane", "triage", "fix", "reuse",
+  "intake", "collect", "define", "before", "plan", "plan_lint",
+  "plan_review", "decide", "goal", "build", "verify_lane", "triage", "fix", "reuse",
   "freeze", "pr_open", "gate", "round", "verdict", "switch", "progress",
   "merge", "post_merge", "checkpoint", "cleanup", "resume",
 ]);
@@ -83,7 +83,7 @@ export const SWITCH_KINDS = Object.freeze([
 ]);
 export const ROUND_VERDICTS = Object.freeze(["APPROVED", "REVISE"]);
 
-// A §C.1 `VERIFY-WAVE 레인(= 장치)`; `mixed` is the union of its two types.
+// A §C.1 verification lanes; `mixed` is the union of its two types.
 // `adversarial` is required only for a plan that flags a high-risk row (D §2.3).
 export const REQUIRED_RECEIPTS = Object.freeze({
   code: Object.freeze(["tests", "qa", "sweep", "code-review", "adversarial"]),
@@ -159,7 +159,7 @@ export const DEVICE_PATTERN_SOURCES = Object.freeze({
   audit: [/^lint .+ exit 0$/, /^spot [1-9][0-9]* rows reproduce$/],
 });
 
-// C43 shared columns, verbatim (verified on origin/wish/review-dispatch-gate);
+// C43 shared columns, verbatim;
 // A §F M7 appends its v2 columns and never reorders these.
 export const MEASUREMENTS_COLUMNS = Object.freeze([
   "pr", "repo", "arm", "common_arms", "route_class", "size_bucket", "stacked_on",
@@ -175,7 +175,7 @@ export const ROUNDS_COLUMNS = Object.freeze([
   "verdict_head_match",
 ]);
 export const V2_MEASUREMENTS_SUFFIX = Object.freeze([
-  "type", "unit", "program_id", "switch_count", "rounds_after_switch", "lens_rules",
+  "type", "unit", "program_id", "switch_count", "rounds_after_switch",
   "gaps_total", "gaps_fixed", "before_receipts",
 ]);
 export const V2_ROUNDS_SUFFIX = Object.freeze(["type", "unit", "program_id", "switch_count", "switch_kinds"]);
@@ -302,15 +302,14 @@ const LEDGER_COMMON_SPEC = {
 };
 const LEDGER_EVENT_EXTRAS = {
   intake: { tier: T.enumOf(TIERS), facts: T.arr(T.str, 1) },
-  lens: { artifact: T.str, rules_total: T.int(0) },
-  ideal: { artifact: T.str },
-  gap: { gap_id: T.gap, gap_status: T.enumOf(GAP_STATUSES) },
+  collect: { sources: T.opt(T.int(0)), elements: T.opt(T.int(0)), report: T.opt(T.str) },
+  define: { round: T.opt(T.int(0)), ideal: T.opt(T.int(0)), gaps: T.opt(T.int(0)), report: T.opt(T.str) },
   before: { gap_id: T.gap, artifact: T.str },
-  plan: { artifact: T.str },
+  plan: { artifact: T.str, round: T.opt(T.int(0)) },
   plan_review: { verdict: T.enumOf(["OKAY", "BLOCKERS"]) },
-  plan_lint: { verdict: T.opt(T.enumOf([...ROUND_VERDICTS, ...RECEIPT_STATUSES])) },
+  plan_lint: { verdict: T.opt(T.enumOf([...ROUND_VERDICTS, ...RECEIPT_STATUSES])), round: T.opt(T.int(0)) },
+  decide: { count: T.opt(T.int(0)), gates: T.opt(T.arr(T.str)), recommended: T.opt(T.arr(T.str)), parked: T.opt(T.str) },
   goal: { artifact: T.str },
-  discover: { artifact: T.str },
   build: { task: T.str },
   verify_lane: { lane: T.kebab, verdict: T.enumOf(RECEIPT_STATUSES) },
   triage: {},
@@ -337,6 +336,7 @@ const LEDGER_OPTIONAL = [
   "tier", "gate_id", "gate_status", "checkpoint_op", "pr", "sha", "merged_at", "note",
   "primary", "secondary", "facts", "progress", "gap_id", "gap_status", "kind", "premise",
   "new_approach", "rules_total", "lane", "task", "adversarial_classes",
+  "sources", "elements", "report", "ideal", "gaps", "count", "gates", "recommended", "parked",
 ];
 const LEDGER_KEYS = [...new Set([...Object.keys(LEDGER_COMMON_SPEC), ...LEDGER_OPTIONAL])];
 const ADVERSARIAL_SPEC = { name: T.str, applicable: T.bool, observable: T.str };
@@ -352,6 +352,8 @@ const LEDGER_OPTIONAL_SPEC = {
   gap_status: T.enumOf(GAP_STATUSES), kind: T.enumOf(SWITCH_KINDS), premise: T.str,
   new_approach: T.str, rules_total: T.int(0), lane: T.kebab, task: T.str,
   adversarial_classes: T.arr(T.obj(ADVERSARIAL_SPEC)),
+  sources: T.int(0), elements: T.int(0), report: T.str, ideal: T.int(0), gaps: T.int(0),
+  count: T.int(0), gates: T.arr(T.str), recommended: T.arr(T.str), parked: T.str,
   ended_at: T.iso,
   duration_s: (v, p, e) => { if (!(typeof v === "number" && v >= 0)) fail(e, p, "expected a number >= 0"); },
 };
@@ -517,7 +519,10 @@ export function validateLedgerEvent(value) {
   }
   const extras = LEDGER_EVENT_EXTRAS[value.event] ?? {};
   Object.entries(extras).forEach(([key, fn]) => {
-    if (!(key in value)) return fail(errors, `event.${key}`, "missing");
+    if (!(key in value)) {
+      if (!fn.optional) fail(errors, `event.${key}`, "missing");
+      return;
+    }
     fn(value[key], `event.${key}`, errors);
   });
   if (value.head !== undefined && value.head !== null && isStr(value.head)) {

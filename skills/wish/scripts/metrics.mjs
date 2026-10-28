@@ -26,7 +26,7 @@ export const FINDING_SCOPES = Object.freeze(["prod", "test", "plan", "mixed", "n
 export const BIT_COLUMNS = Object.freeze(["invalid_flag", "counterexample_present", "axis_lines_present", "verdict_line_present", "verdict_head_match"]);
 export const INT_COLUMNS = Object.freeze({
   pr: 1, rounds_total: 0, ultrabrain_calls: 0, code_reviewer_calls: 0, architect_calls: 0,
-  content_commits_after_approval: 0, switch_count: 0, rounds_after_switch: 0, lens_rules: 0,
+  content_commits_after_approval: 0, switch_count: 0, rounds_after_switch: 0,
   gaps_total: 0, gaps_fixed: 0, before_receipts: 0, round_index: 1, defect_count: 0,
   gate_rows_fixed: 0, gate_rows_not_fixed: 0, gate_rows_no_command: 0,
 });
@@ -280,7 +280,6 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
   const switches = scoped.filter((event) => event.event === "switch" && roundOf(event) !== null)
     .sort((left, right) => left.round - right.round);
   const firstSwitch = switches.length > 0 ? switches[0].round : null;
-  const lens = [...scoped].reverse().find((event) => event.event === "lens");
   const postMerge = [...scoped].reverse().find((event) => event.event === "post_merge");
   const registerSupplied = gaps.length > 0;
   const defectGaps = gaps.filter((row) => row.kind === "defect");
@@ -305,7 +304,6 @@ export function deriveRows({ events = [], findings = [], gaps = [], extra = {}, 
     type, unit, program_id: programId ?? "",
     switch_count: String(switches.length),
     rounds_after_switch: firstSwitch === null ? "" : String(rounds.filter((event) => event.round > firstSwitch).length),
-    lens_rules: lens ? String(lens.rules_total) : "",
     gaps_total: registerSupplied ? String(defectGaps.length) : "",
     gaps_fixed: registerSupplied ? String(defectGaps.filter((row) => row.status === "fixed").length) : "",
     before_receipts: String(beforeEvents.length),

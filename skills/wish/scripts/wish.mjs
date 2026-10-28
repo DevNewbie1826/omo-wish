@@ -10,6 +10,8 @@
 
 import {
   CLI_VERBS,
+  LEDGER_EVENTS,
+  requiredReceiptsFor,
   EXIT_CODES,
   SWITCH_KINDS,
   WORK_TYPES,
@@ -39,6 +41,7 @@ import {
   readGates,
   readLedger,
   readPlan,
+  requireCodeReview,
   resolveGate,
   resolvePlanPath,
   resumePlan,
@@ -77,6 +80,7 @@ const VERB_USAGE = {
     "ledger append --event <name> [--json <file|->]",
     "     Validate one §9 event and append it. Missing stage/started_at/plan/type/unit",
     "     are filled from the plan front matter.",
+    `     Events: ${LEDGER_EVENTS.join(", ")}.`,
   ],
   findings: [
     "findings add --tsv <file|->",
@@ -121,6 +125,8 @@ function printUsage() {
     "usage: wish <verb> [flags]",
     "",
     ...CLI_VERBS.map((verb) => `  ${verb}`),
+    "",
+    `ledger append events: ${LEDGER_EVENTS.join(", ")}`,
     "",
     "exit codes: 0 ok, 1 check failed, 2 usage, 3 state mismatch",
     "",
@@ -590,6 +596,13 @@ async function runDispatchGate(parsed, root) {
   if (pending.length > 20) {
     throw stateMismatch("the gate table is capped at 20 rows; " + pending.length + " are pending, so split the round");
   }
+
+  requireCodeReview({
+    receipts: listReceipts(root), unit: context.unit,
+    requiredLanes: requiredReceiptsFor(plan.wish.type, mixedLabelsOf(plan, events) ?? {}),
+    frozenHead: plan.wish.frozen_head, tree,
+  });
+
   if (parsed.has("--dry-run")) {
     const lines = ["gate round " + target + " on " + head.slice(0, 7) + " (dry run)", "pending rows: " + pending.length];
     for (const row of pending) lines.push("  " + row.id + "  " + row.status + "  " + row.repro_cmd);

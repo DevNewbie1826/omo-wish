@@ -1,6 +1,6 @@
-# wish v2 — state, receipt, and interface contract (M0)
+# wish v3 — state, receipt, and interface contract
 
-This file is the single interface contract between wish v2's modules. M1 (state, CLI), M2 (plan lint),
+This file is the single interface contract between the modules. M1 (state, CLI), M2 (plan lint),
 M3 (probes), M4 (verdict, patch-id, reuse), M5 (prompts) and M7 (PR watch, metrics) import every shape and
 value set from `scripts/lib/schema.mjs`; none of them re-declares one. The prose states the contract, the
 library enforces it, and `test/schema.test.js` validates every machine example in this file, so prose and
@@ -11,21 +11,23 @@ repository test suite at the repo root, together with the existing `test/wish.te
 
 Sources cited per field:
 
-- **D** = `/tmp/oru-wish-v2/design.md` — §2.2 (stage table), §2.7 (evidence reuse), §2.8 (state and receipt
-  formats), §2.9 (resume), §2.10 (measurement hooks), §3 (file layout), §4 (module split and the M0 list).
-- **A** = `/tmp/oru-wish-v2/design-addendum-general.md` — §B1–§B10 (lens, register, before, devices,
-  program, before/after, PROGRESS, goal, cap→switch, review axes), §C.1–§C.6 (work types, shared vs
-  playbook, stage machine, ledger extension, per-type boundaries, cap→switch execution), §F (M0 brief).
+- **D** = the v2 state design's contract rendering in `skills/wish/references/ledger.md` at `5aecad0`,
+  §§1–14 (identities, receipts, state, resume, metrics and interfaces).
+- **A** = the general addendum's contract rendering in `skills/wish/references/ledger.md` at `8b9cfc5`,
+  §§1–14 (work types, rules, register, devices, units, progress and approach switches).
 - **U** = omo `ulw-execute` `SKILL.md:176` — the evidence-ledger field set, `DoneClaim`/`AdversarialVerify`,
   and the repeated-failure stop rule.
 - **L** = omo `ulw-loop` `SKILL.md:64` — evidence is bound to a tree hash and a matching tree is reused.
 - **P** = poteto-mode `scripts/orch/store.ts:597-668` — the `gates.md` renderer and reader.
 - **C44** = PR #44 `skills/wish/scripts/check-verdict.mjs` and `test/verdict.test.js` — the `VERDICT:` line
   pattern, parser semantics, and reason strings, carried verbatim.
-- **C43** = PR #43's shared experiment columns, quoted in D §2.10 and verified on
-  `origin/wish/review-dispatch-gate` (`docs/experiments/{measurements,rounds}.csv`).
-- **O/** = omo skills root, `/home/mirage/.bun/install/global/node_modules/omo-ai/plugin/skills`.
+- **C43** = PR #43's shared experiment columns, quoted in D §2.10 and preserved in
+  `docs/experiments/{measurements,rounds}.csv`.
+- **O/** = `<omo-skills-root>`, the host's omo skills root.
 - **M0** = a decision this contract makes where no source pins the answer; every such line says so.
+
+The original design documents are not tracked in those commits. D/A section labels below are historical
+source anchors preserved by the archived contract, not claims that the original source files ship.
 
 `$SKILL` means `skills/wish`. `<ER>` is the ulw-loop evidence root
 (`agentToolkit.status().result.evidenceRoot`), outside the repository on purpose: evidence never costs a
@@ -40,7 +42,8 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | `<ER>/ledger.jsonl` | session (`wish.mjs ledger append`) | one event per line, §9 | U, D §2.8, A §C.4 |
 | `<ER>/findings.tsv` | session (`wish.mjs findings`) | one finding per line, §5 | D §2.8 |
 | `<ER>/gaps.tsv` | session (`wish.mjs gaps`) | the completeness register, §6 | A §B2/§C.4 |
-| `<ER>/lens.md`, `<ER>/ideal.md` | session | judgment rules and the ideal state, §7 | A §B1/§B2/§C.4 |
+| `<ER>/collect.md`, `<ER>/define.md` | session | collection and definition reports; definition writes the register | v3 stage map |
+| `<ER>/lens.md`, `<ER>/ideal.md` | session | optional supporting judgment rules and ideal-state prose, §7 | A §B1/§B2/§C.4 |
 | `<ER>/receipts/*` | the lane that produced it | one lane's evidence, §4 | D §2.8, A §C.4 |
 | `<ER>/gates.md` | session | owner questions parked with a default, §13 | P, D §2.8 |
 | `<ER>/resume.md` | session | one line per stage transition: intent, current stage, valid receipts, next action | D §2.9 |
@@ -64,7 +67,7 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 
 | Value | Definition | Format | Source |
 | --- | --- | --- | --- |
-| `head` | `git rev-parse HEAD`; for the `research` type, the frozen artifact's sha256 | 40 lowercase hex; `research` uses 64 lowercase hex | D §2.8, A §C.1 ("FREEZE의 head"), O `ulw-research` `artifact_sha256` |
+| `head` | `git rev-parse HEAD`; for the `research` type, the frozen artifact's sha256 | 40 lowercase hex; `research` uses 64 lowercase hex | D §2.8, A §C.1 (the design's freeze head), O `ulw-research` `artifact_sha256` |
 | `head7` | `head.slice(0, 7)`, derived, never stored | 7 lowercase hex | D §4 filename rule |
 | `tree` | `git rev-parse HEAD^{tree}`, always full | 40 or 64 lowercase hex; `research` has none (`null`) | D §2.7/§2.8, L |
 | `patch_id` | first field of `git diff <base>...<head> \| git patch-id --verbatim` | 40 hex | C44, v1 skills/wish/references/review.md:40 at cbbfbf8 |
@@ -132,7 +135,7 @@ one binary observation that decided it, and `artifact` is a path or `null`.
 | --- | --- | --- | --- |
 | `PASS` | every row passed | no | D §2.8 |
 | `FAIL` | a row failed inside the finite contract | yes, after the session reproduces it and files a blocking finding | D §2.6/§2.8 |
-| `WARN` | a memo; nothing inside the contract failed | **no** — at most a `note` finding | D §6 ("WARN은 차단 아님") |
+| `WARN` | a memo; nothing inside the contract failed | **no** — at most a `note` finding | D §6 (the design's WARN-is-not-blocking rule) |
 | `SKIP` | the lane did not apply; the reason is in `note` | no, but it never satisfies a required lane | D §2.8 |
 | `INVALID` | a row only: the probe could not decide (did not compile, no marker) | no; it is unproven, never a PASS | O `exp/x1` |
 
@@ -187,7 +190,7 @@ One alphabet per type; M3's dictionary key, M5's axis name and this column are t
 | `code` | `S` (state/lifetime/cancel/ownership), `C` (input, IO, error boundary), `D` (reconstructed instead of the original), `O` (real shipping path missing), `T` (a test that passes when wrong, including a vacuous guard), `W` (write/ownership boundary), `SEC` (secret in logs/artifacts), `DOC` (code and docs disagree), `CFG` (config accepted/rejected wrongly), `PANIC` (crash on a contract input), `REGRESS` (a prior fix regressed — named `REGRESS`, not `C4`, because `C4` is visual-qa's truncation item) | D §1.2 measured classes S/C/D/O/T/W (343 findings) plus the independent-review rows SEC/T/DOC/CFG/PANIC/C4 (PR #47 table); the `REGRESS` rename is M0's collision fix |
 | `design` | the 69 `visual-qa` item ids `A1`–`J2`, the draft-guard and accent-stripe rule ids (`edge-stripe`, `pseudo-bar`, `inset-shadow-stripe`, `gradient-stripe`, `accent-outline`, `promo-copy`, `emoji-icon`, `decorative-badge`, `vanity-stat`), and `taste` | A §C.1, O `visual-qa:128-218`, O `frontend/scripts/perfection/{draft-guard,accent-stripes}/findings.ts` |
 | `research` | the gate codes (`untraceable_number`, `value_mismatch`, `quote_not_verbatim`, `unbound_sentence`, `meaning_drift_confirmed`, `meaning_drift_warn`, `fidelity_unresolved`), the nine `drift_kind` values (`subject_changed`, `scope_widened`, `hedge_dropped`, `certainty_added`, `causality_added`, `direction_flipped`, `population_changed`, `evidence_grade_raised`, `other`), and the claim states `claim_unresolved`, `claim_refuted` (M0's names for ulw-research's `unresolved`/`refuted`) | A §C.1/§B10, O `ulw-research:168,427,439` |
-| `audit` | the audited rule corpus' own ids, `^[a-z][a-z0-9._-]*$` (open set by design) | A §C.1 ("규칙 id") |
+| `audit` | the audited rule corpus' own ids, `^[a-z][a-z0-9._-]*$` (open set by design) | A §C.1 (the design's rule-id set) |
 | `mixed` | the union of `primary` and `secondary` | A §C.2 |
 
 Adding, renaming or removing a class is a contract change: it edits this table, `FINDINGS_CLASSES`, M3's
@@ -272,11 +275,39 @@ D §2.8 and A §C.4 for the wish additions).
 
 `schema.mjs` exports the frozen list as `LEDGER_EVENTS`; the same alphabet names a receipt's stage.
 
-`intake, lens, discover, ideal, gap, before, plan, plan_lint, plan_review, goal, build, verify_lane,
+`intake, collect, define, before, plan, plan_lint, plan_review, decide, goal, build, verify_lane,
 triage, fix, reuse, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint,
 cleanup, resume`
 
-The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A §C.4.
+`collect`, `define` and `decide` replace the retired `lens`, `discover`, `ideal` and `gap` events.
+
+The dispatchable stages, in order:
+
+| Stage | Completion / applicability |
+| --- | --- |
+| `intake` | intake event |
+| `collect` | always applies; collect event with `elements > 0` |
+| `define` | always applies; define event |
+| `before` | when a defect row or before event exists; every defect has a before artifact |
+| `plan` | plan event |
+| `plan_lint` | lint event |
+| `plan_review` | review event with `verdict: OKAY` |
+| `decide` | always applies; decide event, including a zero-decision batch |
+| `goal` | goal event |
+| `build` | build event; omitted for audit |
+| `verify_lane` | all of the type's required lanes are valid and PASS or WARN |
+| `triage` | triage event |
+| `fix` | when blocking findings or a fix event exist; fix event |
+| `freeze` | freeze event and the observed head matches the frozen head |
+| `pr_open` | PR-open event |
+| `round` | round event and the code-review order gate below |
+| `merge` | merge event |
+| `post_merge` | post-merge event |
+| `checkpoint` | checkpoint event with `checkpoint_op: complete` |
+| `cleanup` | cleanup event with at least one cleanup receipt |
+
+All stages not marked conditional always apply. Side events (`reuse`, `gate`, `verdict`, `switch`,
+`progress`, `resume`) do not add dispatchable stages.
 
 ### 9.2 Fields on every event
 
@@ -293,19 +324,22 @@ The first 21 come from D §4; `lens, ideal, gap, before, switch, progress` are A
 | `commands`, `artifact`, `cleanup`, `attempt`, `checkpoint_opened_at`, `adversarial_classes` | U's field set | U |
 | `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
 
-### 9.3 Required extras per event
+### 9.3 Extras per event
+
+The collection/definition/decision fields and `round` on plan/lint events are optional for schema
+compatibility. Counts are integers >= 0, reports and parked lanes are non-empty strings, and gates and
+recommendations are arrays of non-empty strings. Optional fields do not make a stage complete by themselves.
 
 | Event | Extra required fields | Source |
 | --- | --- | --- |
 | `intake` | `tier`, `facts` (non-empty) | D §2.2/§2.3 |
-| `lens` | `artifact` (lens.md), `rules_total` | A §B1 |
-| `discover` | `artifact` | D §2.2 |
-| `ideal` | `artifact` (ideal.md) | A §B2 |
-| `gap` | `gap_id`, `gap_status` | A §B2/§C.4 |
+| `collect` | optional `sources`, `elements`, `report` (collect.md) | v3 stage map |
+| `define` | optional `round` (0 initially), `ideal`, `gaps`, `report` (define.md) | v3 stage map |
 | `before` | `gap_id`, `artifact` (the before receipt) | A §B3 |
-| `plan` | `artifact` (the plan) | D §2.2 |
-| `plan_lint` | — (`artifact` is the lint receipt; `verdict` optional) | M2 |
+| `plan` | `artifact` (the plan); optional `round` | D §2.2, v3 revisit |
+| `plan_lint` | optional `artifact`, `verdict`, `round` | M2, v3 revisit |
 | `plan_review` | `verdict`: `OKAY` \| `BLOCKERS` | D §2.2 |
+| `decide` | optional `count`, `gates`, `recommended`, `parked` | v3 decision batch |
 | `goal` | `artifact` (goal id) | D §2.2, A §B8 |
 | `build` | `task` (node id), `head` | D §2.2 |
 | `verify_lane` | `lane`, `verdict`, `head`, `tree` | D §2.2 |
@@ -343,12 +377,37 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 `switch.kind` values (A §C.6.2): `premise` (the architect premise review has not run), `family` (the fix
 node moves to a model family different from the one that produced the failed fix), `strategy` (a
 `SWITCH: <failed premise> -> <new approach>` plan row; redesign the component, not the patch), `split` (program mode only: the failing component becomes its own unit and PR; the gap row stays open; a
-single-unit run has four applicable kinds), and `rediscover` (re-run DISCOVER with the lens and sweep
+single-unit run has four applicable kinds), and `rediscover` (re-run COLLECT with the rules and sweep
 variants).
 
 The owner is asked only when the decision is theirs: an irreversible, destructive or spend decision, or a
 contract-level LIMIT the product owner must accept. "Should we stop reviewing" is not a question. While a
 gate is open, other units keep running (A §C.6.4, D §2.2).
+
+### 9.5 Review order and revisit path
+
+Only a unit whose required lanes include `code-review` has the order gate; research and audit do not.
+`codeReviewAt(receipts, unit, head)` selects structurally valid `kind: lane`, `stage: verify_lane`,
+`lane: code-review` receipts for that unit and exact head, with status `PASS` or `WARN`. The gate also
+requires the tree to match. A same-tree receipt from another head, a reuse verdict, a sibling's receipt,
+`FAIL` and `SKIP` do not satisfy it.
+
+At the freeze stage or later, if no head is frozen, `blocking` includes
+`order:freeze missing before round`. Earlier stages do not report this future prerequisite.
+Both `ledger append --event round` and `gate --round` first refuse with exit 3 and
+`out of stage order: freeze missing before round`. `resume-plan` directs the session to freeze the
+head, then run the code-review lane at that frozen head.
+
+Once the head is frozen, without that receipt, `blocking` includes
+`order:code-review missing at <head7>` and `next` returns `verify_lane`, never `round`.
+Both `ledger append --event round` and `gate --round` refuse with exit 3 and
+`out of stage order: code-review missing at <head7>`; the dispatch refusal happens before any reproduction
+runs. `resume-plan` directs the session to run code review at that frozen head.
+
+After a `REVISE` in round n, `next` requires this unit's `define` event with `round: n`, then its `plan`
+event with `round: n`, then its `plan_lint` event with `round: n`, before checking lanes, blocking findings,
+the changed-head freeze and the third-round switch obligation. The fix stays in the same PR.
+`plan_review`, `decide` and `goal` do not run again. The first pass (no round yet) is unchanged.
 
 ## 10. Shared experiment columns
 
@@ -360,7 +419,7 @@ M7 writes these in exactly this order (C43), appending the v2 columns and never 
 | `rounds.csv` | `pr, round_index, round_kind, verdict_head, dispatch_at, verdict_at, minutes, reviewer, reviewer_family, defect_count, defect_axes, finding_scope, counterexample_present, gate_rows_fixed, gate_rows_not_fixed, gate_rows_no_command, c2_split, axis_lines_present, verdict_line_present, verdict_head_match` | C43 |
 
 v2 appends (A §F M7, M0 for the round-level names): `measurements` gains
-`type, unit, program_id, switch_count, rounds_after_switch, lens_rules, gaps_total, gaps_fixed,
+`type, unit, program_id, switch_count, rounds_after_switch, gaps_total, gaps_fixed,
 before_receipts`; `rounds` gains `type, unit, program_id, switch_count, switch_kinds`. `validateCsvHeader`
 accepts the base header or the base plus its exact suffix.
 
@@ -376,7 +435,7 @@ accepts the base header or the base plus its exact suffix.
 | `head`, `tree` | §2 or `null` | the state described | D §4 |
 | `round` | integer ≥ 0 | current ultrabrain round | D §4 |
 | `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt | D §4/§2.7 |
-| `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>` | D §4 |
+| `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>`, `order:freeze missing before round`, `order:code-review missing at <head7>` | D §4, v3 order gate |
 | `next` | §9.1 name or `done` | the only stage the session may dispatch; `blocking` says why it is blocked | D §4 |
 | `units` | `[{id, stage, pr, round, switches}]`, where `stage` is a §9.1 name or `done` | per-unit state (program mode) | A §C.4 |
 | `wave` | `{k, n}` | current wave of a program | A §B5/§C.4 |
@@ -416,10 +475,15 @@ poteto-mode's rendered shape (P `store.ts:597-668`), adopted by D §2.8:
   resolved.
 - `<id>` matches `[A-Za-z0-9][A-Za-z0-9_-]*` and is unique.
 - `Options` lists at least two choices separated by ` | `; `Default` must be one of them.
+- `Default` is the recommended default recorded by DECIDE; no second recommendation field is needed.
 - `Status: open` has no `Answer`; `Status: resolved` has one (the owner may answer outside the options).
 
 A gate is parked only for an owner decision (D §2.2, A §C.6.4). Every gate open longer than 15 minutes is
 recorded so `status` can report the wait (D §5.1).
+
+`decide.count` records the batch size (including 0); `gates` lists its gate ids, `recommended` lists the
+recommended choices, and `parked` names the lane awaiting an answer. The `gates.md` blocks hold the actual
+questions and defaults; only the affected lane parks while other lanes continue.
 
 ## 14. CLI — `$SKILL/scripts/wish.mjs`
 
@@ -486,7 +550,7 @@ A code lane receipt (`kind: lane`):
     }
   ],
   "artifacts": ["/evidence/w-u1-20261027-1610/receipts/verify_lane-sweep-0123456.json"],
-  "cleanup": ["rm -rf /tmp/wish-sweep-8f3 (exit 0)"]
+  "cleanup": ["remove <tmp-dir> (exit 0)"]
 }
 ```
 
@@ -578,13 +642,13 @@ The ledger, including a third-round REVISE that switches approach and a fourth-r
 
 ```jsonl wish:ledger
 {"event":"intake","stage":"intake","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:00:00Z","tier":"M","facts":["new module: the M0 contract","three files touched"]}
-{"event":"lens","stage":"lens","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:01:00Z","artifact":"/evidence/w-u1-20261027-1600/lens.md","rules_total":9}
-{"event":"discover","stage":"discover","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:02:00Z","artifact":"/evidence/w-u1-20261027-1600/receipts/discover-explore-0123456.md"}
-{"event":"ideal","stage":"ideal","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:03:00Z","artifact":"/evidence/w-u1-20261027-1600/ideal.md"}
-{"event":"gap","stage":"gap","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:03:30Z","gap_id":"G1","gap_status":"planned"}
+{"event":"collect","stage":"collect","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:01:00Z","sources":2,"elements":9,"report":"/evidence/w-u1-20261027-1600/collect.md"}
+{"event":"define","stage":"define","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:02:00Z","round":0,"ideal":3,"gaps":1,"report":"/evidence/w-u1-20261027-1600/define.md"}
 {"event":"before","stage":"before","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:04:00Z","gap_id":"G1","artifact":"/evidence/w-u1-20261027-1600/receipts/before-G1-89abcde.txt"}
-{"event":"plan","stage":"plan","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:10:00Z","artifact":".omo/plans/wish-m0.md"}
+{"event":"plan","stage":"plan","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:10:00Z","artifact":".omo/plans/wish-m0.md","round":0}
+{"event":"plan_lint","stage":"plan_lint","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:10:00Z","round":0,"verdict":"PASS"}
 {"event":"plan_review","stage":"plan_review","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:12:00Z","verdict":"OKAY","artifact":"/evidence/w-u1-20261027-1600/receipts/plan_review-architect-0123456.md"}
+{"event":"decide","stage":"decide","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:12:00Z","count":0,"gates":[],"recommended":[]}
 {"event":"goal","stage":"goal","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:13:00Z","artifact":"goal:01a17e58-u1"}
 {"event":"build","stage":"build","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:14:00Z","task":"node-1","head":"0123456789abcdef0123456789abcdef01234567"}
 {"event":"verify_lane","stage":"verify_lane","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:20:00Z","lane":"tests","verdict":"PASS","head":"0123456789abcdef0123456789abcdef01234567","tree":"89abcdef0123456789abcdef0123456789abcdef"}
@@ -594,8 +658,17 @@ The ledger, including a third-round REVISE that switches approach and a fourth-r
 {"event":"pr_open","stage":"pr_open","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:55:00Z","pr":51,"head":"0123456789abcdef0123456789abcdef01234567"}
 {"event":"gate","stage":"gate","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:00:00Z","gate_id":"dispatch","gate_status":"resolved"}
 {"event":"round","stage":"round","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:05:00Z","round":1,"verdict":"REVISE","head":"0123456789abcdef0123456789abcdef01234567"}
+{"event":"define","stage":"define","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:05:00Z","round":1,"report":"/evidence/w-u1-20261027-1600/define.md"}
+{"event":"plan","stage":"plan","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:05:00Z","round":1,"artifact":".omo/plans/wish-m0.md"}
+{"event":"plan_lint","stage":"plan_lint","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:05:00Z","round":1,"verdict":"PASS"}
 {"event":"round","stage":"round","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:30:00Z","round":2,"verdict":"REVISE","head":"0123456789abcdef0123456789abcdef01234567"}
+{"event":"define","stage":"define","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:30:00Z","round":2,"report":"/evidence/w-u1-20261027-1600/define.md"}
+{"event":"plan","stage":"plan","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:30:00Z","round":2,"artifact":".omo/plans/wish-m0.md"}
+{"event":"plan_lint","stage":"plan_lint","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T17:30:00Z","round":2,"verdict":"PASS"}
 {"event":"round","stage":"round","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:00:00Z","round":3,"verdict":"REVISE","head":"0123456789abcdef0123456789abcdef01234567"}
+{"event":"define","stage":"define","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:00:00Z","round":3,"report":"/evidence/w-u1-20261027-1600/define.md"}
+{"event":"plan","stage":"plan","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:00:00Z","round":3,"artifact":".omo/plans/wish-m0.md"}
+{"event":"plan_lint","stage":"plan_lint","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:00:00Z","round":3,"verdict":"PASS"}
 {"event":"switch","stage":"switch","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:01:00Z","round":3,"kind":"premise","premise":"the classifier only needed one more branch","new_approach":"re-read the input contract and delete the classifier"}
 {"event":"round","stage":"round","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:20:00Z","round":4,"verdict":"APPROVED","head":"0123456789abcdef0123456789abcdef01234567"}
 {"event":"verdict","stage":"verdict","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:20:00Z","round":4,"verdict":"APPROVED","head":"0123456789abcdef0123456789abcdef01234567","artifact":"/evidence/w-u1-20261027-1600/receipts/verdict-ultrabrain-0123456.md"}
@@ -645,14 +718,18 @@ Plan front matter (the object the YAML parses to):
     "type": "code",
     "unit": "u1",
     "program_id": null,
-    "worktree": "/Volumes/storage/workspace/omo-wish-worktrees/v2",
-    "branch": "wish-v2",
+    "worktree": "/<worktree>",
+    "branch": "unit",
     "pr": null,
     "frozen_head": null,
     "round": 0
   }
 }
 ```
+
+The `/<worktree>` placeholder retains the required absolute-path shape; substitute the unit's actual
+absolute worktree path at runtime. Its former host-specific example is preserved in
+`skills/wish/references/ledger.md` at `8b9cfc5`.
 
 The PROGRESS line:
 

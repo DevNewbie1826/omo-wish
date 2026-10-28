@@ -174,7 +174,7 @@ test("a third REVISE requires a switch and no round may follow APPROVED", () => 
   expect(codes(validateLedgerSequence(afterApproval))).toContain("unit u1 round 4");
 
   const capped = ledgerEvents.map((entry) => entry.event === "round" && entry.round === 3 ? { ...entry, terminal: true } : entry);
-  expect(codes(validateLedgerSequence(capped))).toContain("events[18].terminal");
+  expect(codes(validateLedgerSequence(capped))).toContain(`events[${ledgerEvents.findIndex((entry) => entry.event === "round" && entry.round === 3)}].terminal`);
 });
 
 test("the switch cycle never caps the round count", () => {
@@ -250,7 +250,7 @@ test("every event names its work type, unit and program, and its required extras
   expect(validateLedgerEvent(event({ event: "switch", stage: "switch", round: 3, kind: "strategy", premise: "p", new_approach: "n" })).ok).toBe(true);
   expect(validateLedgerEvent(event({ event: "switch", stage: "switch", round: 3, kind: "guess", premise: "p", new_approach: "n" })).ok).toBe(false);
   expect(SWITCH_KINDS).toEqual(["premise", "family", "strategy", "split", "rediscover"]);
-  expect(LEDGER_EVENTS).toContain("lens");
+  expect(LEDGER_EVENTS).toContain("collect");
   expect(LEDGER_EVENTS).toContain("progress");
   expect(LEDGER_EVENTS).toContain("switch");
   expect(validateLedgerEvent(event({ attempt: 0 })).ok).toBe(false);
@@ -282,6 +282,37 @@ test("status --json carries type, units, wave and progress", () => {
   expect(validateStatusJson({ ...value, extra: 1 }).ok).toBe(false);
   expect(codes(validateStatusJson({ ...value, next: "later" }))).toContain("status.next");
   expect(codes(validateStatusJson({ ...value, units: [{ ...value.units[0], stage: "later" }] }))).toContain("status.units[0].stage");
+});
+
+test("collection definition and decision extras are optional but typed", () => {
+  const extras = {
+    collect: { sources: 0, elements: 1, report: "/evidence/collect.md" },
+    define: { round: 0, ideal: 1, gaps: 0, report: "/evidence/define.md" },
+    decide: { count: 0, gates: ["G1"], recommended: ["keep both"], parked: "build" },
+  };
+  for (const [name, fields] of Object.entries(extras)) {
+    const base = event({ event: name, stage: name });
+    expect(validateLedgerEvent(base).errors).toEqual([]);
+    expect(validateLedgerEvent({ ...base, ...fields }).errors).toEqual([]);
+    for (const [key, value] of Object.entries(fields)) {
+      const invalid = typeof value === "number" ? [-1, 1.5, "1"]
+        : Array.isArray(value) ? ["G1", [""]] : [""];
+      for (const replacement of invalid) {
+        const path = Array.isArray(replacement) ? `event.${key}[0]` : `event.${key}`;
+        expect(codes(validateLedgerEvent({ ...base, ...fields, [key]: replacement }))).toContain(path);
+      }
+    }
+  }
+  for (const name of ["plan", "plan_lint"]) {
+    const base = event({ event: name, stage: name, artifact: "/evidence/plan.md" });
+    expect(validateLedgerEvent(base).ok).toBe(true);
+    expect(validateLedgerEvent({ ...base, round: 0 }).ok).toBe(true);
+    expect(validateLedgerEvent({ ...base, round: -1 }).ok).toBe(false);
+  }
+  for (const name of ["lens", "discover", "ideal", "gap"]) {
+    expect(validateLedgerEvent(event({ event: name, stage: name })).ok).toBe(false);
+  }
+  expect(LEDGER_EVENTS).toHaveLength(26);
 });
 
 test("plan front matter names the work type and unit", () => {
@@ -394,7 +425,7 @@ test("kills the guard when the class set loses PANIC", () => {
 
 test("CSV headers accept the C43 base and the v2 suffix but never a reorder", () => {
   const suffixes = {
-    measurements: "type,unit,program_id,switch_count,rounds_after_switch,lens_rules,gaps_total,gaps_fixed,before_receipts",
+    measurements: "type,unit,program_id,switch_count,rounds_after_switch,gaps_total,gaps_fixed,before_receipts",
     rounds: "type,unit,program_id,switch_count,switch_kinds",
   };
   for (const name of ["measurements", "rounds"]) {

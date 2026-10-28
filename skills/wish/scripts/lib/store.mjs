@@ -377,6 +377,17 @@ export function appendEvent(root, input, { plan, sessionId = "senpi:wish-cli", n
   }
   const pending = pendingSwitchErrors([...existing, event]);
   if (pending.length > 0) throw stateMismatch("out of stage order", pending);
+  if (event.event === "round") {
+    const intake = existing.find((other) => other.unit === event.unit && other.event === "intake");
+    const frozen = [...existing].reverse().find((other) => other.unit === event.unit && other.event === "freeze");
+    const planState = readPlan(event.plan);
+    requireCodeReview({
+      receipts: listReceipts(root), unit: event.unit,
+      requiredLanes: requiredReceiptsFor(intake.type, intake),
+      frozenHead: planState.wish.unit === event.unit ? planState.wish.frozen_head : frozen?.head,
+      tree: frozen?.tree,
+    });
+  }
   const paths = rootPaths(root);
   appendLine(paths.ledger, `${JSON.stringify(event)}\n`);
   return event;
@@ -1027,8 +1038,8 @@ export function judgeReceipt(receipt, { type, head, tree, reuseEvents = [] }) {
 // ('gate', 'round', 'verdict', 'switch', 'progress', 'reuse', 'resume') are not
 // stages: they record a decision or a measurement, never a step to dispatch.
 export const STAGE_ORDER = Object.freeze([
-  "intake", "lens", "discover", "ideal", "gap", "before", "plan", "plan_lint",
-  "plan_review", "goal", "build", "verify_lane", "triage", "fix", "freeze",
+  "intake", "collect", "define", "before", "plan", "plan_lint",
+  "plan_review", "decide", "goal", "build", "verify_lane", "triage", "fix", "freeze",
   "pr_open", "round", "merge", "post_merge", "checkpoint", "cleanup",
 ]);
 
@@ -1074,15 +1085,8 @@ export function deriveStage(events, receipts, unit) {
 // Applicability: a conditional stage is skipped when the data that would make it
 // necessary is absent (LIM3). Everything else is always on the path.
 function stageApplies(stage, context) {
-  const { root, events, gaps, findings, type } = context;
-  const paths = rootPaths(root);
+  const { events, gaps, findings, type } = context;
   switch (stage) {
-    case "lens":
-      return existsSync(paths.lens) || events.some((event) => event.event === "lens");
-    case "ideal":
-      return existsSync(paths.ideal) || events.some((event) => event.event === "ideal");
-    case "gap":
-      return (gaps ?? []).length > 0 || events.some((event) => event.event === "gap");
     case "before":
       return defectGaps(gaps).length > 0 || events.some((event) => event.event === "before");
     case "build":
@@ -1120,14 +1124,41 @@ export function deriveNext(stage, context) {
     return nextLinear("checkpoint", context);
   }
   if (last && last.verdict === "REVISE") {
+    for (const revisit of ["define", "plan", "plan_lint"]) {
+      if (!events.some((event) => event.unit === unit && event.event === revisit && event.round === last.round)) {
+        return revisit;
+      }
+    }
     if (!context.lanes.ok) return "verify_lane";
     if (blockingFindings(findings).length > 0) return "fix";
     if (frozenHead !== head) return "freeze";
     const switched = switchesOf(events, unit).some((event) => event.round === last.round);
     if (last.round >= 3 && !switched) return "switch";
+    if (codeReviewMissing(context)) return "verify_lane";
     return "round";
   }
+  if (!last && frozenHead && (!context.lanes.ok || codeReviewMissing(context))) return "verify_lane";
   return nextLinear(stage, context);
+}
+
+// Tree reuse cannot substitute for review of the exact frozen commit.
+export function codeReviewAt(receipts, unit, head) {
+  return receipts.filter((receipt) => receipt.ok && receipt.body?.kind === "lane"
+    && receipt.body.stage === "verify_lane" && receipt.body.lane === "code-review"
+    && receipt.body.unit === unit && receipt.body.head === head
+    && ["PASS", "WARN"].includes(receipt.body.status));
+}
+
+function codeReviewMissing({ receipts, requiredLanes, unit, frozenHead, tree }) {
+  return requiredLanes.includes("code-review")
+    && (!frozenHead || !codeReviewAt(receipts, unit, frozenHead).some((receipt) => receipt.body.tree === tree));
+}
+
+export function requireCodeReview(context) {
+  if (codeReviewMissing(context)) {
+    if (!context.frozenHead) throw stateMismatch("out of stage order: freeze missing before round");
+    throw stateMismatch(`out of stage order: code-review missing at ${context.frozenHead.slice(0, 7)}`);
+  }
 }
 
 // M0's required-lane table names lanes whose receipt kind is not always "lane": a
@@ -1227,6 +1258,10 @@ export function blockingFor(context) {
   for (const id of [...openGates].sort()) reasons.push("gate:".concat(id, " open"));
   const rounds = roundsOf(events, unit);
   const last = rounds[rounds.length - 1];
+  if (codeReviewMissing(context) && (frozenHead
+      || STAGE_ORDER.indexOf(context.stage) >= STAGE_ORDER.indexOf("freeze"))) {
+    reasons.push(frozenHead ? `order:code-review missing at ${frozenHead.slice(0, 7)}` : "order:freeze missing before round");
+  }
   if (frozenHead) {
     if (!last) reasons.push("verdict:missing");
     else if (last.head !== frozenHead) {
@@ -1248,15 +1283,14 @@ function stageComplete(stage, context) {
     && (!predicate || predicate(event)));
   switch (stage) {
     case "intake": return has("intake");
-    case "discover": return has("discover");
-    case "lens": return !stageApplies("lens", context) || has("lens");
-    case "ideal": return !stageApplies("ideal", context) || has("ideal");
-    case "gap": return !stageApplies("gap", context) || has("gap");
+    case "collect": return has("collect", (event) => event.elements > 0);
+    case "define": return has("define");
     case "before": return !stageApplies("before", context)
       || defectGaps(gaps).every((row) => row.before_artifact !== "-");
     case "plan": return has("plan");
     case "plan_lint": return has("plan_lint");
     case "plan_review": return has("plan_review", (event) => event.verdict === "OKAY");
+    case "decide": return has("decide");
     case "goal": return has("goal");
     case "build": return !stageApplies("build", context) || has("build");
     case "verify_lane": return lanes.ok;
@@ -1264,7 +1298,7 @@ function stageComplete(stage, context) {
     case "fix": return !stageApplies("fix", context) || has("fix");
     case "freeze": return Boolean(frozenHead) && has("freeze") && (!head || frozenHead === head);
     case "pr_open": return has("pr_open");
-    case "round": return has("round");
+    case "round": return has("round") && !codeReviewMissing(context);
     case "merge": return has("merge");
     case "post_merge": return has("post_merge");
     case "checkpoint": return has("checkpoint", (event) => event.checkpoint_op === "complete");
@@ -1431,6 +1465,10 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
       actions.push("fix the blocking findings, then findings set --status fixed --fixed-head <sha>");
     } else if (reason.startsWith("gate:")) {
       actions.push("answer ".concat(reason.slice(4).replace(/ open$/, ""), " with gate resolve"));
+    } else if (reason === "order:freeze missing before round") {
+      actions.push("freeze the head, then run the code-review lane at the frozen head");
+    } else if (reason.startsWith("order:")) {
+      actions.push("run the code-review lane at the frozen head ".concat(reason.slice("order:code-review missing at ".length)));
     } else if (reason.startsWith("verdict:")) {
       actions.push("dispatch the final review on the frozen head");
     } else if (reason === "head:moved") {

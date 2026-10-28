@@ -180,6 +180,7 @@ function lane(state, { lane: name, status: verdict = "PASS", head, tree, unit, s
     kind: "lane",
     stage,
     type,
+    ...(type === "mixed" ? { primary: state.primary, secondary: state.secondary } : {}),
     unit: unit ?? state.unit,
     program_id: null,
     lane: name,
@@ -256,13 +257,15 @@ function gapRow(overrides = {}) {
   };
 }
 
-// The build phase every status test needs: discover -> build, no lane receipts.
+// The build phase every status test needs: collect -> build, no lane receipts.
 function upToBuild(state) {
   const steps = [
-    { event: "discover", artifact: join(state.root, "receipts", "discover-explore-0123456.md") },
+    { event: "collect", sources: 1, elements: 1, report: join(state.root, "collect.md") },
+    { event: "define", round: 0, ideal: 1, gaps: 0, report: join(state.root, "define.md") },
     { event: "plan", artifact: state.plan },
     { event: "plan_lint", verdict: "PASS", artifact: join(state.root, "receipts", "lint-plan-89abcde.json") },
     { event: "plan_review", verdict: "OKAY", artifact: join(state.root, "receipts", "plan_review-architect-0123456.md") },
+    { event: "decide", count: 0, gates: [], recommended: [] },
     { event: "goal", artifact: "goal:w-run-u1" },
     { event: "build", task: "node-1", head: state.repo.head },
   ];
@@ -271,6 +274,11 @@ function upToBuild(state) {
     if (result.code !== 0) throw new Error(step.event + ": " + result.err);
     expect(result.code).toBe(0);
   }
+}
+
+function reviewedFreeze(state) {
+  expect(cli(["freeze", "--head", state.repo.head, "--pr", "51", "--root", state.root]).code).toBe(0);
+  lane(state, { lane: "code-review", type: state.type });
 }
 
 describe("help and usage contract", () => {
@@ -326,7 +334,7 @@ describe("init", () => {
     expect(reported.code).toBe(0);
     expect(validateStatusJson(reported.json).errors).toEqual([]);
     expect(reported.json.stage).toBe("intake");
-    expect(reported.json.next).toBe("discover");
+    expect(reported.json.next).toBe("collect");
     expect(reported.json.blocking).toEqual([]);
   });
 
@@ -521,12 +529,77 @@ describe("status", () => {
 });
 
 describe("ledger append", () => {
+  test("new event extras reach the ledger and collect completion needs positive elements", () => {
+    const state = scene();
+    expect(append(state, { event: "collect", sources: 0, elements: 0, report: join(state.root, "collect.md") }).code).toBe(0);
+    expect(cli(["resume-plan", "--root", state.root]).out).toContain("first invalid stage: collect");
+    expect(append(state, { event: "collect", sources: 1, elements: 2, report: join(state.root, "collect.md") }).code).toBe(0);
+    expect(cli(["resume-plan", "--root", state.root]).out).toContain("first invalid stage: define");
+    expect(status(state).json.next).toBe("define");
+    expect(append(state, { event: "define", round: 0, ideal: 1, gaps: 0, report: join(state.root, "define.md") }).code).toBe(0);
+    expect(status(state).json.next).toBe("plan");
+    expect(cli(["resume-plan", "--root", state.root]).out).toContain("first invalid stage: plan");
+    const decide = { event: "decide", count: 1, gates: ["G1"], recommended: ["keep"], parked: "build" };
+    expect(append(state, decide).code).toBe(0);
+    expect(ledgerEvents(state).at(-1)).toMatchObject(decide);
+  });
+
+  test("round append and dispatch refuse missing review before running any reproduction", () => {
+    const state = scene();
+    upToBuild(state);
+    for (const name of ["tests", "qa", "sweep"]) lane(state, { lane: name });
+    expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "pr_open", pr: 1, head: state.repo.head }).code).toBe(0);
+    expect(addFindings(state, [findingRow({ repro_cmd: "touch reproduction-ran", round: "0" })]).code).toBe(0);
+    const before = readFileSync(join(state.root, "ledger.jsonl"), "utf8");
+    const reason = `out of stage order: code-review missing at ${state.repo.head.slice(0, 7)}`;
+    const refused = append(state, { event: "round", round: 1, verdict: "REVISE", head: state.repo.head });
+    expect(refused.code).toBe(3);
+    expect(refused.err).toContain(reason);
+    expect(readFileSync(join(state.root, "ledger.jsonl"), "utf8")).toBe(before);
+    for (const extra of [[], ["--dry-run"]]) {
+      const gate = cli(["gate", "--round", "1", "--root", state.root, ...extra]);
+      expect(gate.code).toBe(3);
+      expect(gate.err).toContain(reason);
+      expect(existsSync(join(state.repo.dir, "reproduction-ran"))).toBe(false);
+    }
+    const resume = cli(["resume-plan", "--root", state.root]);
+    expect(resume.out).toContain(`run the code-review lane at the frozen head ${state.repo.head.slice(0, 7)}`);
+    lane(state, { lane: "code-review", status: "WARN" });
+    expect(cli(["gate", "--round", "1", "--root", state.root]).code).toBe(0);
+    expect(existsSync(join(state.repo.dir, "reproduction-ran"))).toBe(true);
+    expect(append(state, { event: "round", round: 1, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
+  });
+
+  test("research reaches round and dispatches without a code-review lane", () => {
+    const state = scene({ type: "research" });
+    const head = "a".repeat(64);
+    expect(cli(["freeze", "--head", head, "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "pr_open", head, pr: 1 }).code).toBe(0);
+    const dir = join(state.root, "receipts");
+    mkdirSync(dir, { recursive: true });
+    for (const name of ["fact-verify", "claim-gate", "skeptic", "execution-verify", "delivery-gate"]) {
+      writeFileSync(join(dir, `verify_lane-${name}-${head.slice(0, 7)}.json`), JSON.stringify({
+        kind: "lane", stage: "verify_lane", type: "research", unit: state.unit, program_id: null,
+        lane: name, head, tree: null, scope: ["report.md"], status: "PASS",
+        started_at: "2026-10-28T12:00:00Z", ended_at: "2026-10-28T12:00:00Z",
+        rows: [], artifacts: [], cleanup: [],
+      }));
+    }
+    const reported = status(state, ["--head", head]);
+    expect(reported.code).toBe(0);
+    expect(reported.json.next).toBe("round");
+    expect(reported.json.blocking.some((reason) => reason.startsWith("order:"))).toBe(false);
+    expect(cli(["gate", "--round", "1", "--root", state.root]).code).toBe(0);
+    expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head }).code).toBe(0);
+  });
+
   test("fills the plan context and appends the event", () => {
     const state = scene();
-    const result = append(state, { event: "discover", artifact: join(state.root, "receipts", "discover-a.md") });
+    const result = append(state, { event: "collect", artifact: join(state.root, "receipts", "collect-a.md") });
     expect(result.code).toBe(0);
     const appended = JSON.parse(result.out);
-    expect(appended).toMatchObject({ event: "discover", stage: "discover", type: "code", unit: "u1", plan: state.plan });
+    expect(appended).toMatchObject({ event: "collect", stage: "collect", type: "code", unit: "u1", plan: state.plan });
     expect(appended.session_id.startsWith("senpi:")).toBe(true);
     expect(ledgerEvents(state).length).toBe(2);
   });
@@ -541,6 +614,7 @@ describe("ledger append", () => {
 
   test("out-of-order rounds are a state mismatch", () => {
     const state = scene();
+    reviewedFreeze(state);
     expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head: state.repo.head }).code).toBe(0);
     const second = append(state, { event: "round", round: 2, verdict: "REVISE", head: state.repo.head });
     expect(second.code).toBe(3);
@@ -553,9 +627,9 @@ describe("ledger append", () => {
     writePlan(box.plan, { runId: "w-run-20261027-1600", tier: "M", type: "code", unit: "u1", worktree: repo.dir });
     mkdirSync(box.root, { recursive: true });
     writeFileSync(join(box.root, "ledger.jsonl"), `${JSON.stringify({
-      event: "discover", stage: "discover", type: "code", unit: "u1", program_id: null,
+      event: "collect", stage: "collect", type: "code", unit: "u1", program_id: null,
       plan: box.plan, session_id: "senpi:test", started_at: "2026-10-27T16:00:00Z",
-      artifact: join(box.root, "receipts", "discover-a.md"),
+      artifact: join(box.root, "receipts", "collect-a.md"),
     })}\n`);
     const body = join(box.dir, "plan-event.json");
     writeFileSync(body, JSON.stringify({ event: "plan", artifact: box.plan }));
@@ -664,6 +738,7 @@ describe("gates", () => {
   test("the dispatch gate fails when a blocker still reproduces and marks it not-fixed", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 3" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
     expect(result.code).toBe(1);
@@ -683,6 +758,7 @@ describe("gates", () => {
   test("the dispatch gate passes when nothing reproduces", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 0" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
     expect(result.code).toBe(0);
@@ -694,6 +770,7 @@ describe("gates", () => {
   test("a row with no command is unprovable, never a pass", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "no command", status: "open" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
     expect(result.code).toBe(1);
@@ -705,6 +782,7 @@ describe("gates", () => {
   test("a hanging row is killed with its process group and recorded as a timeout", async () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const command = "echo $$ > pids.txt; sleep 30 & echo $! >> pids.txt; wait";
     expect(addFindings(state, [findingRow({ repro_cmd: command })]).code).toBe(0);
     const started = Date.now();
@@ -724,6 +802,7 @@ describe("gates", () => {
   test("a dry run executes nothing", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "touch marker.txt" })]).code).toBe(0);
     const out = cli(["gate", "--round", "2", "--dry-run", "--root", state.root]);
     expect(out.code).toBe(0);
@@ -737,6 +816,7 @@ describe("gates", () => {
   test("a row that prints a token never leaks it into the receipt or the error", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const canary = "CANARY_7f3a9c";
     expect(addFindings(state, [findingRow({ repro_cmd: "printf '%s' \"$GH_TOKEN\"; exit 2" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root], { env: { GH_TOKEN: canary } });
@@ -780,6 +860,7 @@ describe("freeze and pr-body", () => {
     git(state.repo.dir, ["checkout", "--", "."]);
     rmSync(join(state.repo.dir, "dirty.txt"), { force: true });
     expect(cli(["freeze", "--root", state.root]).code).toBe(0);
+    lane(state, { lane: "code-review" });
     expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head: OTHER }).code).toBe(0);
     const checked = cli(["freeze", "--check", "--root", state.root]);
     expect(checked.code).toBe(1);
@@ -821,6 +902,7 @@ describe("switch", () => {
   test("records one approach switch per REVISE after the third and never caps the rounds", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     for (const round of [1, 2, 3]) {
       expect(append(state, { event: "round", round, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
     }
@@ -843,6 +925,11 @@ describe("switch", () => {
     for (const round of [1, 2, 3]) {
       expect(append(state, { event: "round", round, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
     }
+    for (const event of [
+      { event: "define", round: 3 },
+      { event: "plan", round: 3, artifact: state.plan },
+      { event: "plan_lint", round: 3, verdict: "PASS" },
+    ]) expect(append(state, event).code).toBe(0);
     const reported = status(state);
     expect(reported.json.round).toBe(3);
     expect(reported.json.next).toBe("switch");
@@ -927,12 +1014,12 @@ describe("lock and concurrency", () => {
     mkdirSync(queue, { recursive: true });
     const held = join(queue, `000000000001-${process.pid}-holder.ticket`);
     writeFileSync(held, JSON.stringify({ pid: process.pid }));
-    const result = append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") });
+    const result = append(state, { event: "collect", artifact: join(state.root, "receipts", "a.md") });
     expect(result.code).toBe(3);
     expect(result.err).toContain("still queued");
     expect(existsSync(held)).toBe(true);
     rmSync(held);
-    expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
+    expect(append(state, { event: "collect", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
   });
 
   test("a ticket left by a dead process is swept", async () => {
@@ -944,7 +1031,7 @@ describe("lock and concurrency", () => {
     mkdirSync(queue, { recursive: true });
     const stale = join(queue, `000000000001-${pid}-gone.ticket`);
     writeFileSync(stale, JSON.stringify({ pid }));
-    expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
+    expect(append(state, { event: "collect", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
     expect(existsSync(stale)).toBe(false);
   });
 
@@ -953,10 +1040,10 @@ describe("lock and concurrency", () => {
     const before = ledgerEvents(state).length;
     const files = ["a", "b"].map((name) => {
       const file = join(state.box.dir, `race-${name}.json`);
-      writeFileSync(file, JSON.stringify({ event: "discover", artifact: join(state.root, "receipts", `${name}.md`) }));
+      writeFileSync(file, JSON.stringify({ event: "collect", artifact: join(state.root, "receipts", `${name}.md`) }));
       return file;
     });
-    const runs = files.map((file) => Bun.spawn([process.execPath, CLI, "ledger", "append", "--event", "discover", "--json", file, "--root", state.root], { stdout: "pipe", stderr: "pipe" }));
+    const runs = files.map((file) => Bun.spawn([process.execPath, CLI, "ledger", "append", "--event", "collect", "--json", file, "--root", state.root], { stdout: "pipe", stderr: "pipe" }));
     const codes = await Promise.all(runs.map((run) => run.exited));
     expect(codes).toEqual([0, 0]);
     const after = ledgerEvents(state);
@@ -999,11 +1086,11 @@ describe("boundary inputs", () => {
 
   test("a finding in a non-ASCII file is accepted and round-trips", () => {
     const state = scene();
-    const row = findingRow({ file_line: "src/한글.mjs:12" });
+    const row = findingRow({ file_line: "src/\uD55C\uAE00.mjs:12" });
     expect(addFindings(state, [row]).code).toBe(0);
     const table = readFileSync(join(state.root, "findings.tsv"), "utf8");
     expect(parseFindingsTsv(table, { type: "code" }).ok).toBe(true);
-    expect(table).toContain("src/한글.mjs:12");
+    expect(table).toContain("src/\uD55C\uAE00.mjs:12");
   });
 
   test("a missing plan file is a state mismatch, never a silent empty status", () => {
@@ -1100,6 +1187,7 @@ describe("status derivation against the contract's own example", () => {
   test("a worktree path with shell metacharacters is never interpolated", () => {
     const state = scene({ workName: "wo;rk $(touch pwned) `touch pwned2`" });
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 0" })]).code).toBe(0);
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(0);
     expect(existsSync(join(state.box.dir, "pwned"))).toBe(false);
@@ -1150,6 +1238,7 @@ describe("review blockers", () => {
 
   test("a mixed run reads its findings table with the union of both class sets", () => {
     const state = scene({ type: "mixed", initExtra: ["--primary", "design", "--secondary", "code"] });
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ class: "A1" })]).code).toBe(0);
     expect(addFindings(state, [findingRow({ id: "F2", class: "S" })]).code).toBe(0);
     expect(addFindings(state, [findingRow({ id: "F3", class: "untraceable_number" })]).code).toBe(1);
@@ -1162,6 +1251,7 @@ describe("review blockers", () => {
   test("a passing gate row leaves no grandchild behind", async () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "sleep 30 >/dev/null 2>&1 & echo $! > bg.txt; exit 0" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--timeout", "5", "--root", state.root]);
     expect(result.code).toBe(0);
@@ -1184,6 +1274,7 @@ describe("review blockers", () => {
 
   test("more than twenty pending rows is refused, never truncated", () => {
     const state = scene();
+    expect(cli(["freeze", "--head", state.repo.head, "--pr", "51", "--root", state.root]).code).toBe(0);
     const rows = Array.from({ length: 21 }, (_, index) => findingRow({ id: `F${index + 1}`, repro_cmd: "exit 0" }));
     expect(addFindings(state, rows).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
@@ -1244,13 +1335,14 @@ describe("robustness review blockers", () => {
     const state = scene();
     writeFileSync(join(state.root, "lock.takeover"), JSON.stringify({ pid: 999999 }));
     writeFileSync(join(state.root, "lock.dead.1.2"), "leftover");
-    expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
+    expect(append(state, { event: "collect", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
     expect(existsSync(join(state.root, "lock"))).toBe(false);
   });
 
   test("the gate records its event when a row moves under it", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const fix = `${process.execPath} ${CLI} findings set --id F1 --status fixed --fixed-head ${state.repo.head} --root ${state.root}`;
     expect(addFindings(state, [findingRow({ repro_cmd: `${fix}; exit 1` })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
@@ -1374,10 +1466,11 @@ describe("final review round 1", () => {
 
   test("a mixed run writes labeled events and receipts the frozen schema accepts", () => {
     const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    reviewedFreeze(state);
     const labels = { primary: "code", secondary: "design" };
     append(state, {
-      event: "discover", type: "mixed", unit: "u1", program_id: null, plan: state.plan, session_id: "se-1",
-      started_at: "2026-10-27T16:02:00Z", artifact: join(state.root, "receipts", "discover-explore-0123456.md"),
+      event: "collect", type: "mixed", unit: "u1", program_id: null, plan: state.plan, session_id: "se-1",
+      started_at: "2026-10-27T16:02:00Z", artifact: join(state.root, "receipts", "collect-explore-0123456.md"),
       ...labels,
     });
     append(state, { event: "plan", type: "mixed", unit: "u1", program_id: null, plan: state.plan, session_id: "se-1", started_at: "2026-10-27T16:02:00Z", artifact: state.plan, ...labels });
@@ -1400,6 +1493,7 @@ describe("final review round 1", () => {
   test("an empty dispatch table still writes its receipt", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const gate = cli(["gate", "--round", "1", "--root", state.root]);
     if (gate.code !== 0) throw new Error("gate stderr: " + gate.err);
     expect(gate.code).toBe(0);
@@ -1512,6 +1606,7 @@ describe("final review round 1", () => {
   test("a row whose command backgrounds a child is judged by the shell's exit", { timeout: 40_000 }, () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     addFindings(state, [findingRow({ repro_cmd: "sleep 30 & exit 0" })]);
     const started = Date.now();
     const gate = cli(["gate", "--round", "2", "--root", state.root]);
@@ -1699,6 +1794,7 @@ describe("final review round 2 (second pass)", () => {
     const state = scene();
     const built = upToBuild(state);
     void built;
+    reviewedFreeze(state);
     // u1's own gate is open: a row still reproduces.
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 1" })]).code).toBe(0);
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(1);
@@ -1725,6 +1821,7 @@ describe("final review round 2 (second pass)", () => {
   test("a failing mixed gate row moves the finding to not-fixed", () => {
     const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 1" })]).code).toBe(0);
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(1);
     const rows = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out);
@@ -1755,12 +1852,12 @@ describe("final review round 3", () => {
     // be leapfrogged by the smaller number it is about to write.
     const choosing = join(queue, `${process.pid + 0}-peer.choosing`);
     writeFileSync(choosing, JSON.stringify({ pid: process.pid }));
-    const blocked = append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") });
+    const blocked = append(state, { event: "collect", artifact: join(state.root, "receipts", "a.md") });
     expect(blocked.code).toBe(3);
     expect(blocked.err).toMatch(/chooser|still queued/);
     expect(existsSync(choosing)).toBe(true);
     rmSync(choosing);
-    expect(append(state, { event: "discover", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
+    expect(append(state, { event: "collect", artifact: join(state.root, "receipts", "a.md") }).code).toBe(0);
   });
 
   test("a symlinked alias of the root cannot reach the ledger", () => {
