@@ -315,6 +315,7 @@ wish:
 - INVARIANT INV1: a non-empty input yields the same tokens as before : QA-2
 - LIMIT: tab-separated input is not tokenized : the request covers whitespace-separated input only
 - IS-1 DEVICE: guard INV1 -> n-test
+- IS-1 DEVICE: qa printf '' | tokenizer - => exit 0 and stdout is the empty string
 
 ## QA scenarios
 
@@ -334,3 +335,60 @@ wish:
 
 The linter treats this block as documentation and never lints it in place; `test/check-plan.test.js` extracts it
 and requires it to pass, so the example cannot drift from the grammar.
+
+## 9. The required sentences and the handoff to ulw-execute
+
+The plan-writing step writes these three sentences into the plan verbatim. Each one sits inside a fenced block,
+so the linter reads it as documentation and never as a row (§1):
+
+```text
+(a) Implement it, and also include, strictly, a device that confirms the implementation was done.
+(b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
+(c) Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
+```
+
+(a) is the implementation-device sentence and (b) the fix-device sentence: both are required in every plan. (c) is
+the visual-QA sentence, required whenever the plan carries a rendered surface or a visual QA scenario.
+
+The linter does not check the three sentences, because they are prose: no mechanical rule can separate a sentence
+that governs the work from one that merely describes it. PLAN-REVIEW checks that they are present, and a plan
+without (a) or (b) does not pass that review.
+
+### 9.1 The no-test path
+
+A plan forces no test code. The confirmation device takes that role, in one of three forms:
+
+- a behaviour the repository already tests gets those tests;
+- a guard row gets its mutation (§5.3);
+- a behaviour this repository cannot test gets a `qa` device plus a `no-test` row naming it.
+
+Those last two rows read:
+
+```
+- IS-<n> DEVICE: qa <command> => <one binary observation>
+- no-test: <reason this repository cannot test it> : QA-<n>
+```
+
+`<n>` is the IS row that delivers the behaviour. The device body is the confirmation form §5.2 lists for the
+plan's type — `qa <command> => <observation>` on a `code` plan, `vqa …` on a `design` plan — and the `no-test`
+row's QA id names the scenario that runs the same check (§5.1). A plan with no repository test therefore still
+carries at least one confirmation device per IS row, in a form §5.2 accepts, so a missing test never reads as a
+missing proof.
+
+### 9.2 The handoff to ulw-execute
+
+The plan lives at `.omo/plans/wish-<slug>.md` and is written in the checkbox grammar of §3: a `## Todos` section of
+column-zero `- [ ] <N>. <title>` rows and a `## Final verification wave` section of column-zero
+`- [ ] F<n>. <title>` rows. That location and that shape are what ulw-execute selects as its plan without a second
+planning pass; a plan elsewhere, or in another shape, is treated as no plan at all.
+
+A program writes one plan per unit (`.omo/plans/wish-<slug>-u<N>.md`), so the handoff passes the plan name
+explicitly: a directory holding several plans and no name makes ulw-execute ask a selection question instead of
+selecting.
+
+ulw-execute's prose names `## TODOs` and `## Final Verification Wave` in a later phase, while this grammar is the
+exact `## Todos` and `## Final verification wave`. Selection does not depend on heading case, but these two
+checkbox sections in this exact spelling are what both readers agree on, so the plan keeps them.
+
+Each task row may carry a nested `Recommended task executor category: <category>` line, which ulw-execute honours;
+the linter does not check it (§3).
