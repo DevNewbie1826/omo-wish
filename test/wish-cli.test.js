@@ -730,7 +730,7 @@ describe("gaps", () => {
     expect(addGaps(state, [gapRow()]).code).toBe(1);
   });
 
-  test("a defect row stored with before_artifact '-' binds its before receipt on move to fixed", () => {
+  test("a defect row stored with before_artifact '-' binds its before receipt on move to fixed", async () => {
     const state = scene({ type: "design" });
     // Register a defect row in 'open' with no before artifact (legal: only 'open' allows '-').
     const added = addGaps(state, [gapRow({ before_artifact: "-", status: "open" })]);
@@ -779,6 +779,41 @@ describe("gaps", () => {
     expect(JSON.parse(secondFormat.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
     rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
     rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
+
+    // A bound capture is part of the write's own guarantee: the register a bound
+    // setGap leaves must always parse under the M0 contract, and the move itself
+    // must not be reachable through a capture-less row.
+    const store = await import("../skills/wish/scripts/lib/store.mjs");
+    const box = sandbox();
+    const repo = makeRepo(box, "race");
+    const raceRunId = "w-race-20261028-0000";
+    const planPath = join(box.dir, "plan.md");
+    writePlan(planPath, { runId: raceRunId, tier: "S", type: "design", unit: "u1", worktree: repo.dir });
+    const root = join(box.dir, "er");
+    expect(cli(["init", "--run-id", raceRunId, "--type", "design", "--tier", "S", "--plan", planPath,
+      "--root", root, "--unit", "u1", "--worktree", repo.dir, "--branch", "fixture",
+      "--fact", "race"]).code).toBe(0);
+    const raceDir = join(root, "receipts");
+    mkdirSync(raceDir, { recursive: true });
+    const raceName = `before-G1-${repo.tree.slice(0, 7)}.png`;
+    writeFileSync(join(raceDir, raceName), "png");
+    const raceRow = { ...gapRow({ type: "design" }), before_artifact: "-", status: "open", fixed_head: "-" };
+    const raceTsv = join(box.dir, `gaps-${Date.now()}-race.tsv`);
+    writeFileSync(raceTsv, [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"));
+    expect(cli(["gaps", "add", "--tsv", raceTsv, "--root", root]).code).toBe(0);
+    // The bound capture is part of the write's own guarantee: a same-status write
+    // that would leave the row capture-less must not be reachable. The public
+    // surface enforces this two ways: gaps set cannot move the row to a capture
+    // state it does not carry, and the register it leaves always parses under
+    // the M0 contract (a planned defect row with a "-" capture is unparseable).
+    const autoBound = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(autoBound.code).toBe(0);
+    expect(JSON.parse(autoBound.out).before_artifact).toBe(join(raceDir, raceName));
+    expect(JSON.parse(autoBound.out).status).toBe("planned");
+    // The register never holds a capture-less non-open defect row: the bound
+    // row carries the receipt path in its before_artifact cell, so the discarded
+    // state is unreachable through the public surface.
+    expect(readFileSync(join(root, "gaps.tsv"), "utf8")).toContain(`\t${join(raceDir, raceName)}\t`);
     // Reopen again for the no-receipt case: reset the register to an open row
     // with no capture (gaps set cannot clear before_artifact by design); the
     // two format receipts were removed above.

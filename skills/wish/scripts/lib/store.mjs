@@ -818,6 +818,12 @@ export function addGaps(root, text) {
 export function setGap(root, id, patch) {
   const paths = rootPaths(root);
   let updated = null;
+  // The capture this setGap binds, if any. The post-write verification must
+  // affirm it, not just the patch's own fields: a same-status writer that slips
+  // between the swap and the verify must not be able to discard the capture and
+  // still have this mutation's verify succeed. Set by the compute callback on
+  // every retry, so it always describes the text that was actually swapped.
+  let boundBeforeArtifact = null;
   // Find the existing before receipt for this gap, if any. Its absolute path is
   // the only value that can satisfy the rule: a fixed defect row carries a real
   // pre-edit capture. A path that does not match a before-<id>-<tree7> receipt
@@ -884,6 +890,7 @@ export function setGap(root, id, patch) {
         }
       }
       row.before_artifact = path;
+      boundBeforeArtifact = path;
     }
     // Leaving "fixed" clears the fix head, exactly as findings.set does: a row that
     // is open again must not claim a commit that no longer closes it.
@@ -903,6 +910,10 @@ export function setGap(root, id, patch) {
     // value: verify it is non-dash when the patch required one, and matches the
     // flag exactly when the flag was given.
     if (patch.beforeArtifact !== undefined && row.before_artifact !== patch.beforeArtifact) return false;
+    // A capture this setGap bound (automatic or explicit) must still be present
+    // in the swapped bytes: a competing writer that cleared it while our status
+    // patch held must not let this verification pass.
+    if (boundBeforeArtifact !== null && row.before_artifact !== boundBeforeArtifact) return false;
     return true;
   });
   return updated;
