@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Mechanical checks for a wish v2 plan. Grammar and the rule list: references/plan-format.md §7.
+// Mechanical checks for a wish v2 plan. Grammar and the rule list: references/plan-format.md §6.
 // Usage: check-plan.mjs <plan.md> [--register <gaps.tsv>] [--json] [--help]
 // Exit: 0 clean, 1 a rule failed, 2 usage or read error (references/ledger.md §14).
 import { readFileSync, statSync } from "node:fs";
@@ -120,7 +120,7 @@ const TYPE_OF_KIND = { SCREEN: "design", AXIS: "research", CLAIM: "research", RU
 const REQUIRED_KINDS = { code: [], design: ["SCREEN"], research: ["AXIS", "CLAIM"], audit: ["RULE"], mixed: [] };
 const HIGH_RISK_KINDS = ["concurrency", "persistence", "state", "lifetime"];
 
-// Every complaint carries the id of the rule it answers (plan-format.md §7); PL18 is a reading rule
+// Every complaint carries the id of the rule it answers (plan-format.md §6); PL18 is a reading rule
 // with no message. The table is the code half of the doc table, and a test holds the two equal.
 const RULES = [
   ["PL1", /^(no front matter|front matter never closes|a second wish: block|front matter accepts|a key appears before|duplicate front matter key|no wish: block|frontmatter\.)/],
