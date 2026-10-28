@@ -106,16 +106,30 @@ async function mergeBase(root, base) {
 // touched, so a row can tell a new promise from an old one it is not being
 // blamed for. Only the declared doc globs are read at the base: a comment in
 // a code file is not a documentation promise. The path git shows is the same
-// root-relative path the diff named, so a nested root keeps working.
+// root-relative path the diff named, so a nested root keeps working. When
+// the diff moved a path, the base side may not have it at all; that is the
+// genuinely-new case and not a failure. A path the diff touched that exists
+// in the tree but whose base blob cannot be read is a failure: the caller
+// must fall back to the full set rather than judge with a partial view.
 async function preExistingFlags(root, baseCommit, changed, globs, pattern, prefix) {
   const flags = new Set();
   const regexes = (globs ?? []).map(globToRegExp);
+  const gitPathOf = (rel) => (prefix === "" ? rel : `${prefix}/${rel}`);
   for (const rel of changed.filter((candidate) => regexes.some((regex) => regex.test(candidate)))) {
-    const gitPath = prefix === "" ? rel : `${prefix}/${rel}`;
+    const gitPath = gitPathOf(rel);
+    const knownAtBase = await gitLines(root, ["cat-file", "-e", `${baseCommit}:${gitPath}`]);
     const atBase = await gitLines(root, ["show", `${baseCommit}:${gitPath}`]);
-    if (atBase !== null) for (const match of atBase.matchAll(pattern)) flags.add(match[0]);
+    if (atBase !== null) {
+      for (const match of atBase.matchAll(pattern)) flags.add(match[0]);
+      continue;
+    }
+    if (knownAtBase !== null) {
+      // The base entry exists but could not be read: the pre-existing side is
+      // only half-known, and half is not enough to downgrade a row to WARN.
+      return { flags, error: true };
+    }
   }
-  return flags;
+  return { flags, error: false };
 }
 
 export async function run(config, ctx) {
@@ -170,7 +184,16 @@ export async function run(config, ctx) {
         preExisting = new Set();
         checkedFiles = docs;
       } else {
-        preExisting = await preExistingFlags(ctx.root, baseCommit, changed, globs, pattern, prefix);
+        const side = await preExistingFlags(ctx.root, baseCommit, changed, globs, pattern, prefix);
+        if (side.error) {
+          // One base entry exists but could not be read: the pre-existing
+          // view is partial, so the probe keeps the full declared doc set and
+          // drops every pre-existing exemption instead of judging half-known.
+          preExisting = new Set();
+          checkedFiles = docs;
+        } else {
+          preExisting = side.flags;
+        }
       }
     }
   }

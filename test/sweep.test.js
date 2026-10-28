@@ -846,6 +846,74 @@ test("a diff.relative checkout keeps the toplevel-relative diff the probe needs"
   expect(run.exit).toBe(1);
 }, 120000);
 
+test("an unreadable base document forces the full doc set and drops every pre-existing exemption", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff touches the nested doc and adds prose: with the base blob
+  // intact the flag reads as pre-existing and the row stays a WARN. The next
+  // fixture breaks that read: the diff read succeeds, but the base entry
+  // cannot, so the probe must keep the full declared doc set and judge every
+  // absent flag rather than half-know the pre-existing side.
+  writeFileSync(join(nested, "usage.md"), readFileSync(join(nested, "usage.md"), "utf8") + "The flag prints the payload without sending.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  const nestedConfig = JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["nested/usage.md", "usage.md"], base: "HEAD~1" } } }, null, 2);
+  writeFileSync(join(dir, ".wish-sweep.json"), nestedConfig);
+  // A working run: the pre-existing flag only warns and the run exits 0.
+  const out = join(dir, "out");
+  const runBefore = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const headBefore = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receiptBefore = JSON.parse(readFileSync(join(out, `verify_lane-docs-${headBefore.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receiptBefore, "docs/--dry-run")).toBe("WARN");
+  expect(runBefore.exit).toBe(0);
+  // Break the base read: the merge base of base and HEAD is the commit
+  // "docs", so rewrite that commit's tree to point the doc path at a
+  // missing blob. The diff against HEAD~1 still lists the path, but
+  // `git show` at the base fails while `cat-file -e` passes, which is
+  // exactly the half-known state the probe must not treat as pre-existing.
+  const missingBlob = "1234567890abcdef1234567890abcdef12345678";
+  const gitRepo = (args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir }).stdout.toString().trim();
+  const docsCommit = gitRepo(["-C", dir, "rev-parse", "HEAD~1"]);
+  const docsTree = gitRepo(["-C", dir, "rev-parse", "HEAD~1^{tree}"]);
+  const treeEntries = [];
+  for (const line of gitRepo(["-C", dir, "ls-tree", docsTree]).split("\n")) {
+    if (!line) continue;
+    const [meta, name] = line.split("\t");
+    if (name === "nested") {
+      const subTree = meta.split(" ")[1];
+      treeEntries.push(`040000 ${subTree}\tnested`);
+      continue;
+    }
+    if (name === "usage.md") {
+      treeEntries.push(`100644 ${missingBlob}\t${name}`);
+      continue;
+    }
+    treeEntries.push(line);
+  }
+  const brokenTreeSha = Bun.spawnSync(["git", "-C", dir, "mktree", "-"], { cwd: dir, input: treeEntries.join("\n") }).stdout.toString().trim();
+  expect(brokenTreeSha.length).toBe(40);
+  const headSha = gitRepo(["-C", dir, "rev-parse", "HEAD"]);
+  const headTree = gitRepo(["-C", dir, "rev-parse", "HEAD^{tree}"]);
+  const brokenDocsCommit = gitRepo(["-C", dir, "commit-tree", brokenTreeSha, "-m", "docs", "-p", docsCommit]);
+  expect(brokenDocsCommit.length).toBe(40);
+  const brokenHeadCommit = gitRepo(["-C", dir, "commit-tree", headTree, "-m", "broken", "-p", brokenDocsCommit]);
+  expect(brokenHeadCommit.length).toBe(40);
+  expect(git("update-ref", "HEAD", brokenHeadCommit).exitCode).toBe(0);
+  const runAfter = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const headAfter = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receiptAfter = JSON.parse(readFileSync(join(out, `verify_lane-docs-${headAfter.slice(0, 7)}.json`), "utf8"));
+  const dryRun = receiptAfter.rows.find((entry) => entry.id === "docs/--dry-run");
+  expect(dryRun?.verdict).toBe("FAIL");
+  expect(dryRun?.note).not.toContain("pre-existing");
+  expect(runAfter.exit).toBe(1);
+}, 120000);
+
 test("the docs help command is supervised by the same bounded runner", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });
