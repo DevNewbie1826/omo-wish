@@ -130,7 +130,7 @@ async function main() {
       assert.deepEqual(skills.diagnostics, []);
       assert.deepEqual(prompts.diagnostics, []);
       assert.equal(skills.skills.find((skill) => skill.name === "wish")?.filePath, skillPath);
-      assert.equal(template?.description, "make a wish");
+      assert.equal(template?.description, "소원을 빕니다");
       assert.equal(loader.getExtensions().extensions.some((extension) =>
         extension.resolvedPath === join(root, "extensions/wish.js")), true);
       assert.equal(existsSync(skillPath), true);

@@ -1,7 +1,7 @@
 {
   "name": "omo-wish",
   "version": "0.1.0",
-  "description": "/wish slash command: make a wish. Bounded wish skill coordinator for OmO.",
+  "description": "/wish slash command — 소원을 빕니다. Bounded wish skill coordinator for OmO.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DevNewbie1826/omo-wish.git"
