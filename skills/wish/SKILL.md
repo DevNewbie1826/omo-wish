@@ -109,6 +109,15 @@ disjoint write scope, its own branch and worktree, several commits inside it, an
 one PR. The split is decided at `plan`, never mid-build; `playbooks/program.md` holds the whole-request rules and
 a unit's contract is its own `IS` rows.
 
+## Execution
+
+After `decide`, the run does not ask again. It proceeds at maximum parallelism — every independent unit and every
+independent lane in flight at once, up to the host's slots, with named dependencies as the only serialization —
+and every lane verifies its own work strictly rather than trusting a green run of something else. It reports at
+every milestone with the `PROGRESS:` line, which states how much of the whole is done, which PRs are merged and
+open, and what the run waits on; a report that repeats unchanged numbers is suppressed. A lane that parks on an
+open decision does not stop the others.
+
 ## Tiers — same depth, different waiting
 
 | Tier | Decided by omo's LIGHT/HEAVY facts | What changes; the review depth does not |
