@@ -18,13 +18,13 @@ child's prompt is.
 
 1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
    lane vocabulary.
-2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
+2. Build prompts - `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
    `define-report`, `decide-batch`, `execution`.
 3. Verify-wave lanes — `tests-lane`, `sweep-lane`, `qa-lane`, `code-review-lane`, `adversarial-lane`,
    `gate-repro`.
 4. Review prompts — `plan-review`, `premise-review`, `ultrabrain-r1`, `ultrabrain-r2`, `gate-checkpoint`,
    `blind-review`.
-5. Work-type lanes — `lens-harvest`, `lens-extract`, `lens-reduce`, `lens-explore`, `audit-lint`,
+5. Work-type lanes - `collect-harvest`, `collect-extract`, `collect-reduce`, `collect-explore`, `audit-lint`,
    `audit-spot`, `audit-register-schema`, `slop-report`, `capture-lane`, `vqa-passA`, `vqa-passB`,
    `reference-compare`, `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate`.
 6. Goal — `goal-brief`.
@@ -81,7 +81,7 @@ Rules that make a frame obeyed:
 - **FORBIDDEN always names**: edits outside `SCOPE`; `git commit --amend`, `rebase`, `push --force`, or
   `--no-verify`; deleting, skipping or `.only`-ing a test; adding a dependency the plan does not list;
   writing another lane's receipt; writing `<ER>/ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `gates.md`,
-  `lens.md`, `ideal.md` or the plan (the session alone writes those); asking the requester a question.
+  `collect.md`, `define.md` or the plan (the session alone writes those); asking the requester a question.
 
 ### 1.3 The five shared fields
 
@@ -189,7 +189,7 @@ DELIVERABLE: the changed files for <node-id>; for every guard row the node owns,
   artifact `<ER>/build/<node-id>-<head7>.json` with one row per guard row (a build node is not a verify
   lane, so it writes no `kind: lane` receipt); the result of the literal VERIFY below.
 SCOPE: read <worktree> and <ER>; write only <paths this node owns>. OUT OF SCOPE: <paths other nodes own>,
-  the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md, lens.md, ideal.md. Never edit a file another
+  the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md, collect.md, define.md. Never edit a file another
   node is writing.
 VERIFY: `cd <worktree> && <the repository test command>` for the touched area, then, per guard row,
   `cd <worktree> && <guard test command>` unmutated (must pass).
@@ -318,36 +318,31 @@ when the decision is theirs (irreversible, destructive, a spend, or accepting a 
 
 **TEMPLATE:** `collect-run`
 
-COLLECT is one mass-ulw run with three node families: `harvest`, `extract` and `explore`. Each node gets this
-prompt with its family line filled in. The stage itself, its receipt and its order are owned by `SKILL.md`;
-this prompt only briefs the nodes.
+COLLECT is one mass-ulw run. This prompt briefs the run, and each node gets its own prompt from §5:
+`collect-harvest` (§5.1) reads every named source in full, `collect-extract` (§5.2) reduces the harvest to the
+important elements with their locators, `collect-reduce` (§5.3) merges the extracts into one file, and
+`collect-explore` (§5.4) spawns `explore` lanes and a `librarian` for outside sources and reads from the
+viewpoint of the project the request serves. The stage, its receipt and its order are owned by `SKILL.md`.
 
 ```
 Purpose: <the original requested outcome>.
-Scope: collect for <the request>; read only, write only this node's notes.
+Scope: run COLLECT for <the request>; read only, nodes write only their own handoff files.
 Contract: none yet. COLLECT runs before any plan exists.
-Blockers: none. A collect node never blocks; it reports what it read and what it could not read.
+Blockers: none. A node never blocks; it reports what it read and what it could not read.
 Separate findings: a defect seen while reading is a note with its locator, never a fix.
 
-FAMILY: <harvest | extract | explore>
-  harvest: read every named source in full: <source list with paths, URLs or ids>. No skimming, no sampling.
-  extract: reduce the harvest notes to the important elements, each with its locator (`path:line`, URL with
-    anchor, or message id), so a later step can open the exact spot.
-  explore: spawn `explore` lanes for the repository and one `librarian` for outside sources, and read from the
-    viewpoint of the project the request serves: how that project uses what the request touches.
-
-TASK: <family>: collect everything that bears on <the request> from <sources> and write it down with locators.
-DELIVERABLE: `<ER>/collect/<family>-<node-id>.md`: one row per element, `<element> | <locator> | <why it
-  matters>`, then an `UNREAD:` list naming every source this node could not read and why.
-SCOPE: read <worktree>, the named sources and <ER>; write only `<ER>/collect/<family>-<node-id>.md`. OUT OF
-  SCOPE: editing any repository file, the plan, <ER>/collect.md (the session assembles it), deciding
-  anything.
-VERIFY: every row has a locator that opens; every named source is either read or listed under `UNREAD:`.
-STOP WHEN: every assigned source is read in full or named as unread.
-TIMEBOX: <minutes; default 20>. At expiry list every unread source under `UNREAD:` by name.
-FORBIDDEN: omitting an unreadable source instead of naming it; trimming the list to look tidy; edits
-  outside SCOPE; asking the requester anything.
-REPORT: the row count, the `UNREAD:` list, and the file path.
+TASK: run one mass-ulw run over <source list> with the node families collect-harvest, collect-extract,
+  collect-reduce and collect-explore, each dispatched with its §5 prompt.
+DELIVERABLE: every node's handoff file under <ER>, and one `UNREAD:` list naming every source no node could
+  read and why, for the session to assemble into <ER>/collect.md.
+SCOPE: read <worktree>, the named sources and <ER>; nodes write only their own files. OUT OF SCOPE: editing
+  any repository file, the plan, <ER>/collect.md (the session assembles it), deciding anything.
+VERIFY: every named source is either covered by a node's rows or listed under `UNREAD:`.
+STOP WHEN: every node has reported and every source is read in full or named as unread.
+TIMEBOX: <minutes; default 40>. At expiry list every unread source and every unreported node by name.
+FORBIDDEN: omitting an unreadable source instead of naming it; trimming the result to look tidy; restating
+  a node prompt instead of dispatching it; asking the requester anything.
+REPORT: the node list with each handoff path, the `UNREAD:` list, and the total row count.
 ```
 
 An unreadable source is named as unread, never omitted. Over-collecting is deliberate: DEFINE drops what does
@@ -908,9 +903,9 @@ numbers.
 
 ## 5. Work-type lanes
 
-### 5.1 `lens-harvest` — read one corpus slice
+### 5.1 `collect-harvest` - read one corpus slice
 
-**TEMPLATE:** `lens-harvest`
+**TEMPLATE:** `collect-harvest`
 
 ```
 Purpose: turn <the named standard/corpus> into judgment rules the plan can check against.
@@ -921,7 +916,7 @@ DELIVERABLE: a handoff file `<ER>/lens/harvest-<slice>.md` with one row per cand
   `<rule> | <source anchor: page/section/heading + short verbatim quote> | <universal|platform> | <persona or
   journey it serves> | <surface kinds it applies to>`.
 SCOPE: the slice's files/pages only; write only that handoff file. OUT OF SCOPE: other slices, the project,
-  lens.md, any code.
+  collect.md, any code.
 VERIFY: every rule has a source anchor a reader can open; a rule without one is dropped.
 STOP WHEN: the slice is read to its end and every rule it states has a row or is listed as `no rule`.
 TIMEBOX: <minutes per slice; default 20>.
@@ -933,9 +928,9 @@ REPORT: the handoff path, the row count, and the slice's coverage (pages/paragra
 Read the omo-distilled rules first — the `visual-qa` checklist, the `frontend` build rules, the
 `remove-ai-slops` categories — as the reducer's first rows. The harvest hunts only what those lists miss.
 
-### 5.2 `lens-extract` — cluster the candidates into universal rules
+### 5.2 `collect-extract` - cluster the candidates into universal rules
 
-**TEMPLATE:** `lens-extract`
+**TEMPLATE:** `collect-extract`
 
 ```
 Purpose: keep the rules that generalize and drop the ones that describe one platform's habit.
@@ -947,7 +942,7 @@ DELIVERABLE: `<ER>/lens/extract-<cluster>.md`, one row per kept rule in the harv
   (the reducer adds the `L<n>` id), with the platform tag justified when `platform`, and a `dropped` list with
   a one-line reason each.
 SCOPE: the cluster's harvest files; write only the extract file. OUT OF SCOPE: other clusters, the project,
-  lens.md.
+  collect.md.
 VERIFY: every kept row keeps at least one source anchor; every dropped row has a reason.
 STOP WHEN: every harvest row of the cluster is kept or dropped with a reason.
 TIMEBOX: 15 minutes.
@@ -955,33 +950,33 @@ FORBIDDEN: paraphrasing a rule so far that its anchor no longer shows it; keepin
 REPORT: kept count, dropped count with reasons, and the file path.
 ```
 
-### 5.3 `lens-reduce` — one lens file
+### 5.3 `collect-reduce` - one lens file
 
-**TEMPLATE:** `lens-reduce`
+**TEMPLATE:** `collect-reduce`
 
 ```
 Purpose: produce the lens the plan's rules and the reviews are judged against.
 Scope: all extract files for this run.
 
 TASK: reduce the extracts into the candidate lens file `<ER>/lens/reduce-<run>.md` in the `ledger.md` §7
-  grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/lens.md`.
+  grammar, one row per rule, ids `L<n>`; the session publishes it to `<ER>/collect.md`.
 DELIVERABLE: the candidate lens file, the run artifact `<ER>/lens/reduce-<run>.json` (`rules_total`, slices,
   clusters, dropped — a run artifact, not a lane receipt), and, for the session to record, the `artifact` and
   `rules_total` values of the `lens` event.
 SCOPE: the extract files; write the candidate lens file and its run artifact only. OUT OF SCOPE: the project,
-  the plan, `<ER>/lens.md` itself (the session publishes it), other receipts.
+  the plan, `<ER>/collect.md` itself (the session publishes it), other receipts.
 VERIFY: every row has six non-empty fields, ids are unique, scope is `universal` or `platform`; the first
   rows are the omo-distilled rules named in the plan.
 STOP WHEN: the candidate parses as the §7 grammar and the run artifact is written.
 TIMEBOX: 20 minutes.
 FORBIDDEN: a rule without an anchor; two ids with the same string; dropping an anchor to shorten a row;
-  writing `<ER>/lens.md` or the ledger.
+  writing `<ER>/collect.md` or the ledger.
 REPORT: `rules_total`, the dropped list size, and the candidate path.
 ```
 
-### 5.4 `lens-explore` — discovery steered by the lens
+### 5.4 `collect-explore` - discovery steered by the lens
 
-**TEMPLATE:** `lens-explore`
+**TEMPLATE:** `collect-explore`
 
 ```
 Purpose: find where the product violates the lens, not where the request happens to point.
@@ -992,8 +987,8 @@ DELIVERABLE: one row per observation: `<L id> | <surface> | <current state> | <e
   <severity guess> | <defect|taste>`; an `axes covered` line; and the lane receipt
   `<ER>/receipts/discover-explore-<lane>-<head7>.md` (`kind: lane`, `stage: discover`, `lane: explore-<lane>`,
   `head`/`tree` at <head>).
-SCOPE: read the repository/surface; write only that receipt. OUT OF SCOPE: fixing, writing gaps.tsv, lens.md
-  or ideal.md, judging rules you were not given.
+SCOPE: read the repository/surface; write only that receipt. OUT OF SCOPE: fixing, writing gaps.tsv, collect.md
+  or define.md, judging rules you were not given.
 VERIFY: every row's evidence is a path or line a reader can open; a rule with no instance is `N/A`, never
   an observation.
 STOP WHEN: every assigned rule × surface pair has a verdict (violation, holds, N/A).
@@ -1003,7 +998,7 @@ FORBIDDEN: a sampled surface when the plan enumerates all surfaces; a defect wit
 REPORT: the rows, then `rules × surfaces: <judged>/<total>`.
 ```
 
-The session turns these rows into `ideal.md` paragraphs and `gaps.tsv` rows; lanes never write the register.
+The session turns these rows into `define.md` paragraphs and `gaps.tsv` rows; lanes never write the register.
 
 ### 5.5 `audit-lint` — the rule corpus' lint, report only
 
@@ -1054,7 +1049,7 @@ REPORT: sample size, seed, reproduces/contradicts counts, then the rows. A contr
 
 ```
 Purpose: prove the register is complete and well formed, so the audit's "every gap" claim is true.
-Scope: `gaps.tsv`, `lens.md`, `ideal.md` and the coverage matrix.
+Scope: `gaps.tsv`, `collect.md`, `define.md` and the coverage matrix.
 
 TASK: validate the register against its schema and compute coverage as rules × surfaces judged.
 DELIVERABLE: `LANE: register-schema`, the receipt `verify_lane-register-schema-<head7>.json`, the parse
