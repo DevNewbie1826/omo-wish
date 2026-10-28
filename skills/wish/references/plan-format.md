@@ -372,6 +372,7 @@ wish:
 - INVARIANT INV1: a non-empty input yields the same tokens as before : QA-2
 - LIMIT: tab-separated input is not tokenized : the request covers whitespace-separated input only
 - IS-1 DEVICE: guard INV1 -> n-test
+- IS-1 DEVICE: qa printf '' | tokenizer - => exit 0 and stdout is the empty string
 
 ## QA scenarios
 
