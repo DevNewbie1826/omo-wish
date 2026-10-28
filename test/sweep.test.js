@@ -540,6 +540,419 @@ test("a candidate path that escapes the throwaway copy is invalid and writes not
   expect(run.exit).toBe(0);
 });
 
+test("a git fixture with a pre-existing documented flag: the diff-introduced flag fails and the pre-existing one only warns", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const usageMd = join(dir, "usage.md");
+  writeFileSync(usageMd, "# cli\n\n`cli.js send --text <value>` sends one message. `--fail` makes the transport refuse it. `--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff introduces a new documented flag that the program does not have.
+  writeFileSync(usageMd, readFileSync(usageMd, "utf8") + "`cli send --brand-new` documents a new flag the program lacks.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  // New flag the diff documents wrongly: still a FAIL, so the probe keeps deciding it.
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  // Pre-existing documented flag missing from the stub help: WARN, not FAIL.
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(receipt.rows.find((entry) => entry.id === "docs/--dry-run").note).toContain("pre-existing");
+  // A flag that exists in the help output still passes.
+  expect(verdictOf(receipt, "docs/--fail")).toBe("PASS");
+  // A WARN-only row keeps the run from failing: exit is decided by the FAIL row.
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("an unreadable base keeps the full doc set and every absent flag still fails", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // "no-such-ref" cannot be read, so the probe falls back to the full declared
+  // doc set: the pre-existing flag FAILs instead of silently skipping, and the
+  // run still exits 1 rather than passing on a state the probe cannot see.
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "no-such-ref" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("FAIL");
+  expect(receipt.rows.find((entry) => entry.id === "docs") === undefined).toBe(true);
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a diff that only adds prose keeps the pre-existing flag on a warn and the run exits 0", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const usageMd = join(dir, "usage.md");
+  writeFileSync(usageMd, "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff adds prose, no new flag: the pre-existing documented flag only
+  // warns, and a WARN-only docs lane must not block the run.
+  writeFileSync(usageMd, readFileSync(usageMd, "utf8") + "The flag prints the payload without sending.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(receipt.status).toBe("WARN");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a moved doc keeps its pre-existing flag on a warn, and a code comment is not a pre-existing flag", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  // A code file that mentions the new flag in a comment is not documentation.
+  writeFileSync(join(dir, "cli.js"), readFileSync(join(dir, "cli.js"), "utf8") + "// --brand-new is planned\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // Move the doc and document the new flag in the moved file: the move keeps
+  // the old flag on the WARN side, and the code comment never promotes the new
+  // flag to pre-existing, so it still FAILs.
+  expect(git("mv", "usage.md", "docs-usage.md").exitCode).toBe(0);
+  writeFileSync(join(dir, "docs-usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["*.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("the docs probe skips when a declared diff changed no doc", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // Only a code file changes; the docs the diff touched are none.
+  writeFileSync(join(dir, "cli.js"), readFileSync(join(dir, "cli.js"), "utf8") + "// touched\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "code").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(receipt.rows.find((entry) => entry.id === "docs").verdict).toBe("SKIP");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a git fixture documents a flag the diff itself documents wrongly and it still fails", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff documents --brand-new, which the program lacks: a FAIL even with a diff in play.
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`cli send --brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a git-quoted non-ASCII doc path is not misparsed into a silent skip", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const docName = "docs-한글.md";
+  writeFileSync(join(dir, docName), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff documents a new, unsupported flag in the non-ASCII-named doc: the
+  // -z delimited diff must name that file (not a quoted string) so the probe
+  // checks it instead of silently skipping it.
+  writeFileSync(join(dir, docName), readFileSync(join(dir, docName), "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["*.md"], base: "HEAD~1" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a nested sweep root under the git toplevel reads the changed docs relative to the root", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "guide.md"), "# guide\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "guide").exitCode).toBe(0);
+  writeFileSync(join(nested, "guide.md"), readFileSync(join(nested, "guide.md"), "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeFileSync(join(nested, ".wish-sweep.json"), JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["guide.md"], base: "HEAD~1" } } }, null, 2));
+  const out = join(nested, "out");
+  const run = invoke(nested, ["--root", nested, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", nested, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a diverged base compares the merge base, not the branch tip, for the pre-existing side", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  expect(git("branch", "upstream").exitCode).toBe(0);
+  // Upstream documents --upstream-flag after the fork: it is not part of the
+  // reviewed diff and must not be blamed on it.
+  expect(git("checkout", "-q", "upstream").exitCode).toBe(0);
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--upstream-flag` is an upstream flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "upstream").exitCode).toBe(0);
+  expect(git("checkout", "-q", "-b", "fork", "upstream~1").exitCode).toBe(0);
+  // The fork documents its own new flag and also the flag upstream already
+  // documented: the merge base documents neither of them.
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--brand-new` is a new flag. `--upstream-flag` is an upstream flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "fork").exitCode).toBe(0);
+  writeConfig(dir, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "upstream" } } });
+  const out = join(dir, "out");
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  // The fork's own new flag still fails: the change is blamed for it.
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  // --upstream-flag is documented at the upstream tip but not at the merge
+  // base the diff actually compares against, so it still FAILs: a branch-tip
+  // read would find it pre-existing and downgrade it to WARN, which is the
+  // regression this test pins.
+  expect(verdictOf(receipt, "docs/--upstream-flag")).toBe("FAIL");
+  // The pre-existing flag is compared against the merge base, not the
+  // diverged branch tip, so it stays on the WARN side.
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a changed doc outside the root never selects an unchanged file that shares its name", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "guide.md"), "# guide\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "guide").exitCode).toBe(0);
+  // The diff changes a doc that lives next to the nested root; it does not
+  // touch the nested root's own doc, which must therefore not be judged.
+  writeFileSync(join(dir, "guide.md"), "# top guide\n\n`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeFileSync(join(nested, ".wish-sweep.json"), JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["guide.md"], base: "HEAD~1" } } }, null, 2));
+  const out = join(nested, "out");
+  const run = invoke(nested, ["--root", nested, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", nested, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  const skip = receipt.rows.find((entry) => entry.id === "docs");
+  expect(skip?.verdict).toBe("SKIP");
+  expect(skip?.note).toContain("changed no doc");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a symlinked sweep root reads the changed docs exactly as the physical root does", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const usageMd = join(dir, "usage.md");
+  writeFileSync(usageMd, "# cli\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  writeFileSync(usageMd, readFileSync(usageMd, "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  // The same checkout through a symlink alias must not read as outside the
+  // repository and fall back to the full set of FAILs.
+  const link = join(dir, "..", `alias-${process.pid}`);
+  expect(Bun.spawnSync(["ln", "-s", dir, link]).exitCode).toBe(0);
+  try {
+    writeConfig(link, { probes: { docs: { helpCmd: "bun cli.js --help", docs: ["usage.md"], base: "HEAD~1" } } });
+    const out = join(link, "out");
+    const run = invoke(link, ["--root", link, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+    const head = Bun.spawnSync(["git", "-C", link, "rev-parse", "HEAD"]).stdout.toString().trim();
+    const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+    expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+    expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+    expect(run.exit).toBe(1);
+  } finally {
+    rmSync(link, { force: true });
+  }
+}, 120000);
+
+test("a diff.relative checkout keeps the toplevel-relative diff the probe needs", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The checkout's configuration makes git diff report paths relative to the
+  // nested root; the probe must force the toplevel form back with
+  // --no-relative, or the prefix filter would discard the changed doc and
+  // the run would silently skip.
+  expect(git("config", "diff.relative", "true").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "guide.md"), "# guide\n\n`--dry-run` is an old documented flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "guide").exitCode).toBe(0);
+  writeFileSync(join(nested, "guide.md"), readFileSync(join(nested, "guide.md"), "utf8") + "`--brand-new` is a new flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  writeFileSync(join(nested, ".wish-sweep.json"), JSON.stringify({ probes: { docs: { helpCmd: "bun ../cli.js --help", docs: ["guide.md"], base: "HEAD~1" } } }, null, 2));
+  const out = join(nested, "out");
+  const run = invoke(nested, ["--root", nested, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const head = Bun.spawnSync(["git", "-C", nested, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receipt = JSON.parse(readFileSync(join(out, `verify_lane-docs-${head.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receipt, "docs/--brand-new")).toBe("FAIL");
+  expect(verdictOf(receipt, "docs/--dry-run")).toBe("WARN");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("an unreadable base document forces the full doc set and drops every pre-existing exemption", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  expect(git("init", "-q").exitCode).toBe(0);
+  const nested = join(dir, "nested");
+  mkdirSync(nested, { recursive: true });
+  writeFileSync(join(nested, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag.\n");
+  // The unchanged top-level doc documents a distinct flag, --unchanged-only,
+  // that lives nowhere in the diff: only a full-set fallback can judge it.
+  writeFileSync(join(dir, "usage.md"), "# cli\n\n`--dry-run` is an old documented flag. `--unchanged-only` is a top-level flag.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  // The diff touches the nested doc and adds prose: with the base blob
+  // intact the flag reads as pre-existing and the row stays a WARN. The next
+  // fixture breaks that read: the diff read succeeds, but the base entry
+  // cannot, so the probe must keep the full declared doc set and judge every
+  // absent flag rather than half-know the pre-existing side.
+  writeFileSync(join(nested, "usage.md"), readFileSync(join(nested, "usage.md"), "utf8") + "The flag prints the payload without sending.\n");
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "docs").exitCode).toBe(0);
+  const nestedConfig = JSON.stringify({ probes: { docs: { helpCmd: "bun cli.js --help", docs: ["nested/usage.md", "usage.md"], base: "HEAD~1" } } }, null, 2);
+  writeFileSync(join(dir, ".wish-sweep.json"), nestedConfig);
+  // A working run: the pre-existing flag only warns and the run exits 0.
+  const out = join(dir, "out");
+  const runBefore = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const headBefore = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receiptBefore = JSON.parse(readFileSync(join(out, `verify_lane-docs-${headBefore.slice(0, 7)}.json`), "utf8"));
+  expect(verdictOf(receiptBefore, "docs/--dry-run")).toBe("WARN");
+  expect(runBefore.exit).toBe(0);
+  // Break the base read: the merge base of base and HEAD is the commit
+  // "docs", so rewrite that commit's tree to point the doc path at a
+  // missing blob. The diff against HEAD~1 still lists the path, and the
+  // base tree still names it, but `git show` at the base fails: exactly
+  // the half-known state the probe must not treat as pre-existing. The
+  // top-level doc also carries the flag, so a correct fallback must keep
+  // it in the judged set and let the absent flag FAIL there too.
+  const missingBlob = "1234567890abcdef1234567890abcdef12345678";
+  const gitRepo = (args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir }).stdout.toString().trim();
+  const docsCommit = gitRepo(["-C", dir, "rev-parse", "HEAD~1"]);
+  const docsTree = gitRepo(["-C", dir, "rev-parse", "HEAD~1^{tree}"]);
+  expect(docsTree.length).toBe(40);
+  // The broken entry sits two levels deep (nested/usage.md), and mktree
+  // builds one tree level at a time: replace the nested subtree's usage.md
+  // entry with the missing blob, then rebuild the top-level tree around the
+  // broken subtree.
+  const nestedEntry = gitRepo(["-C", dir, "ls-tree", docsTree, "--", "nested"]).trim();
+  const nestedSubTreeSha = nestedEntry.split("\t")[0].split(" ")[2];
+  expect(nestedSubTreeSha.length).toBe(40);
+  const nestedEntries = [];
+  for (const line of gitRepo(["-C", dir, "ls-tree", nestedSubTreeSha]).split("\n")) {
+    if (!line) continue;
+    const [meta, name] = line.split("\t");
+    if (name === "usage.md") {
+      const [mode, type] = meta.split(" ");
+      nestedEntries.push(`${mode} ${type} ${missingBlob}\t${name}`);
+      continue;
+    }
+    nestedEntries.push(line);
+  }
+  const nestedEntriesFile = join(dir, ".mktree-nested");
+  writeFileSync(nestedEntriesFile, nestedEntries.join("\n") + "\n");
+  const brokenNestedTree = Bun.spawnSync(["sh", "-c", `git -C ${JSON.stringify(dir)} mktree --missing < ${JSON.stringify(nestedEntriesFile)}`]).stdout.toString().trim();
+  expect(brokenNestedTree.length).toBe(40);
+  const topEntries = [];
+  for (const line of gitRepo(["-C", dir, "ls-tree", docsTree]).split("\n")) {
+    if (!line) continue;
+    const [meta, name] = line.split("\t");
+    if (name === "nested") {
+      topEntries.push(`040000 tree ${brokenNestedTree}\tnested`);
+      continue;
+    }
+    topEntries.push(line);
+  }
+  const topEntriesFile = join(dir, ".mktree-top");
+  writeFileSync(topEntriesFile, topEntries.join("\n") + "\n");
+  const brokenTreeSha = Bun.spawnSync(["sh", "-c", `git -C ${JSON.stringify(dir)} mktree < ${JSON.stringify(topEntriesFile)}`]).stdout.toString().trim();
+  expect(brokenTreeSha.length).toBe(40);
+  // Membership proof: the broken tree lists the doc path through the broken
+  // subtree, so the entry is not "new" even though the blob cannot be read.
+  const brokenListing = gitRepo(["-C", dir, "ls-tree", brokenTreeSha, "--", "nested/usage.md"]);
+  expect(brokenListing).toContain(missingBlob);
+  expect(gitRepo(["-C", dir, "show", `${brokenTreeSha}:nested/usage.md`]).length).toBe(0);
+  const headSha = gitRepo(["-C", dir, "rev-parse", "HEAD"]);
+  const headTree = gitRepo(["-C", dir, "rev-parse", "HEAD^{tree}"]);
+  const brokenDocsCommit = gitRepo(["-C", dir, "commit-tree", brokenTreeSha, "-m", "docs", "-p", docsCommit]);
+  expect(brokenDocsCommit.length).toBe(40);
+  const brokenHeadCommit = gitRepo(["-C", dir, "commit-tree", headTree, "-m", "broken", "-p", brokenDocsCommit]);
+  expect(brokenHeadCommit.length).toBe(40);
+  expect(git("update-ref", "HEAD", brokenHeadCommit).exitCode).toBe(0);
+  rmSync(join(dir, ".mktree-nested"), { force: true });
+  rmSync(join(dir, ".mktree-top"), { force: true });
+  const runAfter = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--probe", "docs"]);
+  const headAfter = Bun.spawnSync(["git", "-C", dir, "rev-parse", "HEAD"]).stdout.toString().trim();
+  const receiptAfter = JSON.parse(readFileSync(join(out, `verify_lane-docs-${headAfter.slice(0, 7)}.json`), "utf8"));
+  const dryRun = receiptAfter.rows.find((entry) => entry.id === "docs/--dry-run");
+  expect(dryRun?.verdict).toBe("FAIL");
+  expect(dryRun?.note).not.toContain("pre-existing");
+  // The fallback keeps the full declared doc set: a flag that exists only in
+  // the unchanged top-level doc is judged too. The pre-fix probe judges the
+  // changed file only, so this row does not exist before the fix and the
+  // fixture fails on both the missing-blob and the old show-only reads.
+  const unchangedOnly = receiptAfter.rows.find((entry) => entry.id === "docs/--unchanged-only");
+  expect(unchangedOnly?.verdict).toBe("FAIL");
+  expect(receiptAfter.rows.some((entry) => entry.id === "docs" && entry.verdict === "SKIP")).toBe(false);
+  expect(runAfter.exit).toBe(1);
+}, 120000);
+
 test("the docs help command is supervised by the same bounded runner", () => {
   const dir = stage("clean");
   writeConfig(dir, { probes: { docs: { helpCmd: "sleep 30", docs: ["usage.md"], helpTimeoutMs: 300 } } });
