@@ -138,10 +138,10 @@ and of the `verify_lane` ledger event. The set is `REQUIRED_RECEIPTS` in `script
 A `SKIP` receipt never satisfies a required lane: when a lane truly does not apply, the plan records why, and
 `status` still enforces the type's required set. A prompt cannot waive a required lane.
 
-Stage names a prompt may name (`ledger.md` §9.1, all 27):
-`intake, lens, discover, ideal, gap, before, plan, plan_lint, plan_review, goal, build, verify_lane,
-triage, fix, reuse, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint,
-cleanup, resume`.
+Stage names a prompt may name (`ledger.md` §9.1, all 25):
+`intake, collect, define, before, plan, plan_lint, plan_review, decide, goal, build, verify_lane, triage,
+fix, freeze, pr_open, gate, round, verdict, switch, progress, merge, post_merge, checkpoint, cleanup,
+resume`.
 
 Switch kinds (`ledger.md` §9.4): `premise`, `family`, `strategy`, `split` (program mode only), `rediscover`.
 
@@ -572,6 +572,9 @@ REPORT: the slop-check line (`remove-ai-slops: ran|not run; programming: ran|not
   then notes and follow-ups separately. Use the reviewer rule of §1.1 verbatim.
 ```
 
+The lane runs at the frozen head before the `round` stage. A code-review receipt for another head never
+satisfies the gate.
+
 In a REVISE round the lane sees only the delta diff since the last reviewed commit, plus the findings table
 it must verify. Fix every reproduced in-contract code blocker once; that round gets no second code-review
 pass.
@@ -675,8 +678,12 @@ The third sentence applies to a plan with a rendered surface or a visual QA scen
 A plan forces no test code, because the confirmation device fills that role (`plan-format.md` §3).
 
 If the host lists no `architect` category, use the highest-capability category it does list and record it.
-`plan-reviewer` is a plan-gated, one-shot agent: use it only when the requester explicitly chose the
-`ulw-plan` workflow; otherwise the architect review is the one round.
+
+The plan has two branches (`SKILL.md` owns them). By default the session writes the plan and this one
+architect review checks it, with no approval question to the requester. When the requester's own message asked
+for the ulw-plan workflow, ulw-plan runs whole and the plan gets both `plan-reviewer` and this architect
+review. A skill's text can't make `plan-reviewer` spawnable: the host refuses it outside that branch, so a
+refusal falls back to this review and is recorded in the plan's review record.
 
 ### 4.2 `premise-review` — two strikes, or the `premise` switch kind
 
@@ -726,6 +733,9 @@ FORBIDDEN: a verdict covering a head other than <head>; a 7-character head; a se
 REPORT: the findings table, then `AXES:` one line per axis from the type's list (§4.3.2), each saying what
   was checked and the counterexample found or `none`, then memos, then the VERDICT line.
 ```
+
+The dispatch is refused (exit 3) unless a valid `code-review` receipt exists at the frozen head, for a work
+type whose required lanes name `code-review`.
 
 The prompt also carries, pasted in full:
 
@@ -825,6 +835,9 @@ FORBIDDEN: reverting a prior APPROVED finding without a changed patch; treating 
 REPORT: prior-findings table (`id | class | head_found | gate | verdict at <head> | repro`); axis lines;
   new findings; memos; the VERDICT line. Use §1.1 verbatim.
 ```
+
+The dispatch is refused (exit 3) unless a valid `code-review` receipt exists at the frozen head, for a work
+type whose required lanes name `code-review`.
 
 The prompt carries the round-1 inputs plus:
 
@@ -1500,7 +1513,7 @@ truth and `test/schema.test.js` guards it.
 | Lane receipt name | `<stage>-<lane>-<head7>.json` | `ledger.md` §4.2 |
 | Gap receipt names | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` | `ledger.md` §4.2 |
 | Lane names | the `REQUIRED_RECEIPTS` table of §1.5 | `schema.mjs` |
-| Stage names | the 27 of §1.5 | `ledger.md` §9.1 |
+| Stage names | the 25 of §1.5 | `ledger.md` §9.1 |
 | Switch kinds | `premise, family, strategy, split, rediscover` | `ledger.md` §9.4 |
 | Device rows | `DEVICE: guard <INVARIANT> -> <node>`, `DEVICE: qa <command> => <observation>`, `DEVICE: vqa <ids> @ <cells> pair <case>-<state>-<width>-<theme>`, `DEVICE: claim C<n> gate(primary, domains>=<n>, counter-search)`, `DEVICE: lint <command> exit 0`, `DEVICE: spot <n> rows reproduce` | `ledger.md` §8.2 |
 | Class sets | per type, `ledger.md` §5.1 | `FINDINGS_CLASSES` |
