@@ -1,9 +1,10 @@
 import { afterEach, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  appendEvent, codeReviewAt, computeStatus, rootPaths, writeFrontMatter,
+  appendEvent, codeReviewAt, computeStatus, mergeFrontMatter, rootPaths, writeFrontMatter,
 } from "../skills/wish/scripts/lib/store.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
@@ -54,6 +55,77 @@ function lane(state, name, patch = {}) {
 function view(state) {
   return computeStatus({ root: state.root, planPath: state.planPath, head: HEAD, tree: TREE });
 }
+
+function cli(state, args, input) {
+  const result = spawnSync(process.execPath, [
+    join(import.meta.dir, "..", "skills", "wish", "scripts", "wish.mjs"),
+    ...args, "--root", state.root,
+  ], { cwd: process.cwd(), encoding: "utf8", input, timeout: 10_000 });
+  if (result.error) throw result.error;
+  return result;
+}
+
+function cliScene({ frozen = false, reviewed = false } = {}) {
+  const root = mkdtempSync(join(tmpdir(), "round-order-"));
+  roots.push(root);
+  const state = { root, planPath: join(root, "plan.md") };
+  const initialized = cli(state, [
+    "init", "--plan", state.planPath, "--run-id", "w-order-20261028-1400",
+    "--type", "code", "--tier", "M", "--worktree", process.cwd(), "--fact", "review order",
+  ]);
+  expect(initialized.status).toBe(0);
+  const observed = cli(state, ["status", "--json"]);
+  expect(observed.status).toBe(0);
+  const { head, tree } = JSON.parse(observed.stdout);
+  if (frozen) {
+    record(state, { event: "freeze", head, tree, pr: 1 });
+    mergeFrontMatter(state.planPath, { frozen_head: head });
+  }
+  if (reviewed) lane(state, "code-review", { head, tree });
+  return { ...state, head, tree };
+}
+
+function roundEntries(state) {
+  return [
+    cli(state, ["ledger", "append", "--event", "round", "--json", "-"],
+      JSON.stringify({ event: "round", round: 1, verdict: "REVISE", head: state.head })),
+    cli(state, ["gate", "--round", "1"]),
+  ];
+}
+
+test("round append refuses a code unit without a frozen head", () => {
+  const state = cliScene();
+  const result = cli(state, ["ledger", "append", "--event", "round", "--json", "-"],
+    JSON.stringify({ event: "round", round: 1, verdict: "REVISE", head: state.head }));
+  expect(result.status).toBe(3);
+  expect(result.stderr).toContain("out of stage order: freeze missing before round");
+  record(state, { event: "pr_open", head: state.head, pr: 1 });
+  const status = cli(state, ["status", "--json"]);
+  expect(JSON.parse(status.stdout).blocking).toContain("order:freeze missing before round");
+  expect(cli(state, ["resume-plan"]).stdout).toContain("freeze the head, then run the code-review lane");
+});
+
+test("round dispatch refuses a code unit without a frozen head", () => {
+  const state = cliScene();
+  const result = cli(state, ["gate", "--round", "1"]);
+  expect(result.status).toBe(3);
+  expect(result.stderr).toContain("out of stage order: freeze missing before round");
+});
+
+test("both round entries refuse a frozen head without code review", () => {
+  const state = cliScene({ frozen: true });
+  const results = roundEntries(state);
+  expect(results.map((result) => result.status)).toEqual([3, 3]);
+  for (const result of results) {
+    expect(result.stderr).toContain(`out of stage order: code-review missing at ${state.head.slice(0, 7)}`);
+  }
+});
+
+test("both round entries accept code review at the frozen head", () => {
+  const state = cliScene({ frozen: true, reviewed: true });
+  const results = roundEntries(state);
+  expect(results.map((result) => result.status)).toEqual([0, 0]);
+});
 
 test("round refuses without code review at the frozen head and accepts PASS or WARN", () => {
   for (const status of ["PASS", "WARN"]) {

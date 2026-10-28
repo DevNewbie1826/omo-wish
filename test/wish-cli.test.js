@@ -180,6 +180,7 @@ function lane(state, { lane: name, status: verdict = "PASS", head, tree, unit, s
     kind: "lane",
     stage,
     type,
+    ...(type === "mixed" ? { primary: state.primary, secondary: state.secondary } : {}),
     unit: unit ?? state.unit,
     program_id: null,
     lane: name,
@@ -273,6 +274,11 @@ function upToBuild(state) {
     if (result.code !== 0) throw new Error(step.event + ": " + result.err);
     expect(result.code).toBe(0);
   }
+}
+
+function reviewedFreeze(state) {
+  expect(cli(["freeze", "--head", state.repo.head, "--pr", "51", "--root", state.root]).code).toBe(0);
+  lane(state, { lane: "code-review", type: state.type });
 }
 
 describe("help and usage contract", () => {
@@ -608,6 +614,7 @@ describe("ledger append", () => {
 
   test("out-of-order rounds are a state mismatch", () => {
     const state = scene();
+    reviewedFreeze(state);
     expect(append(state, { event: "round", round: 1, verdict: "APPROVED", head: state.repo.head }).code).toBe(0);
     const second = append(state, { event: "round", round: 2, verdict: "REVISE", head: state.repo.head });
     expect(second.code).toBe(3);
@@ -731,6 +738,7 @@ describe("gates", () => {
   test("the dispatch gate fails when a blocker still reproduces and marks it not-fixed", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 3" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
     expect(result.code).toBe(1);
@@ -750,6 +758,7 @@ describe("gates", () => {
   test("the dispatch gate passes when nothing reproduces", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 0" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
     expect(result.code).toBe(0);
@@ -761,6 +770,7 @@ describe("gates", () => {
   test("a row with no command is unprovable, never a pass", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "no command", status: "open" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
     expect(result.code).toBe(1);
@@ -772,6 +782,7 @@ describe("gates", () => {
   test("a hanging row is killed with its process group and recorded as a timeout", async () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const command = "echo $$ > pids.txt; sleep 30 & echo $! >> pids.txt; wait";
     expect(addFindings(state, [findingRow({ repro_cmd: command })]).code).toBe(0);
     const started = Date.now();
@@ -791,6 +802,7 @@ describe("gates", () => {
   test("a dry run executes nothing", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "touch marker.txt" })]).code).toBe(0);
     const out = cli(["gate", "--round", "2", "--dry-run", "--root", state.root]);
     expect(out.code).toBe(0);
@@ -804,6 +816,7 @@ describe("gates", () => {
   test("a row that prints a token never leaks it into the receipt or the error", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const canary = "CANARY_7f3a9c";
     expect(addFindings(state, [findingRow({ repro_cmd: "printf '%s' \"$GH_TOKEN\"; exit 2" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root], { env: { GH_TOKEN: canary } });
@@ -889,6 +902,7 @@ describe("switch", () => {
   test("records one approach switch per REVISE after the third and never caps the rounds", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     for (const round of [1, 2, 3]) {
       expect(append(state, { event: "round", round, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
     }
@@ -1173,6 +1187,7 @@ describe("status derivation against the contract's own example", () => {
   test("a worktree path with shell metacharacters is never interpolated", () => {
     const state = scene({ workName: "wo;rk $(touch pwned) `touch pwned2`" });
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 0" })]).code).toBe(0);
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(0);
     expect(existsSync(join(state.box.dir, "pwned"))).toBe(false);
@@ -1223,6 +1238,7 @@ describe("review blockers", () => {
 
   test("a mixed run reads its findings table with the union of both class sets", () => {
     const state = scene({ type: "mixed", initExtra: ["--primary", "design", "--secondary", "code"] });
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ class: "A1" })]).code).toBe(0);
     expect(addFindings(state, [findingRow({ id: "F2", class: "S" })]).code).toBe(0);
     expect(addFindings(state, [findingRow({ id: "F3", class: "untraceable_number" })]).code).toBe(1);
@@ -1235,6 +1251,7 @@ describe("review blockers", () => {
   test("a passing gate row leaves no grandchild behind", async () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "sleep 30 >/dev/null 2>&1 & echo $! > bg.txt; exit 0" })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--timeout", "5", "--root", state.root]);
     expect(result.code).toBe(0);
@@ -1257,6 +1274,7 @@ describe("review blockers", () => {
 
   test("more than twenty pending rows is refused, never truncated", () => {
     const state = scene();
+    expect(cli(["freeze", "--head", state.repo.head, "--pr", "51", "--root", state.root]).code).toBe(0);
     const rows = Array.from({ length: 21 }, (_, index) => findingRow({ id: `F${index + 1}`, repro_cmd: "exit 0" }));
     expect(addFindings(state, rows).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
@@ -1324,6 +1342,7 @@ describe("robustness review blockers", () => {
   test("the gate records its event when a row moves under it", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const fix = `${process.execPath} ${CLI} findings set --id F1 --status fixed --fixed-head ${state.repo.head} --root ${state.root}`;
     expect(addFindings(state, [findingRow({ repro_cmd: `${fix}; exit 1` })]).code).toBe(0);
     const result = cli(["gate", "--round", "2", "--root", state.root]);
@@ -1447,6 +1466,7 @@ describe("final review round 1", () => {
 
   test("a mixed run writes labeled events and receipts the frozen schema accepts", () => {
     const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
+    reviewedFreeze(state);
     const labels = { primary: "code", secondary: "design" };
     append(state, {
       event: "collect", type: "mixed", unit: "u1", program_id: null, plan: state.plan, session_id: "se-1",
@@ -1473,6 +1493,7 @@ describe("final review round 1", () => {
   test("an empty dispatch table still writes its receipt", () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     const gate = cli(["gate", "--round", "1", "--root", state.root]);
     if (gate.code !== 0) throw new Error("gate stderr: " + gate.err);
     expect(gate.code).toBe(0);
@@ -1585,6 +1606,7 @@ describe("final review round 1", () => {
   test("a row whose command backgrounds a child is judged by the shell's exit", { timeout: 40_000 }, () => {
     const state = scene();
     upToBuild(state);
+    reviewedFreeze(state);
     addFindings(state, [findingRow({ repro_cmd: "sleep 30 & exit 0" })]);
     const started = Date.now();
     const gate = cli(["gate", "--round", "2", "--root", state.root]);
@@ -1772,6 +1794,7 @@ describe("final review round 2 (second pass)", () => {
     const state = scene();
     const built = upToBuild(state);
     void built;
+    reviewedFreeze(state);
     // u1's own gate is open: a row still reproduces.
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 1" })]).code).toBe(0);
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(1);
@@ -1798,6 +1821,7 @@ describe("final review round 2 (second pass)", () => {
   test("a failing mixed gate row moves the finding to not-fixed", () => {
     const state = scene({ type: "mixed", initExtra: ["--primary", "code", "--secondary", "design"] });
     upToBuild(state);
+    reviewedFreeze(state);
     expect(addFindings(state, [findingRow({ repro_cmd: "exit 1" })]).code).toBe(0);
     expect(cli(["gate", "--round", "2", "--root", state.root]).code).toBe(1);
     const rows = JSON.parse(cli(["findings", "list", "--json", "--root", state.root]).out);
