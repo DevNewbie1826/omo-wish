@@ -68,9 +68,66 @@ and has no ceiling (§C.6): the cap is a switch, never an exit.
 
 `mixed` names a primary and a secondary concrete type in `receipt` and ledger shapes, but `ledger.md` §8.1
 does not carry those two keys in the plan front matter, so a mixed plan's rows cannot be attributed to one
-concrete type. The linter therefore accepts any concrete device form on a mixed plan (see §6).
+concrete type. The linter therefore accepts any concrete device form on a mixed plan (see §7).
 
-## 3. Checkbox rows (ulw-plan grammar)
+## 3. The required sentences
+
+The plan-writing step writes these three sentences into the plan verbatim. Each one sits inside a fenced block,
+so the linter reads it as documentation and never as a row (§1):
+
+```text
+(a) Implement it, and also include, strictly, a device that confirms the implementation was done.
+(b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
+(c) Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
+```
+
+(a) is the implementation-device sentence and (b) the fix-device sentence: both are required in every plan. (c) is
+the visual-QA sentence, required whenever the plan carries a rendered surface or a visual QA scenario.
+
+The linter does not check the three sentences, because they are prose: no mechanical rule can separate a sentence
+that governs the work from one that merely describes it. PLAN-REVIEW checks that they are present, and a plan
+without (a) or (b) does not pass that review.
+
+### 3.1 The no-test path
+
+A plan forces no test code. The confirmation device takes that role, in one of three forms:
+
+- a behaviour the repository already tests gets those tests;
+- a guard row gets its mutation (§6.3);
+- a behaviour this repository cannot test gets a `qa` device plus a `no-test` row naming it.
+
+Those last two rows read:
+
+```
+- IS-<n> DEVICE: qa <command> => <one binary observation>
+- no-test: <reason this repository cannot test it> : QA-<n>
+```
+
+`<n>` is the IS row that delivers the behaviour. The device body is the confirmation form §6.2 lists for the
+plan's type — `qa <command> => <observation>` on a `code` plan, `vqa …` on a `design` plan — and the `no-test`
+row's QA id names the scenario that runs the same check (§6.1). A plan with no repository test therefore still
+carries at least one confirmation device per IS row, in a form §6.2 accepts, so a missing test never reads as a
+missing proof.
+
+### 3.2 The handoff to ulw-execute
+
+The plan lives at `.omo/plans/wish-<slug>.md` and is written in the checkbox grammar of §4: a `## Todos` section of
+column-zero `- [ ] <N>. <title>` rows and a `## Final verification wave` section of column-zero
+`- [ ] F<n>. <title>` rows. That location and that shape are what ulw-execute selects as its plan without a second
+planning pass; a plan elsewhere, or in another shape, is treated as no plan at all.
+
+A program writes one plan per unit (`.omo/plans/wish-<slug>-u<N>.md`), so the handoff passes the plan name
+explicitly: a directory holding several plans and no name makes ulw-execute ask a selection question instead of
+selecting.
+
+ulw-execute's prose names `## TODOs` and `## Final Verification Wave` in a later phase, while this grammar is the
+exact `## Todos` and `## Final verification wave`. Selection does not depend on heading case, but these two
+checkbox sections in this exact spelling are what both readers agree on, so the plan keeps them.
+
+Each task row may carry a nested `Recommended task executor category: <category>` line, which ulw-execute honours;
+the linter does not check it (§4).
+
+## 4. Checkbox rows (ulw-plan grammar)
 
 ```
 - [ ] 1. <title>
@@ -86,12 +143,12 @@ top-level `##` heading opens a section, so a `### Wave 1` group inside `## Todos
 ulw-plan's optional `Recommended task executor category:` line is not part of this grammar and is not linted;
 a playbook may still ask for it.
 
-## 4. Contract rows
+## 5. Contract rows
 
 Every row below is a column-zero bullet. `; ` separates the fields of a row introduced in v2; the v1 rows keep
 their v1 shape so plans and quotations stay recognizable.
 
-### 4.1 IS rows — one per delivered property
+### 5.1 IS rows — one per delivered property
 
 ```
 - IS-<n>: <property the delivered change must have> ; criterion: QA-<n>[, QA-<m>] [; gap: G<n>]
@@ -104,7 +161,7 @@ closes; it is required when `--register` is passed and optional otherwise.
 
 An IS row is the unit's contract: see `contract.md` §2.
 
-### 4.2 COMPANION rows
+### 5.2 COMPANION rows
 
 ```
 - COMPANION: <item> <- IS-<n> : <why the requester expects it in this task>
@@ -117,7 +174,7 @@ the row carries no PR or task field of its own, so it rides this plan and this P
 owner decision) is semantic and belongs to PLAN-REVIEW. `COMPANION: none.` is the explicit empty set; a plan
 with companions may not also write `none.`.
 
-### 4.3 INVARIANT rows — what the change must keep
+### 5.3 INVARIANT rows — what the change must keep
 
 ```
 - INVARIANT INV<n>: <property that must keep holding> : <the test or QA scenario that shows a violation>
@@ -126,7 +183,7 @@ with companions may not also write `none.`.
 The id is cited by guard and high-risk rows. The right-hand side names the proof: a test path, a QA id, or a
 command. A plan with no invariant row says so by having none.
 
-### 4.4 LIMIT rows — what the change knowingly does not handle
+### 5.4 LIMIT rows — what the change knowingly does not handle
 
 ```
 - LIMIT: <what is not handled> : <why it is accepted>
@@ -135,7 +192,7 @@ command. A plan with no invariant row says so by having none.
 Both halves are required: a limit without a reason is the defect this row exists to prevent. A `LIMIT` row is
 part of the finite contract, so a reviewer may not report it as a finding (`contract.md` §1).
 
-### 4.5 SWITCH rows — the approach switch of §C.6
+### 5.5 SWITCH rows — the approach switch of §C.6
 
 ```
 - SWITCH: <the premise the failed fixes assumed> -> <the approach that replaces it>
@@ -145,7 +202,7 @@ part of the finite contract, so a reviewer may not report it as a finding (`cont
 `switch` event (`ledger.md` §9.4). The plan row states the redesign; the ledger event carries the round and the
 kind. Two sides are required; the plan's `round` front matter says which round it belongs to.
 
-### 4.6 Type rows — the per-type contract rows of §C.1
+### 5.6 Type rows — the per-type contract rows of §C.1
 
 | Row | Type | Shape |
 | --- | --- | --- |
@@ -163,9 +220,9 @@ A plan requires its type's rows: `design` at least one `SCREEN`; `research` at l
 `CLAIM`; `audit` at least one `RULE`; `code` none. A type row of another type's kind on a concrete-type plan is
 a complaint: the contract would name a lane that type never runs. A `mixed` plan may use any of the four kinds.
 
-## 5. QA scenarios and verification devices
+## 6. QA scenarios and verification devices
 
-### 5.1 QA scenario rows — the real-surface proof
+### 6.1 QA scenario rows — the real-surface proof
 
 ```
 - QA-<n>: <what the user does> ; pass when: <one binary observation> ; evidence: <path> ; run: <the exact command>
@@ -177,7 +234,7 @@ breaking the row. `pass when` is one observation that decides PASS or FAIL — a
 a number — never "looks right". `evidence` is where the capture lands (normally under the evidence root,
 `ledger.md` §1). A scenario that runs a command is a re-runnable script kept with its evidence.
 
-### 5.2 DEVICE rows — one paired verification device per contract row
+### 6.2 DEVICE rows — one paired verification device per contract row
 
 ```
 - <IS-<n>|G<n>> DEVICE: <the device body>
@@ -197,7 +254,7 @@ is exactly `ledger.md` §8.2's grammar for the row's work type, and the linter v
 A device row whose body is valid for another type is a complaint: it would run a lane the type never runs.
 On a research plan the cited `C<n>` must be a declared `CLAIM` row.
 
-### 5.3 Risk rows
+### 6.3 Risk rows
 
 ```
 - guard: <INVARIANT or IS row> : <the regression a user would hit> -> <node>
@@ -214,12 +271,12 @@ owns it runs the adversarial review, and the run's required receipts gain the `a
 (`ledger.md` §3). Only `code` and `mixed` plans may carry one, because no other type's receipt table includes
 that lane. Missing a high-risk row is a judgment call, not a grammar defect: PLAN-REVIEW looks for it.
 
-### 5.4 Pinned rules
+### 6.4 Pinned rules
 
 The plan states both rules once, in prose, and never relaxes them: every command pins the task worktree, and
 commits are serialized. The linter does not pin the wording; PLAN-REVIEW checks that the plan says both.
 
-## 6. The machine-checked rules
+## 7. The machine-checked rules
 
 `scripts/check-plan.mjs <plan.md> [--register <gaps.tsv>] [--json] [--help]` exits `0` clean, `1` when any rule
 below fails, and `2` for a usage or read error (`ledger.md` §14); `--` ends the flags so a dashed path is still a
@@ -259,7 +316,7 @@ by the test suite, so a rule cannot be added on one side only.
  "register": null, "problems": []}
 ```
 
-## 7. What the linter does not check
+## 8. What the linter does not check
 
 These are deliberate, and each one is judged by a named role instead:
 
@@ -280,7 +337,7 @@ These are deliberate, and each one is judged by a named role instead:
 - **An unregistered `G<n>`.** Without `--register` a device row's gap target cannot be verified; the register
   lives at `<ER>/gaps.tsv` (`ledger.md` §1) and is optional for a single unit.
 
-## 8. A complete plan
+## 9. A complete plan
 
 ```md wish:plan
 ---
