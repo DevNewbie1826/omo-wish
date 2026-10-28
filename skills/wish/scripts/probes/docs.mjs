@@ -13,7 +13,7 @@
 
 import { readFileSync } from "node:fs";
 import { sep } from "node:path";
-import { assertRevision, gitLines, matchFiles, row, runCommand, isMain, probeCli } from "./lib.mjs";
+import { assertRevision, globToRegExp, gitLines, matchFiles, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
 export const name = "docs";
 export const types = ["code"];
@@ -29,27 +29,36 @@ Every token matched by "flagPattern" in the changed docs must appear in the
 output of "helpCmd" or in "known". A flag the diff itself documents and the
 program lacks FAILs; a flag already documented at "base" is a pre-existing row
 and only WARNs, because the declared help command is not required to list every
-historical flag. "base" must be a revision, never an option, and when the
-diff against it cannot be read (not a checkout, or no diff) the rows fall back
-to the mechanical half: every absent flag FAILs. The help command runs once
-through the same supervised runner as every other command (its own process
-session, killed on timeout), with "helpTimeoutMs" (default: the run's
-"timeoutMs"). A documented flag with a wrong description is not decided here;
-that row goes to the checklist pass.`;
+historical flag. "base" must be a revision, never an option, and it defaults
+to "origin/main" like the other diff-aware probes, so a sweep config that
+omits the key still gets the diff scoping that keeps pre-existing flags from
+failing the run. When the diff against the base cannot be read (not a
+checkout, or the base revision does not exist) the probe falls back to the
+full declared doc set and every absent flag FAILs, so it never passes
+silently on a state it cannot see. The help command runs once through the
+same supervised runner as every other command (its own process session,
+killed on timeout), with "helpTimeoutMs" (default: the run's "timeoutMs").
+A documented flag with a wrong description is not decided here; that row
+goes to the checklist pass.`;
 
-// The file set the diff against "base" changed, as relative paths; `null` when
-// the diff cannot be read, in which case the caller falls back to the full set.
+// The file set the diff against "base" changed, as relative paths; `null`
+// when the diff cannot be read, in which case the caller falls back to the
+// full set. `--no-renames` keeps a moved doc's old path in the list, so the
+// base side of the move is still readable and its documented flags are not
+// lost.
 async function changedFiles(root, base) {
-  const text = await gitLines(root, ["diff", "--name-only", `${assertRevision(base) ?? "origin/main"}...HEAD`]);
+  const text = await gitLines(root, ["diff", "--no-renames", "--name-only", `${base}...HEAD`]);
   return text === null ? null : text.split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
 // The flags "base" already documented in the doc files the diff touched, so a
-// row can tell a new promise from an old one it is not being blamed for.
-async function preExistingFlags(root, base, changed, pattern) {
+// row can tell a new promise from an old one it is not being blamed for. Only
+// the declared doc globs are read at the base: a comment in a code file is
+// not a documentation promise.
+async function preExistingFlags(root, base, changed, globs, pattern) {
   const flags = new Set();
-  for (const file of changed) {
-    const rel = file.split(sep).join("/");
+  const regexes = (globs ?? []).map(globToRegExp);
+  for (const rel of changed.filter((candidate) => regexes.some((regex) => regex.test(candidate)))) {
     const atBase = await gitLines(root, ["show", `${base}:${rel}`]);
     if (atBase !== null) for (const match of atBase.matchAll(pattern)) flags.add(match[0]);
   }
@@ -58,8 +67,12 @@ async function preExistingFlags(root, base, changed, pattern) {
 
 export async function run(config, ctx) {
   const cls = ctx.classFor("DOC");
-  const base = assertRevision(config.base);
-  const docs = matchFiles(ctx.root, config.docs ?? []);
+  // The diff-aware siblings (mutation, errors, draft-guard) all default to
+  // "origin/main"; the docs probe keeps that default so a config that omits
+  // the key still gets the scoping that fixes the pre-existing-flag defect.
+  const base = assertRevision(config.base) ?? "origin/main";
+  const globs = config.docs ?? [];
+  const docs = matchFiles(ctx.root, globs);
   if (docs.length === 0) {
     return [row({ id: "docs", verdict: "SKIP", observable: "at least one changed doc is declared", cls, note: "no changed docs matched" })];
   }
@@ -70,28 +83,25 @@ export async function run(config, ctx) {
   const helpText = `${help.stdout}\n${help.stderr}`;
   const known = new Set(config.known ?? []);
   const pattern = new RegExp(config.flagPattern ?? "--[a-z][a-z0-9-]{2,}", "g");
-  // Diff-aware when "base" is declared: check only the doc files the diff
-  // touched, and read each flagged file's "base" revision for the flags that
-  // pre-date it. When the diff cannot be read (not a checkout, or the base
-  // revision does not exist) the probe falls back to the full declared doc set
-  // and every absent flag FAILs, so it never passes silently on a state it
+  // Diff-aware: check only the doc files the diff touched, and read each
+  // flagged file's base revision for the flags that pre-date it. When the
+  // diff cannot be read the probe falls back to the full declared doc set and
+  // every absent flag FAILs, so it never passes silently on a state it
   // cannot see. When the diff is readable and it touched no doc, the probe
   // has nothing new to judge and skips.
   let preExisting = null;
   let checkedFiles = docs;
-  if (base !== undefined) {
-    const changed = await changedFiles(ctx.root, base);
-    if (changed !== null) {
-      const changedSet = new Set(changed);
-      checkedFiles = docs.filter((file) => changedSet.has(file.slice(ctx.root.length + 1).split(sep).join("/")));
-      if (checkedFiles.length === 0) {
-        return [row({
-          id: "docs", verdict: "SKIP", observable: "at least one changed doc is declared", cls,
-          note: `the diff against ${base} changed no doc matching the declared globs; the changed rows belong to the checklist pass`,
-        })];
-      }
-      preExisting = await preExistingFlags(ctx.root, base, changed, pattern);
+  const changed = await changedFiles(ctx.root, base);
+  if (changed !== null) {
+    const changedSet = new Set(changed);
+    checkedFiles = docs.filter((file) => changedSet.has(file.slice(ctx.root.length + 1).split(sep).join("/")));
+    if (checkedFiles.length === 0) {
+      return [row({
+        id: "docs", verdict: "SKIP", observable: "at least one changed doc is declared", cls,
+        note: `the diff against ${base} changed no doc matching the declared globs; the changed rows belong to the checklist pass`,
+      })];
     }
+    preExisting = await preExistingFlags(ctx.root, base, changed, globs, pattern);
   }
   const documented = new Set();
   for (const file of checkedFiles) {
@@ -121,8 +131,7 @@ export async function run(config, ctx) {
     }
     // Absent from the help output: FAIL when the diff introduced the promise,
     // or when the diff side could not be read; WARN when the flag was already
-    // documented at the base revision. When "base" is not declared there is no
-    // pre-existing side to compare against, so an absent row stays a FAIL.
+    // documented at the base revision.
     const oldRow = preExisting?.has(token) ?? false;
     checks.push(row({
       id: `docs/${token}`, command: config.helpCmd,
