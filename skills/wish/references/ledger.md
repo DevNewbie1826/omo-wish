@@ -392,7 +392,13 @@ Only a unit whose required lanes include `code-review` has the order gate; resea
 requires the tree to match. A same-tree receipt from another head, a reuse verdict, a sibling's receipt,
 `FAIL` and `SKIP` do not satisfy it.
 
-At a frozen head without that receipt, `blocking` includes
+At the freeze stage or later, if no head is frozen, `blocking` includes
+`order:freeze missing before round`. Earlier stages do not report this future prerequisite.
+Both `ledger append --event round` and `gate --round` first refuse with exit 3 and
+`out of stage order: freeze missing before round`. `resume-plan` directs the session to freeze the
+head, then run the code-review lane at that frozen head.
+
+Once the head is frozen, without that receipt, `blocking` includes
 `order:code-review missing at <head7>` and `next` returns `verify_lane`, never `round`.
 Both `ledger append --event round` and `gate --round` refuse with exit 3 and
 `out of stage order: code-review missing at <head7>`; the dispatch refusal happens before any reproduction
@@ -429,7 +435,7 @@ accepts the base header or the base plus its exact suffix.
 | `head`, `tree` | §2 or `null` | the state described | D §4 |
 | `round` | integer ≥ 0 | current ultrabrain round | D §4 |
 | `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt | D §4/§2.7 |
-| `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>`, `order:code-review missing at <head7>` | D §4, v3 order gate |
+| `blocking` | strings | what stops `next`, e.g. `receipt:<file>`, `findings:<n> open`, `gate:<id> open`, `verdict:<reason>`, `order:freeze missing before round`, `order:code-review missing at <head7>` | D §4, v3 order gate |
 | `next` | §9.1 name or `done` | the only stage the session may dispatch; `blocking` says why it is blocked | D §4 |
 | `units` | `[{id, stage, pr, round, switches}]`, where `stage` is a §9.1 name or `done` | per-unit state (program mode) | A §C.4 |
 | `wave` | `{k, n}` | current wave of a program | A §B5/§C.4 |

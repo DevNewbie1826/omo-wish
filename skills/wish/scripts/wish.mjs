@@ -593,15 +593,16 @@ async function runDispatchGate(parsed, root) {
   }
   const tree = identity === "research" ? null : observed.tree;
 
+  if (pending.length > 20) {
+    throw stateMismatch("the gate table is capped at 20 rows; " + pending.length + " are pending, so split the round");
+  }
+
   requireCodeReview({
     receipts: listReceipts(root), unit: context.unit,
     requiredLanes: requiredReceiptsFor(plan.wish.type, mixedLabelsOf(plan, events) ?? {}),
     frozenHead: plan.wish.frozen_head, tree,
   });
 
-  if (pending.length > 20) {
-    throw stateMismatch("the gate table is capped at 20 rows; " + pending.length + " are pending, so split the round");
-  }
   if (parsed.has("--dry-run")) {
     const lines = ["gate round " + target + " on " + head.slice(0, 7) + " (dry run)", "pending rows: " + pending.length];
     for (const row of pending) lines.push("  " + row.id + "  " + row.status + "  " + row.repro_cmd);

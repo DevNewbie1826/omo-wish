@@ -1150,12 +1150,13 @@ export function codeReviewAt(receipts, unit, head) {
 }
 
 function codeReviewMissing({ receipts, requiredLanes, unit, frozenHead, tree }) {
-  return Boolean(frozenHead) && requiredLanes.includes("code-review")
-    && !codeReviewAt(receipts, unit, frozenHead).some((receipt) => receipt.body.tree === tree);
+  return requiredLanes.includes("code-review")
+    && (!frozenHead || !codeReviewAt(receipts, unit, frozenHead).some((receipt) => receipt.body.tree === tree));
 }
 
 export function requireCodeReview(context) {
   if (codeReviewMissing(context)) {
+    if (!context.frozenHead) throw stateMismatch("out of stage order: freeze missing before round");
     throw stateMismatch(`out of stage order: code-review missing at ${context.frozenHead.slice(0, 7)}`);
   }
 }
@@ -1257,8 +1258,11 @@ export function blockingFor(context) {
   for (const id of [...openGates].sort()) reasons.push("gate:".concat(id, " open"));
   const rounds = roundsOf(events, unit);
   const last = rounds[rounds.length - 1];
+  if (codeReviewMissing(context) && (frozenHead
+      || STAGE_ORDER.indexOf(context.stage) >= STAGE_ORDER.indexOf("freeze"))) {
+    reasons.push(frozenHead ? `order:code-review missing at ${frozenHead.slice(0, 7)}` : "order:freeze missing before round");
+  }
   if (frozenHead) {
-    if (codeReviewMissing(context)) reasons.push(`order:code-review missing at ${frozenHead.slice(0, 7)}`);
     if (!last) reasons.push("verdict:missing");
     else if (last.head !== frozenHead) {
       reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", frozenHead.slice(0, 7)));
@@ -1461,6 +1465,8 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
       actions.push("fix the blocking findings, then findings set --status fixed --fixed-head <sha>");
     } else if (reason.startsWith("gate:")) {
       actions.push("answer ".concat(reason.slice(4).replace(/ open$/, ""), " with gate resolve"));
+    } else if (reason === "order:freeze missing before round") {
+      actions.push("freeze the head, then run the code-review lane at the frozen head");
     } else if (reason.startsWith("order:")) {
       actions.push("run the code-review lane at the frozen head ".concat(reason.slice("order:code-review missing at ".length)));
     } else if (reason.startsWith("verdict:")) {
