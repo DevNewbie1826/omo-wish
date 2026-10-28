@@ -69,7 +69,6 @@ measurement"; it is never 0, and a zero appears only when the input shows a real
 | `type`, `unit`, `program_id` | the ledger's own fields | `program_id` empty for a single unit |
 | `switch_count` | `switch` events | count |
 | `rounds_after_switch` | `round` events | count of rounds whose `round` is greater than the **first** `switch.round`; empty when `switch_count` is 0 |
-| `lens_rules` | last `lens.rules_total` | empty when no lens ran |
 | `gaps_total`, `gaps_fixed` | `gaps.tsv` | **defect** rows only (`kind = defect`; fixed = `status = fixed`), identical to the `progress` values of `status --json` |
 | `before_receipts` | `before` events | the count of pre-edit captures in the ledger; independent of whether a register was supplied |
 
