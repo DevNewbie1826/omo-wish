@@ -20,6 +20,7 @@ import {
   readdirSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -835,6 +836,23 @@ describe("gaps", () => {
     // row carries the receipt path in its before_artifact cell, so the discarded
     // state is unreachable through the public surface.
     expect(readFileSync(join(root, "gaps.tsv"), "utf8")).toContain(`\t${join(raceDir, raceName)}\t`);
+    // A receipt that is a symlink escaping the receipts directory is not a
+    // capture: it must not be bindable, so the move is refused rather than
+    // writing an outside path into the register.
+    const outside = join(box.dir, "outside-capture.png");
+    writeFileSync(outside, "outside");
+    const escapeName = `before-G1-${repo.tree.slice(0, 7)}.png`;
+    unlinkSync(join(raceDir, escapeName));
+    symlinkSync(outside, join(raceDir, escapeName));
+    // Reset the register to an open, capture-less row so the next move must
+    // auto-bind a receipt; the only receipt is the escaping symlink.
+    writeFileSync(
+      join(root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"),
+    );
+    const escaped = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(escaped.code).toBe(1);
+    expect(escaped.err).toContain("needs a before receipt");
     // Reopen again for the no-receipt case: reset the register to an open row
     // with no capture (gaps set cannot clear before_artifact by design); the
     // two format receipts were removed above.

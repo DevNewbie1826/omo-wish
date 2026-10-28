@@ -41,13 +41,14 @@ import {
   openSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   statSync,
   unlinkSync,
   writeFileSync,
   writeSync,
 } from "node:fs";
-import { dirname, isAbsolute, join, resolve as resolvePath } from "node:path";
+import { dirname, isAbsolute, join, resolve as resolvePath, sep } from "node:path";
 
 // --------------------------------------------------------------------- errors
 
@@ -824,6 +825,22 @@ export function setGap(root, id, patch) {
   // still have this mutation's verify succeed. Set by the compute callback on
   // every retry, so it always describes the text that was actually swapped.
   let boundBeforeArtifact = null;
+  // A before/after capture is a real file under the evidence root's receipts
+  // directory. A receipt named like a capture whose physical location escapes
+  // that directory (a symlink to an outside file) is not a capture: binding it
+  // would write a path that points outside <ER> into the register, which is the
+  // same hazard the pr-body writer's containment guard refuses.
+  const containedPath = (name) => {
+    const path = join(paths.receipts, name);
+    let real;
+    try {
+      real = realpathSync(path);
+    } catch {
+      return null; // dangling link or unreadable target: not a capture
+    }
+    const rootReal = realpathSync(paths.receipts);
+    return real === rootReal || real.startsWith(rootReal + sep) ? path : null;
+  };
   // Find the existing before receipt for this gap, if any. Its absolute path is
   // the only value that can satisfy the rule: a fixed defect row carries a real
   // pre-edit capture. A path that does not match a before-<id>-<tree7> receipt
@@ -833,7 +850,7 @@ export function setGap(root, id, patch) {
     const match = receipts.find((receipt) =>
       receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
     );
-    return match ? join(paths.receipts, match.name) : null;
+    return match ? containedPath(match.name) : null;
   };
   mutateText(paths.gaps, (current) => {
     if (current === null) throw stateMismatch(`no register: ${paths.gaps}`);
@@ -880,7 +897,7 @@ export function setGap(root, id, patch) {
         const receipts = listReceipts(root);
         const candidates = receipts.filter((receipt) =>
           receipt.parsed?.kind === "before" && receipt.parsed?.gap === id && receipt.ok
-        ).map((receipt) => join(paths.receipts, receipt.name));
+        ).map((receipt) => containedPath(receipt.name)).filter((entry) => entry !== null);
         const requested = isAbsolute(path) ? path : join(paths.receipts, path);
         if (!candidates.includes(requested)) {
           throw checkFailed(`gap ${id}: --before-artifact names no existing before receipt`
