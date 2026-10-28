@@ -1,5 +1,5 @@
 ---
-description: 소원을 빕니다
+description: make a wish
 ---
 $ARGUMENTS
 
