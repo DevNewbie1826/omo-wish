@@ -305,7 +305,7 @@ Kinds, from `ledger.md` §9.4 — pick one that differs from the kinds already u
   rather than patch it.
 - `split` — program mode only: the failing component becomes its own unit and PR; its gap row stays `open`,
   and the `switch` event carries `program_id` (the contract rejects a split without it).
-- `rediscover` — re-run COLLECT for the component with the lens and sweep variants of the class.
+- `rediscover` - re-run COLLECT for the component with the lens and sweep variants of the class.
 
 Record the `switch` **before the next review round is dispatched**. `ledger.md` §9.4 accepts a third-or-later
 REVISE's switch only in the window before the next `round` event for that unit: a switch recorded after the
