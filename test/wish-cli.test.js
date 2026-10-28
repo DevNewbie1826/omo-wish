@@ -885,6 +885,21 @@ describe("gaps", () => {
     const noReceipt = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--root", state.root]);
     expect(noReceipt.code).toBe(1);
     expect(noReceipt.err).toContain("needs a before receipt");
+    // The receipts directory itself must also remain under the evidence root:
+    // a directory symlink to an outside directory cannot make its files valid
+    // before receipts.
+    const outsideReceipts = join(box.dir, "outside-receipts");
+    mkdirSync(outsideReceipts, { recursive: true });
+    writeFileSync(join(outsideReceipts, `before-G1-${repo.tree.slice(0, 7)}.png`), "outside");
+    rmSync(raceDir, { recursive: true, force: true });
+    symlinkSync(outsideReceipts, raceDir);
+    writeFileSync(
+      join(root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"),
+    );
+    const escapedDirectory = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(escapedDirectory.code).toBe(1);
+    expect(escapedDirectory.err).toContain("needs a before receipt");
   });
 });
 

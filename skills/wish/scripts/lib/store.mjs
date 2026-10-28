@@ -838,8 +838,11 @@ export function setGap(root, id, patch) {
     } catch {
       return null; // dangling link or unreadable target: not a capture
     }
+    const evidenceRootReal = realpathSync(paths.root);
     const rootReal = realpathSync(paths.receipts);
-    return real === rootReal || real.startsWith(rootReal + sep) ? path : null;
+    const insideRoot = rootReal === evidenceRootReal || rootReal.startsWith(evidenceRootReal + sep);
+    const insideReceipts = real === rootReal || real.startsWith(rootReal + sep);
+    return insideRoot && insideReceipts ? path : null;
   };
   // Find the existing before receipt for this gap, if any. Its absolute path is
   // the only value that can satisfy the rule: a fixed defect row carries a real
