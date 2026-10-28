@@ -55,7 +55,7 @@ function event(name, extra = {}) {
 function ledgerFixture() {
   return [
     event("intake", { tier: "M", facts: ["one fact"], started_at: "2026-10-27T16:00:00Z" }),
-    event("lens", { artifact: "/er/lens.md", rules_total: 9, started_at: "2026-10-27T16:01:00Z" }),
+    event("collect", { report: "/er/collect.md", sources: 1, elements: 9, started_at: "2026-10-27T16:01:00Z" }),
     event("plan", { artifact: ".omo/plans/wish-x.md", started_at: "2026-10-27T16:10:00Z" }),
     event("pr_open", { pr: 51, head: HEAD, started_at: "2026-10-27T16:55:00Z" }),
     event("round", {
@@ -94,6 +94,8 @@ describe("headers and CSV dialect", () => {
     expect(MEASUREMENTS_HEADER[0]).toBe("pr");
     expect(MEASUREMENTS_HEADER.at(-1)).toBe("before_receipts");
     expect(ROUNDS_HEADER.at(-1)).toBe("switch_kinds");
+    expect(MEASUREMENTS_HEADER).not.toContain("lens_rules");
+    expect(INT_COLUMNS).not.toHaveProperty("lens_rules");
   });
 
   test("a cell with a comma, a quote or a newline survives a round trip", () => {
@@ -200,10 +202,11 @@ describe("deriveRows", () => {
     const row = Object.fromEntries(MEASUREMENTS_HEADER.map((column, index) => [column, derived.measurements[index]]));
     expect(row).toMatchObject({
       pr: "51", repo: "owner/name", arm: "v2", rounds_total: "4", ultrabrain_calls: "4",
-      switch_count: "2", rounds_after_switch: "1", lens_rules: "9",
+      switch_count: "2", rounds_after_switch: "1",
       gaps_total: "2", gaps_fixed: "1", before_receipts: "1", step12_result: "PASS",
       type: "code", unit: "u1", program_id: "",
     });
+    expect(row).not.toHaveProperty("lens_rules");
     expect(row.open_to_merge_min).toBe("110.0");
     expect(derived.rounds.length).toBe(4);
     const rounds = derived.rounds.map((cells) => Object.fromEntries(ROUNDS_HEADER.map((column, index) => [column, cells[index]])));
@@ -280,7 +283,8 @@ describe("deriveRows", () => {
     const derived = deriveRows({ events: minimal, options: {} });
     expect(derived.ok).toBe(true);
     const row = Object.fromEntries(MEASUREMENTS_HEADER.map((column, index) => [column, derived.measurements[index]]));
-    for (const column of ["lens_rules", "gaps_total", "gaps_fixed", "content_commits_after_approval", "blind_rereview", "invalid_flag", "notes"]) {
+    expect(row).not.toHaveProperty("lens_rules");
+    for (const column of ["gaps_total", "gaps_fixed", "content_commits_after_approval", "blind_rereview", "invalid_flag", "notes"]) {
       expect(row[column]).toBe("");
     }
     expect(row.before_receipts).toBe("0");

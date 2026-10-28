@@ -262,7 +262,7 @@ test("verify.mjs fails and names a skill file the loader cannot find", () => {
 }, 120_000);
 
 test("an installation path with spaces, quotes, #, and Unicode discovers skill and activates generic mode", async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'wish "quoted" # 한글 '));
+  const dir = mkdtempSync(join(tmpdir(), 'wish "quoted" # \uD55C\uAE00 '));
   fixtures.push(dir);
   cpSync(join(repo, "package.json"), join(dir, "package.json"));
   cpSync(join(repo, "prompts"), join(dir, "prompts"), { recursive: true });

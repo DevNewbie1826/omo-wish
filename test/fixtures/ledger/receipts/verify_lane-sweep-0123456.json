@@ -31,5 +31,5 @@
     }
   ],
   "artifacts": ["/evidence/w-u1-20261027-1610/receipts/verify_lane-sweep-0123456.json"],
-  "cleanup": ["rm -rf /tmp/wish-sweep-8f3 (exit 0)"]
+  "cleanup": ["remove <tmp-dir> (exit 0)"]
 }
