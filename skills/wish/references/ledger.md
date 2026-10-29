@@ -424,6 +424,14 @@ event with `round: n`, then its `plan_lint` event with `round: n`, before checki
 the changed-head freeze and the round-switch obligation. The fix stays in the same PR.
 `plan_review`, `decide` and `goal` do not run again. The first pass (no round yet) is unchanged.
 
+After an `APPROVED` round, `next` returns `merge` only while the verdict head equals the observed head and,
+when `frozen_head` is set, the frozen head. When a set frozen head no longer equals the observed head,
+`blocking` carries `head:moved` and `next` returns `freeze`; when the freeze moved past the verdict, `blocking`
+carries `verdict:round <n> head does not cover <head7>` and `next` returns `verify_lane` until the lanes hold at
+that head, then `round`. The reason names the observed head when it is known, so a second move still produces
+one line. `PROGRESS:`'s `waiting` follows `next`, and `resume-plan` answers an APPROVED verdict reason and
+`head:moved` with restoring the head the verdict judged, because no round may follow `APPROVED` (§9.4).
+
 ## 10. Shared experiment columns
 
 M7 writes these in exactly this order (C43), appending the v2 columns and never reordering:
