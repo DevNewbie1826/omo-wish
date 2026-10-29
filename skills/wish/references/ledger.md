@@ -527,7 +527,7 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
 | `reuse-check` | `<receipt> --head <sha>` | tree match → VALID; else intersect changed files and their reference holders with `scope` | 0 VALID; 1 STALE; 2 usage; 3 unparseable or another run's receipt | D §2.7 |
 | `switch` | `record --round <n> --kind <kind> --premise <text> --new-approach <text>` | record the approach switch (§9.4) | 0 ok; 1 schema failure; 2 usage; 3 no REVISE at that round | A §C.6 |
-| `metrics` | `export [--out <dir>]`; `post-merge --days <n> [--pr <n>]` | write §10 rows; count post-merge refixes | 0 ok; 1 a row or query fails; 2 usage; 3 freeze/merge data missing | C43, D §2.10 |
+| `metrics` | `export [--out <dir>] [--ledger <path>]`; `post-merge --days <n> [--pr <n>]` | write §10 rows; count post-merge refixes. `export` supplies the run's own ledger (`rootPaths(root).ledger`, from `--root` or `WISH_EVIDENCE_ROOT`) unless the caller names one with `--ledger`; every other form still forwards its argv unchanged | 0 ok; 1 a row or query fails; 2 usage; 3 freeze/merge data missing | C43, D §2.10 |
 | `resume-plan` | — | print the first invalid stage and the resume actions | 0 ok; 2 usage; 3 ledger missing | D §2.9 |
 
 Exit codes are fixed by D §4: **0** ok, **1** check failed, **2** usage, **3** state mismatch. A usage

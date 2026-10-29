@@ -18,7 +18,7 @@ The header of a file is the ported shared columns first, then the v2 suffix, nev
 | --- | --- | --- |
 | session, before CLOSE | `bun skills/wish/scripts/metrics.mjs export --ledger <ER>/ledger.jsonl [--findings <ER>/findings.tsv] [--gaps <ER>/gaps.tsv] [--extra <file>] [--out <ER>/metrics]` | writes `measurements.csv` (one row) and `rounds.csv` (one row per `round` event) |
 | session, after any edit | `bun … metrics.mjs validate --dir <ER>/metrics` (or `--file <path>`) | exit 1 with `row[n].<column>` paths on a contract violation |
-| M1 `wish.mjs metrics export` | `metrics.mjs export …` | the same rows, so the verb has one implementation |
+| M1 `wish.mjs metrics export` | `metrics.mjs export --ledger <ER>/ledger.jsonl …` | the same rows, so the verb has one implementation. The wish CLI resolves `<ER>` exactly as its other verbs do (`--root`, else `WISH_EVIDENCE_ROOT`) and supplies the run's ledger, so the documented form names no `--ledger`; an explicit `--ledger` is passed through and wins |
 | M1 `wish.mjs metrics post-merge --days N [--pr n]` | read the `merge` event (`sha`, `merged_at`) and call `metrics.mjs post-merge --merged-at <merged_at> --merge-sha <sha> --repo-dir <worktree> --days N` | the count of commits after the merge that touch the merged PR's files |
 | step 8 (a monitor) | `bun … pr-watch.mjs --pr <n> --repo <owner/name> [--until merged]` | NDJSON state lines; the monitor watches stdout and stops on the terminal line |
 
