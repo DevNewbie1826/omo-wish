@@ -631,14 +631,71 @@ function bunCompiled(source, file) {
   } catch {
     return null;
   }
-  // The transpiler keeps "/*!" and "//!" legal comments in its output, so deleting one would
-  // otherwise read as a change to the program. They are comments by definition, so each is
-  // removed with its own trailing newline: the line disappears instead of leaving a blank one.
-  // Blank lines are never stripped in general, because a blank line inside a template literal
-  // is part of that string and therefore code.
-  return emitted
-    .replace(/\/\*![\s\S]*?\*\/[ \t]*\n?/g, "")
-    .replace(/^[ \t]*\/\/!.*\n?/gm, "");
+  // The transpiler keeps "/*!" and "//!" legal comments in its output, so deleting one
+  // would otherwise read as a change to the program. They are removed here, and only
+  // where they really are comments: the same text inside a template literal is part of
+  // that string, and stripping it would make a code line compare equal to its deletion.
+  return stripLegalComments(emitted);
+}
+
+// Removes a preserved legal comment from a program's text, and nothing else. A quote or a
+// template switches the scan to string mode, where a "/*!" is data; the scan stays in that
+// mode until the closing delimiter, so a template's contents are never stripped even where
+// they interpolate. A legal comment it does not remove is only a noise candidate, while one
+// removed inside a string would drop a line that carries code.
+function stripLegalComments(text) {
+  let out = "";
+  let index = 0;
+  let quote = null;
+  while (index < text.length) {
+    const char = text[index];
+    if (quote !== null) {
+      out += char;
+      if (char === "\\") {
+        out += text[index + 1] ?? "";
+        index += 2;
+        continue;
+      }
+      if (char === quote) quote = null;
+      index += 1;
+      continue;
+    }
+    if (char === "\"" || char === "'" || char === "`") {
+      quote = char;
+      out += char;
+      index += 1;
+      continue;
+    }
+    const block = text.startsWith("/*!", index);
+    const bang = text.startsWith("//!", index);
+    if (!block && !bang) {
+      out += char;
+      index += 1;
+      continue;
+    }
+    const close = block ? text.indexOf("*/", index + 3) : text.indexOf("\n", index);
+    if (close === -1) {
+      out += char;
+      index += 1;
+      continue;
+    }
+    const after = block ? close + 2 : close;
+    // A comment that stood alone on its line takes the line with it, so the deletion of a
+    // banner leaves no blank line behind; a trailing comment leaves the code before it.
+    const lineStart = out.lastIndexOf("\n") + 1;
+    const alone = out.slice(lineStart).trim() === "";
+    const newline = text[after] === "\n" ? after + 1 : after;
+    if (alone && text[newline] !== undefined) {
+      out = out.slice(0, lineStart);
+      index = newline;
+    } else {
+      index = after;
+    }
+  }
+  // A blank line at either end of the file is whitespace no program can observe, and the
+  // transpiler emits one where a comment-only file used to be. Trimming it keeps the
+  // comparison about the code; both ends are outside any string by construction.
+  return out.replace(/^\n+/, "").replace(/\n+$/, "");
 }
 
 function pythonCompiled(source, dir) {

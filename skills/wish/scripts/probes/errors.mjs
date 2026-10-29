@@ -37,11 +37,7 @@ export async function run(config, ctx) {
   const cls = ctx.classFor("C");
   const patterns = (config.patterns ?? DEFAULT_PATTERNS).map((pattern) => ({ ...pattern, re: new RegExp(pattern.regex) }));
   const raw = config.lines?.length ? config.lines : await addedLines({ root: ctx.root, base: config.base, paths: config.paths });
-  const lines = productionLines(raw, {
-    testGlobs: config.testGlobs,
-    codeExtensions: config.codeExtensions,
-    root: ctx.root,
-  });
+  const lines = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions, root: ctx.root });
   lines.dispose?.();
   const unverifiedByFile = new Map();
   for (const entry of lines.unverified ?? []) {

@@ -932,6 +932,26 @@ test("a blank line inside a template literal is code", () => {
   judge.dispose?.();
 }, 30000);
 
+test("a legal comment is stripped only where it is a comment", () => {
+  // The transpiler preserves "/*!" and "//!" comments, so the oracle removes them before
+  // comparing. The same text inside a template literal is part of that string: stripping it
+  // there would make the line compare equal to its own deletion and drop real code.
+  const inTemplate = "const s = `\n/*! x */\n`;\nconsole.log(s.length);\n";
+  const templateJudge = carriesNoCode(inTemplate, "a.js");
+  expect(templateJudge(2)).toBe(false);
+  templateJudge.dispose?.();
+
+  const banner = "/*! license */\nconst a = 1;\n";
+  const bannerJudge = carriesNoCode(banner, "a.js");
+  expect(bannerJudge(1)).toBe(true);
+  bannerJudge.dispose?.();
+
+  const onlyComment = "/*! license */\n";
+  const onlyJudge = carriesNoCode(onlyComment, "a.js");
+  expect(onlyJudge(1)).toBe(true);
+  onlyJudge.dispose?.();
+}, 30000);
+
 test("the C adapter keeps a preprocessor body and passes an include through", () => {
   const source = ["#include <stdio.h>", "int main(void) {", "#ifdef DEBUG", "  int x = 1;", "#endif", "  return 0;", "}", ""].join("\n");
   const judge = carriesNoCode(source, "a.c");
@@ -1057,6 +1077,21 @@ test("the errors probe reads no file outside the root, even through a link", () 
   // The outside target carries a wrap site; a contained read must never surface it.
   expect(receipt.rows.some((entry) => entry.id.startsWith("errors/"))).toBe(false);
   expect(verdictOf(receipt, "errors")).toBe("PASS");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("the errors probe disposes the oracle scratch it opened", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "source.js"), [
+    "// a comment line the front-end proves inert",
+    "const value = 1;",
+    "",
+  ].join("\n"));
+  writeConfig(dir, { probes: { errors: { strict: true, lines: [{ file: "source.js", line: 1 }, { file: "source.js", line: 2 }] } } });
+  const before = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const after = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
+  expect(after).toBe(before);
   expect(run.exit).toBe(0);
 }, 120000);
 
