@@ -107,8 +107,25 @@ export async function run(config, ctx) {
     testGlobs: config.testGlobs,
     codeExtensions: config.codeExtensions,
     root: ctx.root,
-    buildOracle: config.buildOracle ?? null,
   });
+  production.dispose?.();
+  // An exclusion no front-end proved is disclosed: the lane may read WARN with one, never
+  // PASS, because a dropped line is exactly where a surviving mutation would hide.
+  const unverifiedByFile = new Map();
+  for (const entry of production.unverified ?? []) {
+    if (!unverifiedByFile.has(entry.file)) unverifiedByFile.set(entry.file, []);
+    unverifiedByFile.get(entry.file).push(entry.line);
+  }
+  for (const [file, dropped] of unverifiedByFile) {
+    checks.push(row({
+      id: `mutation/unverified/${file}`,
+      command: "no command",
+      observable: "every excluded line is proven inert by a language front-end",
+      verdict: "WARN",
+      cls,
+      note: `${dropped.length} line(s) excluded by the comment heuristic; no front-end for this language on this machine: ${dropped.slice().sort((l, r) => l - r).join(",")}`,
+    }));
+  }
   const cap = Math.max(1, Math.min(Number(config.max) || 12, 12));
   const candidates = production.slice(0, cap);
   if (candidates.length === 0) {

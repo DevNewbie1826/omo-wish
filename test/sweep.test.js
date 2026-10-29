@@ -888,11 +888,11 @@ test("a line that opens a block comment and carries code after it is still code"
   expect(run.exit).toBe(0);
 }, 120000);
 
-test("a language with no oracle keeps every line, so no survivor can hide", () => {
+test("a language with no front-end drops a comment line but discloses the exclusion", () => {
   const dir = stage("clean");
-  // Rust has no parser on this machine, so the probe cannot prove which lines are comment.
-  // It keeps them all: the lane may report a noise row, but it can never read PASS while a
-  // real survivor exists. That is the trade this filter is allowed to make.
+  // Rust has no front-end here, so its comment decision is a heuristic. The statement must
+  // stay a candidate, and the dropped comment line must be named in a WARN row, so the lane
+  // can read WARN but never PASS on an exclusion nothing proved.
   writeFileSync(join(dir, "source.rs"), [
     "fn main() {",
     "/* a comment",
@@ -904,14 +904,21 @@ test("a language with no oracle keeps every line, so no survivor can hide", () =
   ].join("\n"));
   const body = lineOf(dir, "source.rs", "comment body");
   const code = lineOf(dir, "source.rs", "let survivor");
+  // The suite must observe the statement, or its removal would be a genuine survivor and the
+  // lane would FAIL for a reason unrelated to the disclosure under test.
   writeConfig(dir, { probes: { mutation: {
-    testCmd: "true", failMarker: "CHECK FAILED",
+    testCmd: "grep -q 'let survivor' source.rs", failMarker: "CHECK FAILED",
     candidates: [{ file: "source.rs", line: body }, { file: "source.rs", line: code }],
   } } });
   const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
   expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${code}`)).toBe(true);
-  expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${body}`)).toBe(true);
+  expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${body}`)).toBe(false);
+  const disclosed = receipt.rows.find((entry) => entry.id === "mutation/unverified/source.rs");
+  expect(disclosed.verdict).toBe("WARN");
+  expect(disclosed.note).toContain(String(body));
+  expect(receipt.status).toBe("WARN");
+  expect(run.exit).toBe(0);
 }, 120000);
 
 test("a native compiler diagnostic marks the deletion a non-candidate", () => {

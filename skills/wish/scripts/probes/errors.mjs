@@ -44,10 +44,23 @@ export async function run(config, ctx) {
     testGlobs: config.testGlobs,
     codeExtensions: config.codeExtensions,
     root: ctx.root,
-    buildOracle: config.buildOracle ?? null,
   });
+  lines.dispose?.();
+  const unverifiedByFile = new Map();
+  for (const entry of lines.unverified ?? []) {
+    if (!unverifiedByFile.has(entry.file)) unverifiedByFile.set(entry.file, []);
+    unverifiedByFile.get(entry.file).push(entry.line);
+  }
+  const unverifiedRows = [...unverifiedByFile.entries()].map(([file, dropped]) => row({
+    id: `errors/unverified/${file}`,
+    command: "no command",
+    observable: "every excluded line is proven inert by a language front-end",
+    verdict: "WARN",
+    cls,
+    note: `${dropped.length} line(s) excluded by the comment heuristic; no front-end for this language on this machine: ${dropped.slice().sort((l, r) => l - r).join(",")}`,
+  }));
   if (lines.length === 0) {
-    return [row({ id: "errors", verdict: "SKIP", observable: "at least one added production line is inspected", cls, note: "no added production source line to inspect" })];
+    return [...unverifiedRows, row({ id: "errors", verdict: "SKIP", observable: "at least one added production line is inspected", cls, note: "no added production source line to inspect" })];
   }
   const verdict = config.strict ? "FAIL" : "WARN";
   const checks = [];
@@ -75,7 +88,7 @@ export async function run(config, ctx) {
       note: `${lines.length} added lines re-wrap no error`,
     }));
   }
-  return checks;
+  return [...checks, ...unverifiedRows];
 }
 
 if (isMain(import.meta.url)) await probeCli({ name, types, summary, usage, run });

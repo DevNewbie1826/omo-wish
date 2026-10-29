@@ -32,9 +32,14 @@ claim about a test is made. Two rules produce one:
 - A line whose text is entirely comment is never a candidate. A marker test cannot decide that, and neither
   can a hand-written scanner: three review rounds each found a string form a scanner read as a comment (a
   block-comment body, a template, a regex literal, a backslash-continued string, a JSX attribute, a Python
-  f-string, a shell heredoc, a Rust raw string). The probe therefore asks the language's own tool: it compiles
-  the file with the line removed and drops the line only when the result is identical. A language with no such
-  tool on the machine keeps every line, because a dropped line lets a surviving mutation escape.
+  f-string, a shell heredoc, a Rust raw string). The probe therefore asks the language's own front-end where one
+  is installed: it replaces the line with a code-free line (the empty line, or a lone block delimiter) and drops
+  the line only when the program comes out identical. Go is decided by a scanner instead, because its grammar is
+  closed: `//` and `/* */` are its only comment forms and a backtick string its only multi-line literal.
+- A language with no front-end here falls back to the comment heuristic, and **every exclusion it makes is
+  disclosed**: one `mutation/unverified/<file>` row (and `errors/unverified/<file>`) with verdict `WARN` names
+  the lines and the missing front-end. A lane that dropped an unproven line therefore reads `WARN`, never
+  `PASS` — it may not claim a run is covered while a survivor could be hiding behind that exclusion.
 - In a compiled language a deletion that cannot build is not a mutation any test could observe. The probe
   reports those lines as **one `mutation/noncandidate/<file>` row per file** with verdict `SKIP`, naming every
   line and the reason, and the lane's status is decided by the candidates that were actually probed. That is

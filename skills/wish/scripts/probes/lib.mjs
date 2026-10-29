@@ -350,16 +350,15 @@ export function isCodeFile(file, extensions = DEFAULT_CODE_EXTENSIONS) {
 //   2. a scanner, for a language whose lexical grammar is closed and small: Go, whose only
 //      comment forms are // and /* */, whose only multi-line literal is a backtick string,
 //      and whose quotes never span lines.
-//   3. nothing. Every other language keeps every line, because a dropped line lets a
-//      surviving mutation escape the lane, and a false candidate only costs a noise row.
-//
+//   3. a heuristic, for every other language. Its exclusions are reported to the caller as
+//      unverified, so a lane that dropped one may read WARN but never PASS.
 const SCANNED_LANGUAGES = new Set(["go"]);
 
 export function commentPolicy(file) {
   const extension = extensionOf(file);
   if (SCANNED_LANGUAGES.has(extension)) return "scanner";
   if (hasOracle(file)) return "oracle";
-  return "keep";
+  return "heuristic";
 }
 
 // A candidate must be a line whose deletion a test can observe, so a line whose
@@ -380,7 +379,23 @@ const C_RAW = Object.freeze({ ...C_LIKE, rawTemplate: true });
 const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
 
 const COMMENT_SYNTAX = Object.freeze({
-  go: C_RAW,
+  js: C_LIKE, mjs: C_LIKE, cjs: C_LIKE, jsx: C_LIKE, ts: C_LIKE, tsx: C_LIKE, mts: C_LIKE, cts: C_LIKE,
+  go: C_RAW, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, cxx: C_LIKE, hpp: C_LIKE, hh: C_LIKE, cs: C_LIKE, java: C_LIKE,
+  kt: C_NESTED, kts: C_NESTED, swift: C_NESTED, rs: C_NESTED, scala: C_NESTED, dart: C_NESTED, zig: C_LIKE,
+  php: C_LIKE, css: C_LIKE, scss: C_LIKE, less: C_LIKE, sol: C_LIKE, vue: C_LIKE, svelte: C_LIKE,
+  py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
+  pl: HASH_LINE, jl: HASH_LINE, rego: HASH_LINE, ex: HASH_LINE, exs: HASH_LINE,
+  tf: Object.freeze({ line: ["#"], block: [["/*", "*/"]], quotes: ['"'] }),
+  nim: Object.freeze({ line: ["#"], block: [["#[", "]#"]], quotes: ['"'], nested: true }),
+  erl: Object.freeze({ line: ["%"], block: [], quotes: ['"'] }),
+  hs: Object.freeze({ line: ["--"], block: [["{-", "-}"]], quotes: ['"'], nested: true }),
+  lua: Object.freeze({ line: ["--"], block: [["--[[", "]]"]], quotes: ['"', "'"] }),
+  sql: Object.freeze({ line: ["--"], block: [["/*", "*/"]], quotes: ["'", '"'] }),
+  ml: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'], nested: true }),
+  mli: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'], nested: true }),
+  clj: Object.freeze({ line: [";"], block: [], quotes: ['"'] }),
+  html: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
+  astro: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
 });
 
 
@@ -604,12 +619,6 @@ export function commentOnlyLines(source, file) {
   return only;
 }
 
-export function extensionOf(file) {
-  const name = String(file);
-  const dot = name.lastIndexOf(".");
-  return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
-}
-
 const BUN_LOADERS = Object.freeze({ js: "js", mjs: "js", cjs: "js", jsx: "jsx", ts: "ts", mts: "ts", cts: "ts", tsx: "tsx" });
 const C_FAMILY = new Set(["c", "h", "cc", "cpp", "cxx", "hpp", "hh"]);
 
@@ -628,52 +637,38 @@ function pythonCompiled(source, dir) {
   return run.status === 0 ? run.stdout : null;
 }
 
-const GO_ORACLE = [
-  "package main",
-  "",
-  "import (",
-  '\t"go/parser"',
-  '\t"go/printer"',
-  '\t"go/token"',
-  '\t"os"',
-  ')',
-  "",
-  "func main() {",
-  "\tsrc, err := os.ReadFile(os.Args[1])",
-  "\tif err != nil { os.Exit(3) }",
-  '\tfset := token.NewFileSet()',
-  '\tfile, err := parser.ParseFile(fset, "x.go", src, 0)',
-  "\tif err != nil { os.Exit(3) }",
-  "\tif err := printer.Fprint(os.Stdout, fset, file); err != nil { os.Exit(3) }",
-  "}",
-  "",
-].join("\n");
-
-function goCompiled(source, dir) {
-  const path = join(dir, "probe.go");
-  writeFileSync(path, source);
-  const run = spawnSync("go", ["run", "-", path], { encoding: "utf8", input: GO_ORACLE });
-  return run.status === 0 ? run.stdout : null;
-}
-
 function cCompiled(source, dir, extension) {
   const path = join(dir, `probe.${extension}`);
   writeFileSync(path, source);
-  const run = spawnSync("cc", ["-E", "-P", "-nostdinc", path], { encoding: "utf8" });
-  return run.status === 0 ? run.stdout : null;
+  const isCpp = ["cpp", "cxx", "hpp", "hh", "cc"].includes(extension);
+  const args = ["-x", isCpp ? "c++" : "c"];
+  if (isCpp) args.push("-std=c++17");
+  args.push("-fpreprocessed", "-dD", "-E", "-P", path);
+  const run = spawnSync("cc", args, { encoding: "utf8" });
+  return run.status === 0 && !run.stderr.trim() ? run.stdout : null;
 }
 
-// Whether deleting this line changes the program the language's own tool sees. This is the
-// candidate question stated as a measurement instead of as a guess: a hand-written scanner
-// cannot know where a raw string, a heredoc or a JSX attribute ends, so three adversarial
-// rounds each found a new shape it read as a comment and dropped a real statement with.
+// Whether deleting this line changes the program the language's own front-end sees. This is
+// the candidate question stated as a measurement instead of as a guess: a hand-written
+// scanner cannot know where a raw string, a heredoc or a JSX attribute ends, so three
+// review rounds each found a new shape it read as a comment and dropped a real statement.
 //
-// `true`  the compiled form is identical, so the line carries no code;
-// `false` the compiled form changes, so the line carries code and stays a candidate;
-// `null`  this language has no oracle here, and the caller must keep the line.
+// `true`  every proposal for the line leaves the program identical, so it carries no code;
+// `false` some proposal changes the program, so the line carries code and stays a candidate;
+// `null`  the front-end refused every proposal, so nothing is proven and the line is kept.
+//
+// A proposal replaces the line with a code-free line. A lone block delimiter is proposed as
+// well as the empty line, because deleting "/*" or "*/" alone leaves a file that does not
+// parse, which would read as "cannot decide" for every delimiter of every block comment.
 export function hasOracle(file) {
   const extension = extensionOf(file);
-  return C_FAMILY.has(extension) || extension === "py" || extension === "go" || BUN_LOADERS[extension] !== undefined;
+  return C_FAMILY.has(extension) || extension === "py" || BUN_LOADERS[extension] !== undefined;
+}
+
+function proposalsFor(file) {
+  const extension = extensionOf(file);
+  const ladder = ["", "*/", "/*"];
+  return ["jsx", "tsx"].includes(extension) ? [...ladder, "*/}"] : ladder;
 }
 
 export function carriesNoCode(source, file) {
@@ -681,34 +676,44 @@ export function carriesNoCode(source, file) {
   const extension = extensionOf(file);
   const isC = C_FAMILY.has(extension);
   const isPy = extension === "py";
-  const isGo = extension === "go";
   if (!hasOracle(file)) return () => null;
   const dir = mkdtempSync(join(tmpdir(), "wish-lines-"));
   const compile = (candidate) => (isC
     ? cCompiled(candidate, dir, extension)
     : isPy
       ? pythonCompiled(candidate, dir)
-      : isGo
-        ? goCompiled(candidate, dir)
-        : bunCompiled(candidate, file));
+      : bunCompiled(candidate, file));
   const lines = text.split("\n");
   const original = compile(text);
+  const proposals = proposalsFor(file);
   const cache = new Map();
-  return (line) => {
+  const judge = (line) => {
     if (cache.has(line)) return cache.get(line);
     let verdict = null;
-    if (original === null) verdict = null;
-    else if (line < 1 || line > lines.length) verdict = null;
-    else if (!lines[line - 1].trim()) verdict = true;
-    else {
-      const copy = [...lines];
-      copy[line - 1] = "";
-      const mutated = compile(copy.join("\n"));
-      verdict = mutated === null ? null : mutated === original;
+    if (original !== null && line >= 1 && line <= lines.length) {
+      if (!lines[line - 1].trim()) verdict = true;
+      else {
+        let decided = false;
+        let changed = false;
+        for (const proposal of proposals) {
+          const copy = [...lines];
+          copy[line - 1] = proposal;
+          const mutated = compile(copy.join("\n"));
+          if (mutated === null) continue;
+          decided = true;
+          if (mutated !== original) {
+            changed = true;
+            break;
+          }
+        }
+        verdict = decided ? !changed : null;
+      }
     }
     cache.set(line, verdict);
     return verdict;
   };
+  judge.dispose = () => rmSync(dir, { recursive: true, force: true });
+  return judge;
 }
 
 function isNoise(candidate, testGlobs) {
@@ -731,6 +736,7 @@ export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExten
   const globs = testGlobs.map(globToRegExp);
   const sources = new Map();
   const judges = new Map();
+  const judgeDisposers = [];
   const sourceOf = (file) => {
     if (root === null) return null;
     if (sources.has(file)) return sources.get(file);
@@ -755,21 +761,37 @@ export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExten
     if (!judges.has(file)) {
       const source = sourceOf(file);
       const policy = commentPolicy(file);
-      if (source === null || policy === "keep") judges.set(file, () => null);
-      else if (policy === "scanner") {
+      if (source === null) judges.set(file, () => null);
+      else if (policy === "oracle") {
+        const judge = carriesNoCode(source, file);
+        judgeDisposers.push(judge.dispose);
+        judges.set(file, judge);
+      }
+      else {
+        // The scanner answers Go, whose grammar is closed, and it answers a language with no
+        // front-end here as a heuristic whose exclusions are reported as unverified.
         const only = commentOnlyLines(source, file);
         judges.set(file, (line) => (only === null ? null : only.has(line)));
-      } else judges.set(file, carriesNoCode(source, file));
+      }
     }
     return judges.get(file);
   };
-  return raw.filter((candidate) => {
+  const kept = raw.filter((candidate) => {
     if (!isCodeFile(candidate.file, codeExtensions)) return false;
     if (isNoise(candidate, globs)) return false;
-    // No oracle means no proof, and a line is never dropped without proof: dropping one
-    // would let a surviving mutation escape the lane.
     return judgeFor(candidate.file)(candidate.line) !== true;
   });
+  // A lane may not read PASS while it dropped a line no front-end proved inert, so every
+  // heuristic exclusion of a language with no front-end is reported to the caller.
+  const unverified = [];
+  for (const candidate of raw) {
+    if (!isCodeFile(candidate.file, codeExtensions) || isNoise(candidate, globs)) continue;
+    if (commentPolicy(candidate.file) !== "heuristic") continue;
+    if (judgeFor(candidate.file)(candidate.line) === true) unverified.push({ file: candidate.file, line: candidate.line });
+  }
+  Object.defineProperty(kept, "unverified", { value: unverified, enumerable: false });
+  Object.defineProperty(kept, "dispose", { value: () => judgeDisposers.forEach((fn) => fn()), enumerable: false });
+  return kept;
 }
 
 export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, max = 12, root = null } = {}) {
