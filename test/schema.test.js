@@ -12,7 +12,6 @@ import {
   SWITCH_KINDS,
   VQA_ITEM_IDS,
   blockingStatus,
-  checkVerdictCoverage,
   classValid,
   extractExamples,
   findingsClassesFor,
@@ -22,11 +21,8 @@ import {
   parseGatesMarkdown,
   parseProgressLine,
   parseReceiptFilename,
-  parseVerdict,
-  receiptFilename,
   requiredReceiptsFor,
   switchRepeats,
-  validateCsvHeader,
   validateDeviceRow,
   validateExamples,
   validateGapReceipts,
@@ -78,10 +74,10 @@ test("the contract's own examples all validate and every documented tag is wired
   expect(new Set(docExamples.map((example) => example.tag))).toEqual(new Set([
     "wish:receipt", "wish:findings-tsv", "wish:gaps-tsv", "wish:lens", "wish:ledger",
     "wish:status-json", "wish:plan-frontmatter", "wish:progress", "wish:gates",
-    "wish:verdict", "wish:receipt-name", "wish:device-code", "wish:device-design",
-    "wish:device-research", "wish:device-audit", "wish:csv-measurements", "wish:csv-rounds",
+    "wish:receipt-name", "wish:device-code", "wish:device-design",
+    "wish:device-research", "wish:device-audit",
   ]));
-  expect(docExamples.length).toBe(20);
+  expect(docExamples.length).toBe(17);
 });
 
 test("head is a commit SHA for code and the artifact sha256 for research", () => {
@@ -102,7 +98,7 @@ test("WARN never blocks; only FAIL does", () => {
 });
 
 test("a receipt body must agree with its filename anchors", () => {
-  const name = receiptFilename({ stage: "verify_lane", lane: "tests", head: HEAD });
+  const name = "verify_lane-tests-0123456.json";
   expect(name).toBe("verify_lane-tests-0123456.json");
   expect(validateReceiptAgainstFilename(receipt(), name).ok).toBe(true);
   expect(validateReceiptAgainstFilename(receipt({ head: OTHER }), name).ok).toBe(false);
@@ -386,33 +382,6 @@ test("gates.md uses the poteto block shape and rejects ambiguity", () => {
   expect(parseGatesMarkdown(text.replace("- Default: keep both", "- Default: keep both\n- Extraneous: x")).ok).toBe(false);
 });
 
-test("the VERDICT pattern and parser are identical to PR #44", () => {
-  expect(parseVerdict(`notes\r\nVERDICT: REVISE round 1 head ${OTHER}\r\nmore\r\nVERDICT: APPROVED round 2 head ${HEAD}\r\n\r\n`))
-    .toMatchObject({ ok: true, verdict: "APPROVED", round: 2, head: HEAD });
-  for (const body of [
-    "", "   \n\t\n", "no verdict here", `VERDICT: APPROVED round 0 head ${HEAD}`,
-    `VERDICT: MAYBE round 1 head ${HEAD}`, `VERDICT: APPROVED round 1 head ${HEAD.slice(0, 7)}`,
-    `VERDICT: APPROVED round 1 head ${HEAD} trailing`, `VERDICT: APPROVED round 1 head ${HEAD}\nfooter`,
-  ]) {
-    expect(parseVerdict(body).ok).toBe(false);
-  }
-  expect(parseVerdict("").reason).toBe("body is empty");
-  expect(parseVerdict("no verdict here").reason).toBe("last non-empty line is not a verdict line: no verdict here");
-  expect(parseVerdict(`VERDICT: APPROVED round 1 head ${HEAD}`).head).toBe(HEAD);
-});
-
-test("rejects a body whose verdict head does not cover HEAD", () => {
-  const body = `VERDICT: APPROVED round 1 head ${HEAD}`;
-  expect(checkVerdictCoverage({ body, head: HEAD }).ok).toBe(true);
-  expect(checkVerdictCoverage({ body, head: HEAD.toUpperCase() }).ok).toBe(true);
-  expect(checkVerdictCoverage({ body, head: OTHER }).reason).toBe(`verdict head ${HEAD} does not cover current head ${OTHER}`);
-  expect(checkVerdictCoverage({ body, head: HEAD.slice(0, 7) }).ok).toBe(false);
-  expect(checkVerdictCoverage({ body, head: "" }).ok).toBe(false);
-  const revise = `VERDICT: REVISE round 1 head ${HEAD}`;
-  expect(checkVerdictCoverage({ body: revise, head: HEAD }).ok).toBe(true);
-  expect(checkVerdictCoverage({ body: revise, head: HEAD, requireApproved: true }).reason).toBe("verdict is REVISE, not APPROVED");
-});
-
 test("required receipts union for mixed and add adversarial only for high risk", () => {
   expect(requiredReceiptsFor("code")).toEqual(["tests", "qa", "sweep", "code-review"]);
   expect(requiredReceiptsFor("code", { highRisk: true })).toContain("adversarial");
@@ -455,20 +424,6 @@ test("kills the guard when the class set loses PANIC", () => {
   const header = FINDINGS_COLUMNS.join("\t");
   const row = `F9\t0\tsweep\tPANIC\tHIGH\tsrc/a.mjs:1\t1\tbun test\t${HEAD}\topen\t-\n`;
   expect(parseFindingsTsv(header + "\n" + row, { type: "code" }).ok).toBe(true);
-});
-
-test("CSV headers accept the C43 base and the v2 suffix but never a reorder", () => {
-  const suffixes = {
-    measurements: "type,unit,program_id,switch_count,rounds_after_switch,gaps_total,gaps_fixed,before_receipts",
-    rounds: "type,unit,program_id,switch_count,switch_kinds",
-  };
-  for (const name of ["measurements", "rounds"]) {
-    const base = docExamples.find((entry) => entry.tag === `wish:csv-${name}`).text;
-    expect(validateCsvHeader(name, base).ok).toBe(true);
-    expect(validateCsvHeader(name, `${base},${suffixes[name]}`).ok).toBe(true);
-    const cells = base.split(",");
-    expect(validateCsvHeader(name, [cells[1], cells[0], ...cells.slice(2)].join(",")).ok).toBe(false);
-  }
 });
 
 test("the CLI contract exposes every verb and the four exit codes", () => {

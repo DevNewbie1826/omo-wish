@@ -184,6 +184,9 @@ Scope: implement node <node-id> of plan <plan path>; nothing outside it.
 Contract: <IS/COMPANION/INVARIANT/LIMIT rows verbatim>.
 
 TASK: implement node <node-id> in <worktree> so its plan rows hold, and prove each guard row can fail.
+  RE-EMPHASIS (owner), verbatim from the plan step — this node implements, so it owns both sentences:
+    (a) Implement it, and also include, strictly, a device that confirms the implementation was done.
+    (b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
 DELIVERABLE: the changed files for <node-id>; for every guard row the node owns, the evidence set of the
   injection check (the injection diff, the failing output, the passing output after restore); a build
   artifact `<ER>/build/<node-id>-<head7>.json` with one row per guard row (a build node is not a verify
@@ -1516,7 +1519,7 @@ truth and `test/schema.test.js` guards it.
 
 | Literal | Exact value | Source |
 | --- | --- | --- |
-| Verdict line | `VERDICT: <APPROVED\|REVISE> round <n> head <40 hex>` as the last non-empty line; pattern `^VERDICT: (APPROVED\|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$` | `ledger.md` §12, `VERDICT_PATTERN_SOURCE` |
+| Verdict line | `VERDICT: <APPROVED\|REVISE> round <n> head <40 hex>` as the last non-empty line; pattern `^VERDICT: (APPROVED\|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$` | `ledger.md` §12 |
 | Findings columns | `id, round, source, class, severity, file_line, blocking, repro_cmd, head_found, status, fixed_head` | `ledger.md` §5 |
 | Findings sources | `code-review, qa, sweep, ultrabrain, architect, adversarial` | `ledger.md` §5 |
 | Findings statuses | `open, fixed, not-fixed, no-command, note, owner` | `ledger.md` §5 |

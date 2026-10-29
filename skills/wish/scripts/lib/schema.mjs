@@ -1,11 +1,11 @@
-// wish v2 — module M0: the one machine contract for every module (M1–M7).
+// wish v3 — the one machine contract for the CLI, the plan linter and their tests.
 //
 // Every shape below is stated in prose, with its source, in
 // `references/ledger.md`; that file's examples are extracted and validated by
 // `validateExamples` and by `test/schema.test.js`. Pure ESM: no I/O, no git,
 // no imports — validation and derivation only. Git facts (HEAD, tree,
-// patch-id) belong to M1 and M4, which import these constants instead of
-// re-declaring them.
+// patch-id) belong to the callers that read git; this file validates their
+// shapes.
 
 export const SCHEMA_VERSION = 2;
 
@@ -45,7 +45,7 @@ export const LEDGER_EVENTS = Object.freeze([
 ]);
 
 // D §2.8: WARN is never blocking. INVALID exists only inside a lane's rows
-// (probe-level, exp/x1 sweep summary) and never as a receipt status.
+// (a check that could not decide) and never as a receipt status.
 export const RECEIPT_STATUSES = Object.freeze(["PASS", "FAIL", "WARN", "SKIP"]);
 export const ROW_VERDICTS = Object.freeze([...RECEIPT_STATUSES, "INVALID"]);
 
@@ -107,7 +107,7 @@ export const REQUIRED_RECEIPTS = Object.freeze({
 });
 export const CONDITIONAL_RECEIPTS = Object.freeze({ adversarial: "high-risk" });
 
-// A §C.1 last row / §B10: the same strings across M3's dictionary and M5's axes.
+// A §C.1 last row / §B10: the same strings across the defect-class dictionary and the review axes.
 const CODE_CLASSES = ["S", "C", "D", "O", "T", "W", "SEC", "DOC", "CFG", "PANIC", "REGRESS"];
 const VQA_ITEM_IDS = [
   "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
@@ -151,11 +151,6 @@ export const CLI_VERBS = Object.freeze([
   "switch", "resume-plan",
 ]);
 
-// C44 verbatim (D §4 requires the identical pattern).
-export const VERDICT_PATTERN_SOURCE =
-  "^VERDICT: (APPROVED|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$";
-export const VERDICT_PATTERN = new RegExp(VERDICT_PATTERN_SOURCE);
-
 // A §B7; `·` (U+00B7) separates the fields, `n/a` is the register-less form.
 export const PROGRESS_PATTERN_SOURCE =
   "^PROGRESS: run (\\S+) · units (\\d+)/(\\d+) · gaps (?:n/a|(\\d+)/(\\d+)) · " +
@@ -171,27 +166,6 @@ export const DEVICE_PATTERN_SOURCES = Object.freeze({
   research: [/^claim C[1-9][0-9]* gate\(primary, domains>=[2-9][0-9]*, counter-search\)$/],
   audit: [/^lint .+ exit 0$/, /^spot [1-9][0-9]* rows reproduce$/],
 });
-
-// C43 shared columns, verbatim;
-// A §F M7 appends its v2 columns and never reorders these.
-export const MEASUREMENTS_COLUMNS = Object.freeze([
-  "pr", "repo", "arm", "common_arms", "route_class", "size_bucket", "stacked_on",
-  "opened_at", "merged_at", "open_to_merge_min", "rounds_total", "ultrabrain_calls",
-  "code_reviewer_calls", "architect_calls", "content_commits_after_approval",
-  "step12_result", "post_merge_refix", "blind_rereview", "invalid_flag", "notes",
-]);
-export const ROUNDS_COLUMNS = Object.freeze([
-  "pr", "round_index", "round_kind", "verdict_head", "dispatch_at", "verdict_at",
-  "minutes", "reviewer", "reviewer_family", "defect_count", "defect_axes",
-  "finding_scope", "counterexample_present", "gate_rows_fixed", "gate_rows_not_fixed",
-  "gate_rows_no_command", "c2_split", "axis_lines_present", "verdict_line_present",
-  "verdict_head_match",
-]);
-export const V2_MEASUREMENTS_SUFFIX = Object.freeze([
-  "type", "unit", "program_id", "switch_count", "rounds_after_switch",
-  "gaps_total", "gaps_fixed", "before_receipts",
-]);
-export const V2_ROUNDS_SUFFIX = Object.freeze(["type", "unit", "program_id", "switch_count", "switch_kinds"]);
 
 const STAGE_NAMES = Object.freeze([...LEDGER_EVENTS, "done"]);
 export { STAGE_NAMES };
@@ -487,12 +461,6 @@ export function parseReceiptFilename(name) {
   }
   fail(errors, "filename", "expected <stage>-<lane>-<head7>.json|md or a typed before/after/vqa/claim-gate/lint name");
   return { ok: false, errors };
-}
-
-export function receiptFilename({ stage, lane, head }) {
-  if (!LEDGER_EVENTS.includes(stage)) throw new RangeError(`unknown stage: ${stage}`);
-  if (!isStr(lane) || !KEBAB.test(lane)) throw new RangeError(`invalid lane: ${lane}`);
-  return `${stage}-${lane}-${String(head).slice(0, 7)}.json`;
 }
 
 export function validateReceiptAgainstFilename(receipt, name) {
@@ -861,35 +829,6 @@ export function parseGatesMarkdown(text) {
   return { ok: errors.length === 0, gates, errors };
 }
 
-// C44 verbatim: CRLF-normalized, last non-empty line, trailing whitespace
-// trimmed, head lowercased, the same reason strings.
-export function parseVerdict(body) {
-  const lines = String(body).replace(/\r\n?/g, "\n").split("\n");
-  let last = -1;
-  for (let index = lines.length - 1; index >= 0; index -= 1) {
-    if (lines[index].trim() !== "") { last = index; break; }
-  }
-  if (last === -1) return { ok: false, reason: "body is empty" };
-  const line = lines[last].trimEnd();
-  const match = VERDICT_PATTERN.exec(line);
-  if (!match) return { ok: false, reason: `last non-empty line is not a verdict line: ${line}` };
-  return { ok: true, verdict: match[1], round: Number(match[2]), head: match[3].toLowerCase(), line };
-}
-
-export function checkVerdictCoverage({ body, head, requireApproved = false }) {
-  const parsed = parseVerdict(body);
-  if (!parsed.ok) return { ok: false, reason: parsed.reason };
-  const current = String(head ?? "").toLowerCase();
-  if (!HEX40.test(current)) return { ok: false, verdict: parsed, reason: `current head is not a full 40-hex SHA: ${head}` };
-  if (parsed.head !== current) {
-    return { ok: false, verdict: parsed, reason: `verdict head ${parsed.head} does not cover current head ${current}` };
-  }
-  if (requireApproved && parsed.verdict !== "APPROVED") {
-    return { ok: false, verdict: parsed, reason: `verdict is ${parsed.verdict}, not APPROVED` };
-  }
-  return { ok: true, verdict: parsed, reason: `verdict ${parsed.verdict} round ${parsed.round} head ${parsed.head} covers current head ${current}` };
-}
-
 export function validateDeviceRow(type, value) {
   const errors = [];
   if (!PRIMARY_TYPES.includes(type)) return { ok: false, errors: [{ path: "device.type", message: "expected a concrete work type" }] };
@@ -898,17 +837,6 @@ export function validateDeviceRow(type, value) {
   const form = DEVICE_PATTERN_SOURCES[type].find((pattern) => pattern.test(body));
   if (!form) fail(errors, "device", `does not match the ${type} device grammar in A §B4`);
   return { ok: errors.length === 0, form: form ? form.source : null, errors };
-}
-
-export function validateCsvHeader(name, header) {
-  const base = { measurements: MEASUREMENTS_COLUMNS, rounds: ROUNDS_COLUMNS }[name];
-  const suffix = { measurements: V2_MEASUREMENTS_SUFFIX, rounds: V2_ROUNDS_SUFFIX }[name];
-  if (!base) return { ok: false, errors: [{ path: "csv", message: "expected measurements or rounds" }] };
-  const cells = String(header ?? "").trim().split(",");
-  const expected = [base.join(","), [...base, ...suffix].join(",")];
-  return expected.includes(cells.join(","))
-    ? { ok: true, errors: [] }
-    : { ok: false, errors: [{ path: "csv.header", message: `expected the ${name} header plus optional v2 suffix` }] };
 }
 
 // The contract is only real if its own examples are validated: every fenced
@@ -954,18 +882,11 @@ function dispatchExample(tag, text) {
   if (tag === "wish:plan-frontmatter") return validatePlanFrontMatter(JSON.parse(text));
   if (tag === "wish:progress") return parseProgressLine(text.trim());
   if (tag === "wish:gates") return parseGatesMarkdown(text);
-  if (tag === "wish:verdict") {
-    const body = `${text}\n`;
-    const parsed = parseVerdict(body);
-    return parsed.ok ? checkVerdictCoverage({ body, head: parsed.head }) : parsed;
-  }
   if (tag === "wish:receipt-name") {
     const errors = text.split("\n").filter((line) => line.trim() !== "")
       .flatMap((line) => parseReceiptFilename(line.trim()).errors);
     return { ok: errors.length === 0, errors };
   }
-  if (tag === "wish:csv-measurements") return validateCsvHeader("measurements", text);
-  if (tag === "wish:csv-rounds") return validateCsvHeader("rounds", text);
   const device = /^wish:device-(code|design|research|audit)$/.exec(tag);
   if (device) return validateDeviceRow(device[1], text.trim());
   return { ok: false, errors: [{ path: tag, message: "no validator is wired to this example tag" }] };
