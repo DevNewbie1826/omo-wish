@@ -369,13 +369,13 @@ export function commentPolicy(file) {
 // is code. An extension outside it has no comment opinion: the caller keeps the
 // line rather than guessing, because dropping a real statement would let a
 // surviving mutation escape.
-const C_LIKE = Object.freeze({ line: ["//"], block: [["/*", "*/"]], quotes: ['"', "'", "`"], template: "`" });
+const C_LIKE = Object.freeze({ line: ["//"], block: [["/*", "*/"]], quotes: ['"', "'", "`"], template: "`", interpolates: true });
 // Rust, Swift, Scala, Kotlin and Dart nest block comments: an inner close does not end
 // the outer comment, so the scanner counts depth for them only. In C and JavaScript a
 // nested opener is plain text and the first close ends the comment.
 const C_NESTED = Object.freeze({ ...C_LIKE, nested: true });
 // A Go raw string is a backtick literal where a backslash is data, not an escape.
-const C_RAW = Object.freeze({ ...C_LIKE, rawTemplate: true });
+const C_RAW = Object.freeze({ ...C_LIKE, rawTemplate: true, interpolates: false });
 const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
 
 const COMMENT_SYNTAX = Object.freeze({
@@ -494,7 +494,9 @@ export function commentOnlyLines(source, file) {
         mode = "code";
         continue;
       }
-      if (ch === "$" && text[i + 1] === "{") {
+      // Only a JavaScript template interpolates. In a Go raw string the sequence is data,
+      // and reading it as an expression would end the string early and drop real code below.
+      if (syntax.interpolates === true && ch === "$" && text[i + 1] === "{") {
         mode = "code";
         exprDepth = 1;
         atLineStart = false;
@@ -623,11 +625,23 @@ const BUN_LOADERS = Object.freeze({ js: "js", mjs: "js", cjs: "js", jsx: "jsx", 
 const C_FAMILY = new Set(["c", "h", "cc", "cpp", "cxx", "hpp", "hh"]);
 
 function bunCompiled(source, file) {
+  let emitted;
   try {
-    return new Bun.Transpiler({ loader: BUN_LOADERS[extensionOf(file)] }).transformSync(source);
+    emitted = new Bun.Transpiler({ loader: BUN_LOADERS[extensionOf(file)] }).transformSync(source);
   } catch {
     return null;
   }
+  // The transpiler keeps "/*!" and "//!" legal comments in its output, so deleting one would
+  // otherwise read as a change to the program. They are comments by definition, so they are
+  // removed here, together with the blank lines their removal leaves behind: the comparison
+  // must be about the code the program contains, not about preserved comment text or the
+  // blank line that stood where a comment used to be.
+  return emitted
+    .replace(/\/\*![\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\/!.*$/gm, "")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .join("\n");
 }
 
 function pythonCompiled(source, dir) {

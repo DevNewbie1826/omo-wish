@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
 import {
-  carriesNoCode, clampMs, ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget,
+  carriesNoCode, clampMs, commentOnlyLines, ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget,
 } from "../skills/wish/scripts/probes/lib.mjs";
 import { COMPILED_EXTENSIONS } from "../skills/wish/scripts/probes/mutation.mjs";
 import {
@@ -904,6 +904,25 @@ test("the front-end oracle drops a comment body and keeps code in every language
     for (const line of code) expect(judge(line)).toBe(false);
     judge.dispose?.();
   }
+}, 30000);
+
+test("a preserved legal comment is still a comment, and Go does not interpolate", () => {
+  // Bun keeps "/*!" and "//!" legal comments in its output, so a comparison over the raw
+  // emitted text would read deleting one as a change to the program.
+  const banner = ["/*! license comment only */", "globalThis.unused = 1;", ""].join("\n");
+  const bang = ["//! license comment only", "globalThis.unused = 1;", ""].join("\n");
+  for (const source of [banner, bang]) {
+    const judge = carriesNoCode(source, "a.js");
+    expect(judge(1)).toBe(true);
+    judge.dispose?.();
+  }
+  // A Go raw string is data: an unbalanced "${" inside it must not open an expression,
+  // because the comment that follows the string would then be read as code or the code
+  // after it as a comment.
+  const go = ["package x", "var s = `a ${b", "/* data", "`", "var v = 1", "/* real", "body", "*/", "var w = 2", ""].join("\n");
+  const only = [...commentOnlyLines(go, "a.go")];
+  expect(only).not.toContain(5);
+  expect(only).toContain(7);
 }, 30000);
 
 test("the C adapter keeps a preprocessor body and passes an include through", () => {
