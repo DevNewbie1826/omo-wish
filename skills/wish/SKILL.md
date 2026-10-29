@@ -42,7 +42,7 @@ repository on purpose: evidence never costs a commit and never moves a reviewed 
 | 6 | `plan_review` | `category: architect` once, plus `plan-reviewer` only in the ulw-plan branch below | `plan_review-architect-<head7>.md`, `OKAY` or blockers each with a fix |
 | 7 | `decide` | session collects the decision batch | `decide` event + `<ER>/gates.md` entries with a recommended default |
 | 8 | `goal` | `ulw-loop` goals; ulw-execute Boulder state as format only | `goal` event with the goal id |
-| 9 | `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit; the commit node loads `git-master`; each build node carries the plan's device sentences (a device that confirms the implementation; for a fix, a device that confirms the fix — `references/prompts.md` §2.1 re-emphasizes both verbatim) | `build` events + `build-<node>.json` |
+| 9 | `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit; the commit node loads `git-master`; re-emphasize at implementation: Implement it, and also include, strictly, a device that confirms the implementation was done. In addition, fix it, and also include, strictly, a device that confirms the fix was made. | `build` events + `build-<node>.json` |
 | 10 | `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer`, `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
 | 11 | `triage` | session | `triage` event + `findings.tsv` rows |
 | 12 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; the reuse rule re-runs only stale lanes | `fix` + `reuse` events |
