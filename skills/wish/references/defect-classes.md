@@ -29,8 +29,12 @@ The derivation is fixed: any `FAIL` row makes the lane `FAIL` (exit 1); otherwis
 A **non-candidate** is not a row of that table: it is a line the probe refused before mutating, so no
 claim about a test is made. Two rules produce one:
 
-- A line whose text is entirely comment is never a candidate. A marker test cannot decide that, because a
-  block comment's body carries no marker of its own; the probe reads the file and drops the line.
+- A line whose text is entirely comment is never a candidate. A marker test cannot decide that, and neither
+  can a hand-written scanner: three review rounds each found a string form a scanner read as a comment (a
+  block-comment body, a template, a regex literal, a backslash-continued string, a JSX attribute, a Python
+  f-string, a shell heredoc, a Rust raw string). The probe therefore asks the language's own tool: it compiles
+  the file with the line removed and drops the line only when the result is identical. A language with no such
+  tool on the machine keeps every line, because a dropped line lets a surviving mutation escape.
 - In a compiled language a deletion that cannot build is not a mutation any test could observe. The probe
   reports those lines as **one `mutation/noncandidate/<file>` row per file** with verdict `SKIP`, naming every
   line and the reason, and the lane's status is decided by the candidates that were actually probed. That is

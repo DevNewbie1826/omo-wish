@@ -36,7 +36,11 @@ copy of the tree and the suite is re-run:
 "candidates" replaces the diff-derived list (fixtures, or a diff already merged).
 Only added production source lines are candidates: prose, comment-only lines and
 test files are never mutated, because a doc or comment line would demand a test
-that pins prose and a test line would demand a test of its own fixtures.
+that pins prose and a test line would demand a test of its own fixtures. A line is
+dropped as comment only when the language's own tool proves it carries no code:
+the file is compiled with that line removed and the result must be identical. A
+language with no such tool on this machine keeps every line, so a real survivor is
+never hidden.
 "testGlobs" and "codeExtensions" override that filter. At most 12 production lines
 are probed whatever "max" says (a lower "max" is honoured: tier S declares 3); the
 rest are reported as one WARN row so an unprobed line can never read as covered.`;
@@ -99,7 +103,12 @@ export async function run(config, ctx) {
   const raw = config.candidates?.length
     ? config.candidates
     : await addedLines({ root: ctx.root, base: config.base, paths: config.paths });
-  const production = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions, root: ctx.root });
+  const production = productionLines(raw, {
+    testGlobs: config.testGlobs,
+    codeExtensions: config.codeExtensions,
+    root: ctx.root,
+    buildOracle: config.buildOracle ?? null,
+  });
   const cap = Math.max(1, Math.min(Number(config.max) || 12, 12));
   const candidates = production.slice(0, cap);
   if (candidates.length === 0) {

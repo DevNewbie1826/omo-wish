@@ -1,11 +1,11 @@
 import { afterAll, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
 import {
-  clampMs, commentOnlyLines, ctxFor, hasCommentSyntax, killSession, q, runCommand, sessionMembers, sweepBudget,
+  carriesNoCode, clampMs, ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget,
 } from "../skills/wish/scripts/probes/lib.mjs";
 import { COMPILED_EXTENSIONS } from "../skills/wish/scripts/probes/mutation.mjs";
 import {
@@ -555,7 +555,10 @@ The transport may refuse the request; the failure never echoes the credential.
   expect(git("commit", "-q", "-m", "add the comment").exitCode).toBe(0);
   writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", base: "HEAD~1" } } });
   const derived = sweepOnce();
-  expect(derived.receipt.rows.some((entry) => entry.id.startsWith("mutation/cli.js"))).toBe(false);
+  // The comment body is gone from the candidate list; the delimiters themselves stay,
+  // because deleting a lone "/*" makes the file unparseable and the oracle refuses to
+  // decide. That is the safe direction: it costs a noise row, never a hidden survivor.
+  expect(derived.receipt.rows.some((entry) => entry.id === `mutation/cli.js:${comment}`)).toBe(false);
   expect(derived.receipt.rows.some((entry) => entry.verdict === "FAIL")).toBe(false);
   expect(derived.exit).toBe(0);
 }, 120000);
@@ -633,39 +636,6 @@ test("a green suite survives even when the log says syntax error", () => {
   expect(verdictOf(receipt, `mutation/guard.go:${guard}`)).toBe("FAIL");
   expect(receipt.rows.some((entry) => entry.id.startsWith("mutation/noncandidate/"))).toBe(false);
   expect(receipt.status).toBe("FAIL");
-  expect(run.exit).toBe(1);
-}, 120000);
-
-test("every extension the compiled set names has a comment syntax and drops a comment body", () => {
-  // A compiled extension outside the comment table would fall back to the marker test,
-  // and the block-comment body symptom would return for it. The table must cover the set.
-  // A Set has no enumerable keys, so the set must be spread: Object.keys here would make
-  // this loop vacuous and the coverage claim false.
-  const compiled = [...COMPILED_EXTENSIONS];
-  expect(compiled.length).toBeGreaterThan(20);
-  for (const extension of compiled) {
-    expect(hasCommentSyntax(extension)).toBe(true);
-  }
-  const dir = stage("clean");
-  // Per-extension syntax: a C-family block, and the ML block for the ML extensions.
-  const sources = {
-    "guard.cxx": ["/*", "body of a comment with a ' quote", "*/", "real statement", ""],
-    "guard.hh": ["/*", "body of a comment with a \" quote", "*/", "real statement", ""],
-    "guard.mli": ["(*", "body of a comment with a ' quote", "*)", "real statement", ""],
-  };
-  for (const [name, lines] of Object.entries(sources)) writeFileSync(join(dir, name), lines.join("\n"));
-  writeFileSync(join(dir, "build.sh"), "#!/bin/sh\nexit 0\n");
-  const files = Object.keys(sources);
-  writeConfig(dir, { probes: { mutation: {
-    testCmd: "sh build.sh", failMarker: "CHECK FAILED", codeExtensions: [...files.map((name) => name.split(".")[1]), "js"],
-    candidates: files.flatMap((file) => [{ file, line: 2 }, { file, line: 4 }]),
-  } } });
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
-  for (const name of files) {
-    expect(receipt.rows.some((entry) => entry.id === `mutation/${name}:2`)).toBe(false);
-    expect(receipt.rows.some((entry) => entry.id === `mutation/${name}:4`)).toBe(true);
-  }
   expect(run.exit).toBe(1);
 }, 120000);
 
@@ -783,40 +753,6 @@ test("a backtick inside a regular expression is not a template opener", () => {
   expect(receipt.rows.some((entry) => entry.id === `mutation/app.js:${body}`)).toBe(false);
   expect(run.exit).toBe(0);
 }, 120000);
-
-test("a backslash before a Go raw-string close does not escape it", () => {
-  const source = [
-    "package app",
-    "",
-    "var raw = `a\\`",
-    "",
-    "/* a real comment",
-    "with a body line",
-    "*/",
-    "var value = 1",
-    "",
-  ].join("\n");
-  const only = [...commentOnlyLines(source, "app.go")];
-  expect(only).toContain(6);
-  expect(only).not.toContain(8);
-}, 30000);
-
-test("every language whose block comments nest counts depth", () => {
-  const cases = [
-    ["a.ml", "(* outer", "(* inner *)", "body", "*)", "let x = 1"],
-    ["a.hs", "{- outer", "{- inner -}", "body", "-}", "x = 1"],
-    ["a.nim", "#[ outer", "#[ inner ]#", "body", "]#", "var x = 1"],
-    ["a.rs", "/* outer", "/* inner */", "body", "*/", "let x = 1;"],
-  ];
-  for (const [file, ...lines] of cases) {
-    const source = lines.join("\n") + "\n";
-    const only = [...commentOnlyLines(source, file)];
-    expect(only).toContain(3);
-    expect(only).not.toContain(5);
-  }
-  const flat = "/* outer\n/* inner */\nint x;\n*/\nint y;\n";
-  expect([...commentOnlyLines(flat, "a.c")]).not.toContain(3);
-}, 30000);
 
 test("a real block comment after code keeps its body out of the candidates", () => {
   const dir = stage("clean");
@@ -952,36 +888,30 @@ test("a line that opens a block comment and carries code after it is still code"
   expect(run.exit).toBe(0);
 }, 120000);
 
-test("a nested block comment stays comment in a language that nests it", () => {
+test("a language with no oracle keeps every line, so no survivor can hide", () => {
   const dir = stage("clean");
+  // Rust has no parser on this machine, so the probe cannot prove which lines are comment.
+  // It keeps them all: the lane may report a noise row, but it can never read PASS while a
+  // real survivor exists. That is the trade this filter is allowed to make.
   writeFileSync(join(dir, "source.rs"), [
-    "/* outer",
-    "/* inner */",
-    "body still inside the outer comment",
+    "fn main() {",
+    "/* a comment",
+    "comment body",
     "*/",
-    "fn real() {}",
+    "    let survivor = 1;",
+    "}",
     "",
   ].join("\n"));
-  writeFileSync(join(dir, "wrap.rs"), [
-    "/* outer",
-    "/* inner */",
-    "the old handler used new Error(error.message)",
-    "*/",
-    "fn real() {}",
-    "",
-  ].join("\n"));
-  const body = 3;
-  writeConfig(dir, { probes: {
-    mutation: { testCmd: "true", failMarker: "CHECK FAILED", candidates: [{ file: "source.rs", line: body }] },
-    errors: { strict: true, lines: [{ file: "wrap.rs", line: body }] },
-  } });
+  const body = lineOf(dir, "source.rs", "comment body");
+  const code = lineOf(dir, "source.rs", "let survivor");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "true", failMarker: "CHECK FAILED",
+    candidates: [{ file: "source.rs", line: body }, { file: "source.rs", line: code }],
+  } } });
   const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
-  expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${body}`)).toBe(false);
-  expect(receipt.rows.some((entry) => entry.id.startsWith("errors/"))).toBe(false);
-  expect(verdictOf(receipt, "mutation")).toBe("SKIP");
-  expect(verdictOf(receipt, "errors")).toBe("SKIP");
-  expect(run.exit).toBe(0);
+  expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${code}`)).toBe(true);
+  expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${body}`)).toBe(true);
 }, 120000);
 
 test("a native compiler diagnostic marks the deletion a non-candidate", () => {
@@ -1040,6 +970,26 @@ test("the error scan skips test files and prose", () => {
   expect(receipt.rows.filter((entry) => entry.id === "errors" || entry.id.startsWith("errors/")).map((entry) => entry.id)).toEqual([`errors/rewrapped-message:cli.js:${rewrap}`]);
   expect(run.exit).toBe(1);
 });
+
+test("the errors probe reads no file outside the root, even through a link", () => {
+  const dir = stage("clean");
+  const outside = mkdtempSync(join(tmpdir(), "sweep-outside-"));
+  staged.push(outside);
+  writeFileSync(join(outside, "secret.js"), "throw new Error(error.message)\n");
+  mkdirSync(join(dir, "linked"));
+  symlinkSync(join(outside, "secret.js"), join(dir, "link.js"));
+  symlinkSync(outside, join(dir, "linked", "into"));
+  writeConfig(dir, { probes: { errors: { strict: true, lines: [
+    { file: "link.js", line: 1 },
+    { file: "linked/into/secret.js", line: 1 },
+  ] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  // The outside target carries a wrap site; a contained read must never surface it.
+  expect(receipt.rows.some((entry) => entry.id.startsWith("errors/"))).toBe(false);
+  expect(verdictOf(receipt, "errors")).toBe("PASS");
+  expect(run.exit).toBe(0);
+}, 120000);
 
 test("a candidate path that escapes the throwaway copy is invalid and writes nothing", () => {
   const dir = stage("clean");

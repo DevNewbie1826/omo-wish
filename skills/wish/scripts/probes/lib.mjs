@@ -11,8 +11,9 @@
 // row cannot carry a class the contract rejects.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { classValid, PRIMARY_TYPES } from "../lib/schema.mjs";
 
@@ -339,6 +340,28 @@ export function isCodeFile(file, extensions = DEFAULT_CODE_EXTENSIONS) {
   return dot !== -1 && extensions.includes(name.slice(dot + 1).toLowerCase());
 }
 
+// Whether a line carries code is decided in one of three ways, and the choice is a
+// property of the language, not of a guess:
+//
+//   1. the language's own parser, where one is installed here (Bun for js/ts/jsx, python3
+//      for py, cc for C). The file is compiled with the line removed and the line is
+//      dropped only when the result is identical. This is exact, because no hand-written
+//      rule can know where a JSX attribute, an f-string or a heredoc ends.
+//   2. a scanner, for a language whose lexical grammar is closed and small: Go, whose only
+//      comment forms are // and /* */, whose only multi-line literal is a backtick string,
+//      and whose quotes never span lines.
+//   3. nothing. Every other language keeps every line, because a dropped line lets a
+//      surviving mutation escape the lane, and a false candidate only costs a noise row.
+//
+const SCANNED_LANGUAGES = new Set(["go"]);
+
+export function commentPolicy(file) {
+  const extension = extensionOf(file);
+  if (SCANNED_LANGUAGES.has(extension)) return "scanner";
+  if (hasOracle(file)) return "oracle";
+  return "keep";
+}
+
 // A candidate must be a line whose deletion a test can observe, so a line whose
 // whole text is comment is never one. A marker test cannot decide that: a block
 // comment's body lines carry no marker of their own, which is how a comment line
@@ -357,24 +380,9 @@ const C_RAW = Object.freeze({ ...C_LIKE, rawTemplate: true });
 const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
 
 const COMMENT_SYNTAX = Object.freeze({
-  js: C_LIKE, mjs: C_LIKE, cjs: C_LIKE, jsx: C_LIKE, ts: C_LIKE, tsx: C_LIKE, mts: C_LIKE, cts: C_LIKE,
-  go: C_RAW, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, cxx: C_LIKE, hpp: C_LIKE, hh: C_LIKE, cs: C_LIKE, java: C_LIKE,
-  kt: C_NESTED, kts: C_NESTED, swift: C_NESTED, rs: C_NESTED, scala: C_NESTED, dart: C_NESTED, zig: C_LIKE,
-  php: C_LIKE, css: C_LIKE, scss: C_LIKE, less: C_LIKE, sol: C_LIKE, vue: C_LIKE, svelte: C_LIKE,
-  py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
-  pl: HASH_LINE, jl: HASH_LINE, rego: HASH_LINE, ex: HASH_LINE, exs: HASH_LINE,
-  tf: Object.freeze({ line: ["#"], block: [["/*", "*/"]], quotes: ['"'] }),
-  nim: Object.freeze({ line: ["#"], block: [["#[", "]#"]], quotes: ['"'], nested: true }),
-  erl: Object.freeze({ line: ["%"], block: [], quotes: ['"'] }),
-  hs: Object.freeze({ line: ["--"], block: [["{-", "-}"]], quotes: ['"'], nested: true }),
-  lua: Object.freeze({ line: ["--"], block: [["--[[", "]]"]], quotes: ['"', "'"] }),
-  sql: Object.freeze({ line: ["--"], block: [["/*", "*/"]], quotes: ["'", '"'] }),
-  ml: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'], nested: true }),
-  mli: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'], nested: true }),
-  clj: Object.freeze({ line: [";"], block: [], quotes: ['"'] }),
-  html: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
-  astro: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
+  go: C_RAW,
 });
+
 
 // Whether this module knows a comment syntax for the extension. Exported so a test can
 // hold the table and the compiled-extension set equal: a compiled extension outside the
@@ -596,15 +604,119 @@ export function commentOnlyLines(source, file) {
   return only;
 }
 
-function isNoise(candidate, testGlobs, commentAware = false) {
+export function extensionOf(file) {
+  const name = String(file);
+  const dot = name.lastIndexOf(".");
+  return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+const BUN_LOADERS = Object.freeze({ js: "js", mjs: "js", cjs: "js", jsx: "jsx", ts: "ts", mts: "ts", cts: "ts", tsx: "tsx" });
+const C_FAMILY = new Set(["c", "h", "cc", "cpp", "cxx", "hpp", "hh"]);
+
+function bunCompiled(source, file) {
+  try {
+    return new Bun.Transpiler({ loader: BUN_LOADERS[extensionOf(file)] }).transformSync(source);
+  } catch {
+    return null;
+  }
+}
+
+function pythonCompiled(source, dir) {
+  const path = join(dir, "probe.py");
+  writeFileSync(path, source);
+  const run = spawnSync("python3", ["-c", "import ast,sys\ntry:\n    print(ast.dump(ast.parse(open(sys.argv[1], encoding='utf-8').read())))\nexcept SyntaxError:\n    sys.exit(3)", path], { encoding: "utf8" });
+  return run.status === 0 ? run.stdout : null;
+}
+
+const GO_ORACLE = [
+  "package main",
+  "",
+  "import (",
+  '\t"go/parser"',
+  '\t"go/printer"',
+  '\t"go/token"',
+  '\t"os"',
+  ')',
+  "",
+  "func main() {",
+  "\tsrc, err := os.ReadFile(os.Args[1])",
+  "\tif err != nil { os.Exit(3) }",
+  '\tfset := token.NewFileSet()',
+  '\tfile, err := parser.ParseFile(fset, "x.go", src, 0)',
+  "\tif err != nil { os.Exit(3) }",
+  "\tif err := printer.Fprint(os.Stdout, fset, file); err != nil { os.Exit(3) }",
+  "}",
+  "",
+].join("\n");
+
+function goCompiled(source, dir) {
+  const path = join(dir, "probe.go");
+  writeFileSync(path, source);
+  const run = spawnSync("go", ["run", "-", path], { encoding: "utf8", input: GO_ORACLE });
+  return run.status === 0 ? run.stdout : null;
+}
+
+function cCompiled(source, dir, extension) {
+  const path = join(dir, `probe.${extension}`);
+  writeFileSync(path, source);
+  const run = spawnSync("cc", ["-E", "-P", "-nostdinc", path], { encoding: "utf8" });
+  return run.status === 0 ? run.stdout : null;
+}
+
+// Whether deleting this line changes the program the language's own tool sees. This is the
+// candidate question stated as a measurement instead of as a guess: a hand-written scanner
+// cannot know where a raw string, a heredoc or a JSX attribute ends, so three adversarial
+// rounds each found a new shape it read as a comment and dropped a real statement with.
+//
+// `true`  the compiled form is identical, so the line carries no code;
+// `false` the compiled form changes, so the line carries code and stays a candidate;
+// `null`  this language has no oracle here, and the caller must keep the line.
+export function hasOracle(file) {
+  const extension = extensionOf(file);
+  return C_FAMILY.has(extension) || extension === "py" || extension === "go" || BUN_LOADERS[extension] !== undefined;
+}
+
+export function carriesNoCode(source, file) {
+  const text = String(source ?? "");
+  const extension = extensionOf(file);
+  const isC = C_FAMILY.has(extension);
+  const isPy = extension === "py";
+  const isGo = extension === "go";
+  if (!hasOracle(file)) return () => null;
+  const dir = mkdtempSync(join(tmpdir(), "wish-lines-"));
+  const compile = (candidate) => (isC
+    ? cCompiled(candidate, dir, extension)
+    : isPy
+      ? pythonCompiled(candidate, dir)
+      : isGo
+        ? goCompiled(candidate, dir)
+        : bunCompiled(candidate, file));
+  const lines = text.split("\n");
+  const original = compile(text);
+  const cache = new Map();
+  return (line) => {
+    if (cache.has(line)) return cache.get(line);
+    let verdict = null;
+    if (original === null) verdict = null;
+    else if (line < 1 || line > lines.length) verdict = null;
+    else if (!lines[line - 1].trim()) verdict = true;
+    else {
+      const copy = [...lines];
+      copy[line - 1] = "";
+      const mutated = compile(copy.join("\n"));
+      verdict = mutated === null ? null : mutated === original;
+    }
+    cache.set(line, verdict);
+    return verdict;
+  };
+}
+
+function isNoise(candidate, testGlobs) {
   if (testGlobs.some((glob) => glob.test(candidate.file))) return true;
   const text = candidate.text;
   if (text === undefined) return false;
   if (!text.trim()) return true;
   if (/^\s*(import|from|#include|package|using)\b/.test(text)) return true;
-  // A known syntax answers the comment question for the whole line, so a line that
-  // starts with a marker and carries code after it ("/* short */ x = 1;") is code.
-  if (!commentAware && /^\s*(\/\/|#|\*|\/\*)/.test(text)) return true;
   if (/^\s*[)}\]],?\s*$/.test(text)) return true;
   if (/[({[,]\s*$/.test(text)) return true;
   return false;
@@ -618,16 +730,16 @@ function isNoise(candidate, testGlobs, commentAware = false) {
 export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, root = null } = {}) {
   const globs = testGlobs.map(globToRegExp);
   const sources = new Map();
-  const indexes = new Map();
+  const judges = new Map();
   const sourceOf = (file) => {
     if (root === null) return null;
     if (sources.has(file)) return sources.get(file);
     const base = resolve(root);
     const target = resolve(base, file);
     let source = null;
-    // The read is contained to the root even through a link: a file that resolves
-    // outside the checkout is not the candidate's own text, so the comment question
-    // stays unanswered and the line is kept rather than silently dropped.
+    // The read is contained to the root even through a link: a file that resolves outside
+    // the checkout is not the candidate's own text, so the question stays unanswered and
+    // the line is kept rather than silently dropped.
     if (target.startsWith(`${base}${sep}`) && existsSync(target)) {
       try {
         const real = realpathSync(target);
@@ -639,19 +751,27 @@ export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExten
     sources.set(file, source);
     return source;
   };
-  const isCommentOnly = (candidate) => {
-    if (!indexes.has(candidate.file)) {
-      const source = sourceOf(candidate.file);
-      indexes.set(candidate.file, source === null ? null : commentOnlyLines(source, candidate.file));
+  const judgeFor = (file) => {
+    if (!judges.has(file)) {
+      const source = sourceOf(file);
+      const policy = commentPolicy(file);
+      if (source === null || policy === "keep") judges.set(file, () => null);
+      else if (policy === "scanner") {
+        const only = commentOnlyLines(source, file);
+        judges.set(file, (line) => (only === null ? null : only.has(line)));
+      } else judges.set(file, carriesNoCode(source, file));
     }
-    return indexes.get(candidate.file)?.has(candidate.line) ?? false;
+    return judges.get(file);
   };
-  return raw.filter((candidate) => isCodeFile(candidate.file, codeExtensions)
-    && !isNoise(candidate, globs, hasCommentSyntax(extensionOf(candidate.file)))
-    && !isCommentOnly(candidate));
+  return raw.filter((candidate) => {
+    if (!isCodeFile(candidate.file, codeExtensions)) return false;
+    if (isNoise(candidate, globs)) return false;
+    // No oracle means no proof, and a line is never dropped without proof: dropping one
+    // would let a surviving mutation escape the lane.
+    return judgeFor(candidate.file)(candidate.line) !== true;
+  });
 }
 
-// The probe's work list: production lines, capped at `max`.
 export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, max = 12, root = null } = {}) {
   return productionLines(raw, { testGlobs, codeExtensions, root }).slice(0, max);
 }
@@ -659,9 +779,23 @@ export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExte
 export function lineBody(ctx, entry) {
   if (entry.text !== undefined) return entry.text;
   const file = resolve(ctx.root, entry.file);
-  return file.startsWith(`${ctx.root}${sep}`) && existsSync(file)
-    ? (readFileSync(file, "utf8").split("\n")[entry.line - 1] ?? "")
-    : "";
+  if (!file.startsWith(`${ctx.root}${sep}`) || !existsSync(file)) return "";
+  // The read is contained even through a link: a file that resolves outside the root is
+  // not this candidate's own text, so the line reads as empty rather than reaching out.
+  let real;
+  try {
+    real = realpathSync(file);
+  } catch {
+    return "";
+  }
+  let base;
+  try {
+    base = realpathSync(ctx.root);
+  } catch {
+    return "";
+  }
+  if (!real.startsWith(`${base}${sep}`)) return "";
+  return readFileSync(real, "utf8").split("\n")[entry.line - 1] ?? "";
 }
 
 export function isMain(metaUrl) {
