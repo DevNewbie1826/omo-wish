@@ -778,6 +778,15 @@ function regionProposal(lines, line, file) {
   return null;
 }
 
+// The scratch directories this process has open. Counting the entries of the temp directory
+// instead would make the assertion depend on every other process on the machine, and a suite
+// run twice at once would then fail for a reason that has nothing to do with a leak.
+const LIVE_SCRATCH = new Set();
+
+export function liveScratch() {
+  return LIVE_SCRATCH.size;
+}
+
 export function carriesNoCode(source, file) {
   const text = String(source ?? "");
   const extension = extensionOf(file);
@@ -785,6 +794,7 @@ export function carriesNoCode(source, file) {
   const isPy = extension === "py";
   if (!hasOracle(file)) return () => null;
   const dir = mkdtempSync(join(tmpdir(), "wish-lines-"));
+  LIVE_SCRATCH.add(dir);
   const compile = (candidate) => (isC
     ? cCompiled(candidate, dir, extension)
     : isPy
@@ -838,7 +848,10 @@ export function carriesNoCode(source, file) {
     cache.set(line, verdict);
     return verdict;
   };
-  judge.dispose = () => rmSync(dir, { recursive: true, force: true });
+  judge.dispose = () => {
+    LIVE_SCRATCH.delete(dir);
+    rmSync(dir, { recursive: true, force: true });
+  };
   return judge;
 }
 

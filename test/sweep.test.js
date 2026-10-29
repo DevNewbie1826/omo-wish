@@ -5,7 +5,8 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
 import {
-  carriesNoCode, clampMs, commentOnlyLines, ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget,
+  carriesNoCode, clampMs, commentOnlyLines, ctxFor, killSession, liveScratch, q, runCommand,
+  sessionMembers, sweepBudget,
 } from "../skills/wish/scripts/probes/lib.mjs";
 import { COMPILED_EXTENSIONS } from "../skills/wish/scripts/probes/mutation.mjs";
 import {
@@ -962,12 +963,11 @@ test("the C adapter keeps a preprocessor body and passes an include through", ()
 }, 30000);
 
 test("the oracle leaves no scratch directory behind", () => {
-  const before = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
+  const before = liveScratch();
   const judge = carriesNoCode("const a = 1;\n/* c\n*/\n", "a.js");
   judge(2);
   judge.dispose?.();
-  const after = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
-  expect(after).toBe(before);
+  expect(liveScratch()).toBe(before);
 }, 30000);
 
 test("a language with no front-end drops a comment line but discloses the exclusion", () => {
@@ -1088,11 +1088,16 @@ test("the errors probe disposes the oracle scratch it opened", () => {
     "",
   ].join("\n"));
   writeConfig(dir, { probes: { errors: { strict: true, lines: [{ file: "source.js", line: 1 }, { file: "source.js", line: 2 }] } } });
-  const before = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
-  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
-  const after = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
-  expect(after).toBe(before);
-  expect(run.exit).toBe(0);
+  // The probe runs in its own process, so an in-process counter cannot see what it left
+  // behind. It is given a private temp directory instead: anything still there is its own,
+  // and a concurrent run on this machine cannot make the assertion flap.
+  const scratch = mkdtempSync(join(tmpdir(), "sweep-tmp-"));
+  staged.push(scratch);
+  const proc = Bun.spawnSync(["bun", sweepPath, "--root", dir, "--config", ".wish-sweep.json",
+    "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE],
+    { cwd: repo, env: { ...process.env, TMPDIR: scratch, TEMP: scratch, TMP: scratch } });
+  expect(readdirSync(scratch)).toEqual([]);
+  expect(proc.exitCode).toBe(0);
 }, 120000);
 
 test("a candidate path that escapes the throwaway copy is invalid and writes nothing", () => {
