@@ -489,7 +489,7 @@ candidate, trailing whitespace is trimmed, the pattern is matched, and the head 
 body fails with `body is empty`; a mismatch fails with
 `last non-empty line is not a verdict line: <line>`. `round` is a positive integer with no leading zero and
 no upper bound; a seven-character head is rejected. Coverage fails with
-`verdict head <a> does not cover current head <b>`, and `requireApproved` fails with
+`verdict head <a> does not cover current head <b>`, and a REVISE verdict never counts as an approval —
 `verdict is REVISE, not APPROVED`. The session reads the line against this pattern, and `wish gate` refuses
 a round whose verdict head does not cover the frozen head.
 

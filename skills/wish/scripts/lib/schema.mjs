@@ -107,7 +107,7 @@ export const REQUIRED_RECEIPTS = Object.freeze({
 });
 export const CONDITIONAL_RECEIPTS = Object.freeze({ adversarial: "high-risk" });
 
-// A §C.1 last row / §B10: the same strings across M3's dictionary and M5's axes.
+// A §C.1 last row / §B10: the same strings across the defect-class dictionary and the review axes.
 const CODE_CLASSES = ["S", "C", "D", "O", "T", "W", "SEC", "DOC", "CFG", "PANIC", "REGRESS"];
 const VQA_ITEM_IDS = [
   "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",

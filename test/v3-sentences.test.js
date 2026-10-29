@@ -108,14 +108,10 @@ describe("carried passages", () => {
 
   test("prompts carries (a), (b) and (c) in the plan-review step", () => {
     expect(promptsPlanSentences()).toEqual([PASSAGES.a, PASSAGES.b, PASSAGES.c]);
-    // (a) and (b) appear twice: once in the plan-review step and once as the
-    // build-node RE-EMPHASIS the owner asked for at the implementation step.
+    // (a) and (b) are repeated once in the build-node implementation step.
     expect(copiesOf(PROMPTS, PASSAGES.a)).toHaveLength(2);
     expect(copiesOf(PROMPTS, PASSAGES.b)).toHaveLength(2);
     expect(copiesOf(PROMPTS, PASSAGES.c)).toHaveLength(1);
-  });
-
-  test("the build-node prompt re-emphasizes (a) and (b) verbatim", () => {
     const lines = linesOf(PROMPTS);
     const start = lines.findIndex((line) => line.startsWith("### 2.1 "));
     const end = lines.findIndex((line) => line.startsWith("### 2.2 "));
