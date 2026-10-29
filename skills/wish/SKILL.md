@@ -1,60 +1,235 @@
 ---
 name: wish
-description: "Runs one user-authorized /wish request end to end: discovery, one plan with a single architect review, a goal-bound mass-ulw run with an injection check in each node, two-branch pre-PR verification, one code-reviewer round, a PR, one ultrabrain final review, merge, post-merge verification, and cleanup. Use when the /wish command or the user names this skill."
+description: "Runs one authorized /wish request end to end on omo: collection, definition, one reviewed plan, a goal-bound multi-PR build, verification in order, review to APPROVED, merge, cleanup. Use when the /wish command or the user names this skill."
 metadata:
-  short-description: Light 13-step authorized-request flow on mass-ulw
+  short-description: Authorized-request flow on omo, definition to merged evidence
 ---
 
 # wish
 
-A `/wish` invocation is one authorized request plus authorization to plan, implement, verify, open a PR, pass review, merge, and clean up, without asking again for phases already covered. This file is the governing contract; the three references detail the steps.
+One `/wish` invocation is one authorized request plus authorization to collect, define, plan, build, verify,
+open PRs, review to APPROVED, merge and clean up without asking again for phases the request covers. This file is
+the contract and the stage map; the work type's playbook holds the runnable steps, and `references/` holds the
+machine shapes.
 
-Resolve every reference path in this skill relative to the directory of this SKILL.md.
+wish runs **on top of omo**. Every stage is executed by an omo feature — a category, a native agent, `mass-ulw`,
+`ulw-loop`, `ulw-plan`'s grammar, a monitor — never by a replacement for one. The scripts under `scripts/` are
+helpers those roles call: they lint a plan, watch a pull request and derive state.
 
-`/wish` arms ultrawork, so assume it is active and never re-arm, reset, or disarm it, and create no goal or notepad at its bootstrap: the plan file holds the notes until step 4 creates the one goal through ulw-loop (`references/plan.md`, Step 4). The authorized request already covers every phase here, so never ask the user to authorize the plan, the run, the PR, the review, the merge, or the cleanup again, and never pause for a native reviewer loop or a failed-attempt question; steps 7, 9, and 11 are the review schedule, and you run any REVISE round yourself. A genuine owner decision (irreversible, destructive, or a spend) is still asked through the question tool, or through whoever assigned you if the tool is unavailable.
+Speed comes from moving work earlier, never from reviewing less: the same review, the same lanes, the same
+blocker definition. Review quality is a floor, not a variable.
 
-## The 13 steps
+Resolve every path relative to this file's directory. `/wish` arms ultrawork: never re-arm, reset or disarm it,
+and open no goal or notepad at bootstrap; the plan file holds the notes until `goal` registers one goal per unit
+through ulw-loop. Decisions are asked once, at `decide`, as one batch with a recommended default each; after that
+nothing is asked, and a decision that appears mid-run parks only its own lane while every other lane continues.
 
-1. Discovery: survey the code, the git history of the paths to touch, memory, and earlier session evidence. When a REVISE sends work back (step 11), re-run discovery for the cited problem and sweep for variants of the same defect class, with no separate sweep or report-merging nodes. Before the first correction edit, keep the reviewer's reproduction as a guard test or QA scenario, write the failed premise in the plan, and probe the relevant input and transition axes at the production entry point. Details: `references/plan.md`.
-2. One plan file: IS rows and COMPANION rows (the request is the boundary), the invariants the change must keep and the known limits it accepts (with the IS and COMPANION rows, the finite contract every reviewer judges against), gaps, user-side QA scenarios (real surface, exact command, binary pass condition), the IS-row to QA-scenario pairing, a risk list with high-risk rows flagged, and two pinned rules: worktree pinned for every command, commits serialized. Each IS row names its production entry point, consumer, and authoritative owner; state or lifetime rows also list their transitions. Details: `references/plan.md`.
-3. One architect plan review (`category: architect`): OKAY or blockers; record a fix for each blocker. It also challenges duplicate sources of authority. Details: `references/plan.md`.
-4. Register the goal (mass-ulw runs are goal-bound): the IS-to-QA pairing written as ONE paragraph, because line breaks split the brief. Details: `references/plan.md`.
-5. Run the plan with mass-ulw: a worktree per task, parallel nodes with disjoint write scopes, one node owning a change and its proof, an injection check inside the node (recreate the regression, capture the failing test, restore, capture the passing test), one adversarial review inside each node that owns a high-risk row (a model family other than the author's, one pass), and serialized commits after each verified unit. Details: `references/run.md`.
-6. Pre-PR verification in two parallel branches: (a) a node runs the repository tests and the mutation check (one mutation per guard row of the plan, in a throwaway copy, recording killed or survived per row); (b) `omo-native-qa-executor` runs the QA scenarios on the real surface, recording per scenario the command, observable, PASS/FAIL, output, and cleanup receipt. Branch (b) also runs the first-use and resume paths through the shipped build, including process exit and cleanup of resources it started; a missing surface is a FAIL, and external authentication or platforms that can't be reached are marked unverified. Details: `references/review.md`.
-7. `omo-native-code-reviewer` once per round before the PR: findings by severity CRITICAL/HIGH/MEDIUM/LOW. Its prompt must require the reviewer to load and apply the `remove-ai-slops` and `programming` skills and to state in its report whether that check ran. Fix every reproduced in-contract code blocker once, regardless of severity; every other finding is a note. That round gets no second code-review pass. In a REVISE round it reviews only the delta diff. Details: `references/review.md`.
-8. Open the PR: behavior delivered, tests and QA run, real limits. Take the head SHA, commands, exit codes, counts, and the base each result is attributed to from their captures; label claims about earlier heads as history, separate from final-head claims, and keep the source reports until step 13 cleanup. Details: `references/review.md`.
-9. One ultrabrain final review (`category: ultrabrain`): reports every CODE defect of the PR in one verdict. Details: `references/review.md`.
-10. Evidence problems are never a REVISE reason, and a finding blocks only inside the plan's finite contract: a listed invariant shown violated, or an IS or COMPANION row not delivered; every other finding is a note or a follow-up. Every reviewer prompt carries the rule verbatim from Delegation prompts below. Each memo comes back to you: check it and fix the evidence yourself, with no re-review. Details: `references/review.md`.
-11. APPROVED: merge the PR yourself. REVISE (code problems only): go back to step 1 and run steps 2, 5-9 again for the cited problems, in the same worktree and same PR with more commits, in that order: step 9 starts only after step 7's reproduced in-contract code blockers are fixed, verified, committed, and pushed, so the final review judges the final head. When the same component gets REVISE in two consecutive rounds, stop patching it: write the one-sentence premise every failed fix assumed, run one architect review (`category: architect`) of the cause and that premise, then fix. A verdict covers a patch: when the head moved only by a rebase, equal `git patch-id` values for the verdict head and the new head keep the verdict, and a differing patch gets the delta review. `omo-native-gate-reviewer` runs only when the loop final checkpoint requires a quality-gate record, bounded to checking that the evidence exists, matches the criteria, and fits the schema; it never reopens the product verdict and follows rule 10. Details: `references/review.md`.
-12. After merge, one full verification on the merged result: `omo-native-qa-executor` runs all QA scenarios, plus the repository test suite, typecheck, and build where they exist. Details: `references/review.md`.
-13. Cleanup, complete the goal, final report: results, evidence locations, limits, and out-of-scope findings with their follow-up record paths. Details: `references/review.md`.
+## Stages — the omo feature that runs each one
 
-## Purpose boundary
+`wish status` names the next stage and the receipt blocking it. `<ER>` is the ulw-loop evidenceRoot, outside the
+repository on purpose: evidence never costs a commit and never moves a reviewed head. The plan lives at
+`.omo/plans/wish-<slug>.md` in ulw-plan's checkbox grammar, because that is the location and the shape
+`ulw-execute` selects as its plan; a plan in another place or another shape is a defect, not a preference.
 
-The original request and its companion items are the boundary for every step: discovery, plan, tests, QA, and review.
+| # | stage | omo feature that runs it | receipt `status` requires |
+| --- | --- | --- | --- |
+| 0 | `intake` | ultrawork tier triage; `todo` carries the playbook steps | `intake` event (`wish.mjs init`, which creates the plan: never pre-create it) |
+| 1 | `collect` | one `mass-ulw` run `wish-<run>-collect`: harvest, extract, explore | `collect` event + `<ER>/collect.md` |
+| 2 | `define` | session, seeded by the collect report | `define` event + `<ER>/define.md` + the difference rows in `<ER>/gaps.tsv` |
+| 3 | `before` | session records one capture per defect row | `before` event + `before-<gap>-<tree7>.*`, captured before the first edit |
+| 4 | `plan` | session writes it in ulw-plan's checkbox grammar | `plan` event (the plan) |
+| 5 | `plan_lint` | `check-plan.mjs`, from the session or a `quick` node | `plan_lint` event, exit 0; `--register` only when `define` wrote a register |
+| 6 | `plan_review` | `category: architect` once, plus `plan-reviewer` only in the ulw-plan branch below | `plan_review-architect-<head7>.md`, `OKAY` or blockers each with a fix |
+| 7 | `decide` | session collects the decision batch | `decide` event + `<ER>/gates.md` entries with a recommended default |
+| 8 | `goal` | `ulw-loop` goals; ulw-execute Boulder state as format only | `goal` event with the goal id |
+| 9 | `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit; the commit node loads `git-master` | `build` events + `build-<node>.json` |
+| 10 | `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer`, `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
+| 11 | `triage` | session | `triage` event + `findings.tsv` rows |
+| 12 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; the reuse rule re-runs only stale lanes | `fix` + `reuse` events |
+| 13 | `freeze` | `wish freeze`, then `wish pr-body` | `freeze` event: `head`, `tree`, `pr` |
+| 14 | `pr_open` | `gh pr create` with the generated body; `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
+| 15 | `round` | `wish.mjs gate`, then `category: ultrabrain` (r1 full, r2+ delta), then the session reads the `VERDICT:` line and confirms it names the frozen head | `final-r<n>-<head7>.md` + `round`, `verdict` events |
+| — | `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscover | `switch` event: `round`, `kind`, `premise`, `new_approach` |
+| 16 | `merge` | session merges; `wish status --json` reports it | `merge` event: `sha`, `merged_at`, `pr` |
+| 17 | `post_merge` | `omo-native-qa-executor`: smoke when the tree is identical, full otherwise | `post_merge` event + `post_merge-<tree7>.*` |
+| 18 | `checkpoint` | `ulw-loop` `agentToolkit.checkpoint`; `omo-native-gate-reviewer` reads the evidence record | `checkpoint` event, `checkpoint_op: complete` |
+| 19 | `cleanup` | session: `memory` for the classes it caught | `cleanup` event with at least one teardown receipt |
 
-- In scope means the request IS rows plus COMPANION rows: planned from the start, or found later and then added under the guards below. An undelivered COMPANION row is "request not delivered", like an unmet IS row.
-- A companion item is the same grain as the change and something the requester would naturally expect done together. It must pass: (a) one hop from a request IS row, never chained to another companion; (b) no new owner decision; (c) same task and PR; (d) recorded in the plan as `COMPANION: <item> <- <request IS row> : <why expected>`.
-- Same-pattern pre-existing bugs at sibling locations found while fixing are companion under these guards, not follow-ups.
-- A late-found item that passes the guards is added to the plan as a COMPANION row and fixed in the same task.
-- Everything else is out of scope: never fix it in this task. Record it in the follow-up file `<evidenceRoot>/follow-ups.md` (`references/plan.md`, Step 4; created only when a real finding exists) and name it in the final report.
+`before` and `fix` are conditional: when one truly does not apply, its step stays in the todo with
+`skip: <reason>`, never silently dropped. While any unit runs, print the `PROGRESS:` line on every transition
+that changes a number and at least every 30 minutes (`report.interval`); a repeat with no change is suppressed.
 
-## Rules
+### The two plan branches
 
-- Tests: code first; no RED-first mandate. A test must break when the behavior changes, not only when the implementation changes, and a fixture for a behavior that consumes more than one value supplies at least two distinct values, so a change that drops any of them breaks it. Add a test only when the repository keeps tests for that behavior and a regression would otherwise pass unnoticed; prose gets read-through QA, never wording tests. Every guard row gets the injection check (step 5). A test must also survive an internals-only change: when a restructuring leaves the observable results unchanged and a test breaks, that test is pinned to the implementation; rewrite it against the behavior or delete it. Expected values come from the requirement, never from running the code under test. Name each test block by the invariant it guards, never by a review round, and keep no duplicate blocks.
-- Refactoring and structure changes: when the repository keeps tests for the area, first write a characterization test that pins the current behavior and passes on the unchanged code, then move the structure. This is not a RED-first mandate; other work keeps code first.
-- Evidence capture: capture the command and its output; never retype a SHA or number by hand when a capture holds it; record only what you checked.
-- Test discipline: no sleeps; wait on the event or state change itself.
-- Gate order: never open the PR before step 6 passes and step 7 has run; never merge before the ultrabrain review returns APPROVED.
+The default branch is the one that always exists: the session writes the plan to fit ulw-plan — its checkbox
+grammar, `.omo/plans/<slug>.md` — and ONE `category: architect` review checks it. There is no approval question
+to the requester, and the run continues straight to `decide` and `goal`.
 
-## Delegation prompts
+The other branch opens only when the requester's own message asked for the ulw-plan workflow in their words:
+then ulw-plan runs as a whole, with its approval gate, and its `plan-reviewer` agent becomes spawnable. In that
+branch the plan gets BOTH reviews — `plan-reviewer` and the one `category: architect` review — and no third round
+is added. `plan-reviewer` cannot be spawned because a skill's text says so: the host refuses it outside that
+branch, so nothing here may depend on it. The plan's author is the planning role the run has, the reviewer is the
+role `plan_review` names, and a host that offers neither leaves the review with the session, which records that
+in the plan's review record.
 
-Every child prompt carries: the Purpose (the original requested outcome); the Scope (this assignment's permitted work); the Contract (the plan's invariants and known limits); the Blockers, stated as goal failure = an IS or COMPANION row not delivered, or a listed invariant violated (shown by its failing test or QA scenario: an introduced regression, or a proof that shows the code does not do what is claimed, a code defect); typos, number errors, and wording or format problems in evidence are correction memos; Separate findings (anything not companion under Purpose boundary: report it, never fix it in this task, never treat it as a blocker); the companion definition, by a pointer to Purpose boundary above; and the fields TASK, DELIVERABLE, SCOPE, VERIFY, and STOP WHEN.
+## COLLECT, DEFINE, PLAN: the order that makes the rest honest
 
-Every reviewer prompt (code-reviewer, ultrabrain, gate-reviewer, architect, and the step-5 adversarial review) carries the following rule verbatim.
+**COLLECT** is one `mass-ulw` run with three node families. `harvest` reads every source the request names, in
+full, and every source the repository points at; `extract` reduces the harvest to the important elements, one row
+each with its locator; `explore` reads from the viewpoint of the project the request serves — its domain, its
+users, its constraints — and answers what the harvest raised, spawning `explore` lanes for the repository and a
+`librarian` for outside sources, over-collecting on purpose. The run writes `<ER>/collect.md`, and a source that
+could not be read is named as unread, never omitted.
 
-Evidence problems are never a REVISE reason. Typos, number errors, and wording or format problems in evidence or reports do not cause REVISE. Write each one as a correction memo in your report; do not fix the evidence yourself and do not request a re-review for it. Only a problem in CODE can cause REVISE, and only inside the plan's finite contract: a listed invariant violated, shown by a failing test (or, for a behavior the plan marks no-test, by its failing QA scenario), or an IS or COMPANION row not delivered. Report every other finding as a note or a follow-up, never as a blocker; a known limit listed in the plan is not a finding. The plan review of step 3 judges the contract itself and keeps the blocker definition of references/plan.md, Step 3.
+**DEFINE** runs before any plan and states, in `<ER>/define.md`: the end user the result touches, how they use it
+today and after; the ideal state as rows, each with its reason; every difference between today and that state,
+each with its reason and its affected party. Those differences are the register, so the plan closes each one.
+Apply the boundary exactly (`references/contract.md` §3): the request's `IS` and `COMPANION` rows are in scope,
+everything else is out of scope — recorded in `<ER>/follow-ups.md` and named in the final report, never fixed
+here. DEFINE writes no plan, no unit split and no test plan.
+
+**PLAN** starts by reading the related skills and their references — `remove-ai-slops`, `frontend`,
+`programming`, and the work type's own skill — and the plan-writing step then carries the required sentences and
+the no-test path of `references/plan-format.md` §3, quoted there verbatim: the confirmation device for the
+implementation, the confirmation device for the fix, and the visual-QA verification sentence for any plan with a
+rendered surface or a visual QA scenario. Do not force test code. The confirmation device takes that role: a
+repository that keeps tests for the behaviour runs them, a guard row gets its mutation, and a behaviour this
+repository cannot test carries a `qa` device and a `no-test` row that names it.
+
+**DECIDE** gathers every decision the requester owns into one batch in `<ER>/gates.md`, each with a recommended
+default and one line of reasoning, and asks once. A decision that appears mid-run parks only the lane that needs
+it (`parked` on its `gate` event) and appears in the `PROGRESS:` line; every other lane continues.
+
+## Units: one request, one or more PRs
+
+A request that holds more than one independently verifiable unit becomes **one PR per unit**: each unit owns a
+disjoint write scope, its own branch and worktree, several commits inside it, and its own `## Before` and
+`## After` in the PR body, so the improvement is visible without reading the diff. A request with one unit stays
+one PR. The split is decided at `plan`, never mid-build; `playbooks/program.md` holds the whole-request rules and
+a unit's contract is its own `IS` rows.
+
+## Execution
+
+After `decide`, the run does not ask again. It proceeds at maximum parallelism — every independent unit and every
+independent lane in flight at once, up to the host's slots, with named dependencies as the only serialization —
+and every lane verifies its own work strictly rather than trusting a green run of something else. It reports at
+every milestone with the `PROGRESS:` line, which states how much of the whole is done, which PRs are merged and
+open, and what the run waits on; a report that repeats unchanged numbers is suppressed. A lane that parks on an
+open decision does not stop the others.
+
+## Tiers — same depth, different waiting
+
+| Tier | Decided by omo's LIGHT/HEAVY facts | What changes; the review depth does not |
+| --- | --- | --- |
+| **S** | ≤2 files and ≤150 lines by the collect estimate, and no HEAVY fact | one `explore` node; a short define; a short plan; `plan_review` may start with `build` and a blocker `amend`s the run; mutation at most one per guard row |
+| **M** | more than S, ≤1 HEAVY fact, ≤3 components | every stage serial by default; the full verify wave |
+| **L** | ≥2 HEAVY facts, ≥4 components, or the requester asked for thoroughness | M plus the `adversarial` lane without a high-risk row, the state and lifetime transition table run in QA, and the mutation cap |
+
+A tier is never lowered: a HEAVY fact found mid-run raises it at once. `status` adds the `adversarial` lane for
+every L unit, and below L only for a `HIGH-RISK` plan row.
+
+## Work types
+
+| Type | Playbook | The lanes `status` requires |
+| --- | --- | --- |
+| `code` | `playbooks/code.md` (patch, feature, refactor) | `tests`, `qa`, `sweep`, `code-review`, plus `adversarial` |
+| `design` | `playbooks/design.md` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` |
+| `research` | `playbooks/research.md` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` |
+| `audit` | `playbooks/audit.md` | `lint`, `spot`, `register-schema` |
+| `mixed` | the primary type's playbook | the primary's and secondary's lanes united; `wish init` takes `--type mixed --primary … --secondary …` |
+
+## Reviews, in the one order that holds
+
+`triage`, `fix`, `freeze`, `pr_open` and `round` are one sequence, and the order is mechanical rather than
+advisory: `freeze` binds the head and the tree, and `round` refuses to run unless a valid `code-review` receipt
+exists **at the frozen head** — the refusal is a refused ledger event and a refused dispatch gate (exit 3), not a
+reminder. The gate applies to a type whose required lanes name `code-review`; a `research` or `audit` unit never
+carries that lane and is never gated on it. A verdict is valid only for the head it reviewed, so the two reviews
+are never dispatched in the same wave.
+
+The head is frozen for the whole round: a fix lands only after the verdict and opens the next round — `define`
+for the cited problem, `plan`, `plan_lint`, the fix, a fresh `freeze`, the gate and a new reviewer. A head that
+moves while a round is in flight is not the head the verdict covers, so a head change during a round is a
+re-review, never a carried verdict, and the gate holds the freeze to it: when the observed head is not the frozen
+head, `wish gate --round` refuses with exit 3 and `the head moved after the freeze`.
+
+On `VERDICT: REVISE` the flow returns to `define` for the cited problem — DEFINE again for that problem, then
+`plan` and `plan_lint` for it, then the fix lane and the same verify wave — and the fix commits are appended to
+the same PR, never opened as a second one.
+
+## The round rule — a cap is a switch, never an exit
+
+Review has no round ceiling. `APPROVED` is the only end.
+
+1. Two consecutive REVISE rounds on the same component **or** the same defect class stop the patch loop and force
+   one `architect` premise review of the assumption the failed fixes shared.
+2. A **third-or-later** REVISE round that **repeats** a defect class an earlier round already cited forces an
+   approach switch, and every repeat after it uses one more kind it has not used yet: `premise`, `family`,
+   `strategy`, `split` (program only), `rediscover` — meanings and the repeat test in `references/ledger.md`
+   §9.4. A round whose blocking findings are all classes new to the unit is not a repeat and needs only the fix
+   lane.
+3. After the switch: fix run, the reuse rule, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain
+   reviewer on the delta and the prior findings.
+4. The requester is never asked whether to keep reviewing: the decision batch closed at `decide`, and a parked
+   lane never stops another lane.
+
+`references/contract.md` §6 and `references/ledger.md` §9.4 are the binding statements; `playbooks/revise.md`
+runs them.
+
+## The finite contract — what may block
+
+The plan's `IS` and `COMPANION` rows are the request, `INVARIANT` what must keep holding, `LIMIT` what is
+knowingly not handled. Only a row not delivered or a listed invariant shown violated by a failing test (or a
+`no-test` row's failing QA) blocks; everything else is a note, and every reviewer prompt carries the verbatim
+rule of `references/contract.md` §5. `WARN` never blocks; a `FAIL` receipt is a claim the session reproduces
+first.
+
+## Evidence, state, and what scripts may not do
+
+The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `collect.md`, `define.md`,
+`gates.md` and `resume.md`; a lane writes only its own receipt; a script authors nothing. A receipt is valid while
+its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its
+`patch_id` matches; the reuse rule names the lanes a fix invalidated, and a `before` capture is never stale.
+Nothing commits after the freeze: a memo goes to `<ER>`, never the branch.
+
+`playbooks/revise.md` and `playbooks/resume.md` are the two paths that leave the linear stage list. Every reviewer
+lane runs under `review-work`'s rules: a locked read-only review worktree, a QA row that names its artifact, and a
+new reviewer for each re-review rather than the same child continued.
+
+## Playbooks and references
+
+| Playbook | When |
+| --- | --- |
+| `playbooks/code.md` | code work: a patch, a feature, a refactor |
+| `playbooks/design.md` | rendered surfaces: `frontend` builds, `visual-qa` verifies |
+| `playbooks/research.md` | investigation; `ulw-research` runs the phases and wish adds the contract |
+| `playbooks/audit.md` | a complete register and report, no BUILD |
+| `playbooks/program.md` | one request, several units and PRs |
+| `playbooks/lens.md` | a corpus read into judgment rules, run as a COLLECT node |
+| `playbooks/revise.md` | a REVISE round, the switch rule, and the return path |
+| `playbooks/resume.md` | after a death, a compaction, or `--resume <run_id>` |
+
+| Reference | Holds |
+| --- | --- |
+| `references/contract.md` | the finite contract, companion guards, PLAN-REVIEW, the reviewer rule |
+| `references/plan-format.md` | the plan grammar, the required sentences, `DEVICE:` rows, the linter's rules |
+| `references/ledger.md` | every machine shape: receipts, events, findings, gaps, `wish status --json`, CLI |
+| `references/prompts.md` | every delegation prompt with its frame, TIMEBOX and FORBIDDEN |
+| `references/defect-classes.md` | the class dictionary, the sweep checklist and review axes |
+
+## Language
+
+The skill is written in English. Three things are exempt, and each is exempt because removing it would lose a
+guarantee rather than a preference: the `/wish` menu label in `prompts/wish.md`, which is product copy in the
+requester's language; the verbatim mirror of the visual-QA skill's CJK line-breaking examples, which is a
+visual-QA condition and not prose; and the test suite's non-ASCII path fixtures, which exist to prove the tooling
+survives paths outside ASCII. Everything else — this contract, the readme, the playbooks, the references, the
+script comments — carries no Korean text.
 
 ## Finish
 
-Stop when the request is merged, the post-merge verification (step 12) passes, the worktree and branch are removed, the goal is completed, and the final report is delivered. Always respond in the user's language; agent prompts stay in English.
+Stop when the register is closed (every `defect` row `fixed`, `accepted-limit` or `out-of-scope`), every unit's PR
+is merged with `post_merge` recorded, `checkpoint` completed, worktrees and branches removed with a teardown
+receipt, and the final report delivered with evidence, limits and out-of-scope findings. Answer in the user's
+language; prompts stay in English.

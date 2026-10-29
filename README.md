@@ -1,199 +1,350 @@
 # omo-wish
 
-`/wish`: 소원을 빕니다.
+`/wish`: make a wish.
 
-[OmO](https://github.com/code-yeongyu/oh-my-openagent) 플러그인입니다. 슬래시 명령 하나로 `wish` 스킬을 불러와, 요청한 목적 하나를 기준으로 계획, 실행, 검증, 리뷰, 병합, 정리를 13단계로 끝까지 진행합니다. `/wish`를 입력하면 ultrawork 모드도 켜지고, 그 위에서 wish 스킬이 이번 요청의 범위와 절차를 정합니다. 긴 프롬프트를 통째로 보내지 않고, 필요한 단계에서 필요한 참조 파일만 읽습니다.
+An [OmO](https://github.com/code-yeongyu/oh-my-openagent) plugin. One slash command loads the `wish` skill and
+carries a single authorized request from collection to definition, one reviewed plan, a multi-PR build, review to
+APPROVED, merge and cleanup.
 
-## 설치
+wish runs **on top of omo**. Every stage is executed by an omo feature — categories (`architect`, `ultrabrain`,
+`quick`, `deep-high`, `writing`), native agents (`explore`, `librarian`, `omo-native-qa-executor`,
+`omo-native-code-reviewer`, `omo-native-gate-reviewer`), `mass-ulw` (collect, build, fix), `ulw-loop` (goal,
+evidence, checkpoint), `ulw-plan`'s plan grammar, `monitor`. The skill's scripts are helper commands those roles
+call; they neither replace an omo role nor decide a quality question.
+
+Speed comes from moving work earlier, never from reviewing less. The same review, the same lanes and the same
+blocker definition run before the final review at the same head, so the final review starts from a verified head.
+
+## Install
 
 ```sh
 omo install https://github.com/DevNewbie1826/omo-wish
 ```
 
-프로젝트에만 설치하려면 `-l`을 붙이세요:
+To install into the current project only, add `-l`:
 
 ```sh
 omo install -l https://github.com/DevNewbie1826/omo-wish
 ```
 
-로컬 개발용(복사 없이 현재 폴더를 직접 로드):
+For local development, load the working directory without copying it:
 
 ```sh
-omo install /path/to/omo-wish
+omo install -l .
 ```
 
-제거:
+Remove it:
 
 ```sh
 omo remove https://github.com/DevNewbie1826/omo-wish
 ```
 
-설치 후 새 세션(또는 `/reload`)부터 반영됩니다.
+A new session (or `/reload`) picks the plugin up.
 
-## 호환성
+## Compatibility
 
-아래 환경에서 실제로 테스트했습니다.
+The environment the test suite and the loader verification were actually run in:
 
-| 구성 요소 | 테스트한 버전 |
+| Component | Tested version |
 | --- | --- |
-| omo | 5.1.17 |
-| Senpi | 2026.10.8 |
-| Bun | 1.4.2 |
+| OmO plugin host (Senpi) | the version installed under `~/.bun/install/global/node_modules/@code-yeongyu/senpi` |
+| Bun | 1.4 or newer |
 
-이건 테스트한 조합일 뿐, 최소 지원 버전이 아닙니다. 더 오래된 버전에서 동작하는지는 확인하지 않았습니다. 플러그인은 `pi.skills` 매니페스트 항목과 확장의 `before_agent_start` 이벤트를 지원하는 호스트를 전제로 합니다.
+This is the tested combination, not a minimum. The plugin assumes a host that supports the `pi.skills` manifest
+entry and the extension's `before_agent_start` event.
 
-## 사용법
+## Usage
 
-입력창에 `/`를 치면 목록에 **wish: 소원을 빕니다** 가 뜹니다.
+Typing `/` lists the command as **wish: make a wish**.
 
-```
-/wish <작업 설명>
-```
-
-예:
-
-```
-/wish 로그인 리다이렉트 버그 수정
+```sh
+/wish <request>
 ```
 
-- 인자는 템플릿 맨 앞의 `$ARGUMENTS` 자리에 그대로 들어갑니다. 인자 안에 `$ARGUMENTS`나 `$1` 같은 글자가 있어도 다시 치환하지 않고 문자 그대로 전달합니다.
-- 인자 없이 `/wish`만 입력해도 됩니다. 이때는 대화 맥락에서 원하는 결과를 파악합니다.
-- `/wishful`, `/WISH` 같은 다른 명령은 wish 스킬을 부르지 않습니다. 평범한 요청에 `ulw`나 `ultrawork`를 쓰면 일반 ultrawork 모드는 켜질 수 있지만, wish 스킬이 선택되지는 않습니다. (자세한 건 아래 모드 동작을 보세요.)
+Examples:
 
-## 동작 흐름
-
-`/wish`를 실행하면 이런 순서로 진행됩니다.
-
-```
-/wish <요청>
-  │
-  ├─ prompts/wish.md 확장: 인자 + "Use ultrawork. Read and follow the `wish` skill"
-  │
-  ├─ extensions/wish.js: 확장된 문장의 ultrawork 키워드를 보고
-  │   아직 꺼져 있으면 호스트 ultrawork 모드를 한 번 켬
-  │
-  ├─ 호스트가 등록된 스킬 목록(pi.skills)에서 wish를 찾아 경로를 제공
-  │
-  └─ 에이전트가 SKILL.md(13단계와 핵심 규칙)를 읽고, 단계마다
-      references/ 파일을 추가로 읽음
-        plan.md    → 1~4단계: 발견, 계획, architect 계획 리뷰, 목표 등록
-        run.md     → 5단계: mass-ulw 실행
-        review.md  → 6~13단계: 검증, 코드 리뷰, PR, 최종 리뷰, 병합, 정리
+```sh
+/wish fix the login redirect bug
+/wish add a rate limit to the upload endpoint
 ```
 
-### 진입점
+- The argument is inserted verbatim where `$ARGUMENTS` sits at the top of the template. Text inside the argument
+  that looks like `$ARGUMENTS` or `$1` is never re-expanded.
+- `/wish` with no argument also works; the request is taken from the conversation.
+- After a session death or a context compaction, `/wish --resume <run_id>` continues the same run.
+  `playbooks/resume.md` owns the resume path, and `wish resume-plan` reports the stage to resume from.
+- `/wishful` and `/WISH` do not invoke the skill. A plain request containing `ulw` may still turn on the generic
+  ultrawork mode, but that does not select wish for that request.
 
-`prompts/wish.md`는 짧은 템플릿입니다. 맨 앞의 `$ARGUMENTS` 뒤에 ``Use ultrawork. Read and follow the `wish` skill for this request.`` 한 줄만 붙고, 작업 규칙은 하나도 담지 않습니다. 스킬 경로는 `pi.skills` 등록으로 호스트가 제공합니다.
+## Flow
 
-`extensions/wish.js`는 확장된 문장에서 `ultrawork`나 `ulw`를 단어 단위로(대소문자 구분 없이) 찾습니다. 호스트 연동이 가능하고 아직 켜지지 않은 세션의 실제 호출이면 호스트의 `markArmed(sessionId)`로 활성화를 기록하고, 호스트 지시문만 `omo-ultrawork:directive` 숨은 메시지로 넘깁니다. wish 전용 지시는 덧붙이지 않습니다. 이미 켜져 있거나, 키워드가 없거나, 미리보기이거나, 호스트 연동이 없으면 아무 메시지도 보내지 않고 상태도 바꾸지 않습니다.
+```text
+/wish <request>
+  ├─ prompts/wish.md: argument + "Read and follow the `wish` skill"
+  ├─ extensions/wish.js: sees the ultrawork keyword in the expanded text and
+  │   turns the host ultrawork mode on once if it is not already on
+  ├─ the host resolves the `wish` skill from the pi.skills manifest
+  └─ SKILL.md: the contract and the stage map (this file is authoritative)
+      ├─ the work type's playbook (playbooks/<type>.md): the steps copied into `todo`
+      └─ references/: plan grammar, finite contract, ledger shapes, delegation prompts,
+                      defect classes
+```
 
-이 키워드 처리는 일반 ultrawork 활성화일 뿐입니다. 평범한 `ulw` 요청을 wish로 보내지 않습니다. 템플릿 자체에 "`wish` 스킬을 읽고 따르라"는 지시가 들어 있어서, 큐에 쌓인 입력처럼 확장 훅이 건너뛰어지는 경로에서도 에이전트가 스킬을 찾아갈 수 있습니다. 이 경로는 코드를 따라가며 확인한 것이고, 실제 스트리밍 세션을 끝까지 돌려 본 라이브 테스트는 아닙니다.
+`/wish` opens no goal or notepad at bootstrap: the plan file holds the notes, and the GOAL stage registers one
+goal per unit through `ulw-loop`. The authorized request already covers planning, build, PR, review, merge and
+cleanup, so no phase is re-authorized. Decisions are asked once, as one batch at the DECIDE stage, each with a
+recommended default; a decision that appears mid-run parks only its own lane and every other lane continues.
 
-## 스킬이 정하는 것
+## Stages
 
-여기는 개요입니다. 규칙의 정확한 문장은 `skills/wish/SKILL.md`와 참조 파일에만 있고, README와 다르게 읽히면 스킬 파일이 맞습니다.
+`wish status` names the next stage and the receipt blocking it. A playbook reads as "dispatch only the stage
+`status` names". `<ER>` is the evidence root ulw-loop reports, outside the repository.
 
-### 13단계
+| Stage | The omo feature that runs it | The receipt `status` requires |
+| --- | --- | --- |
+| `intake` | ultrawork tier triage + `todo` (the playbook steps copied in) | the `intake` event `wish init` writes (it also creates the plan) |
+| `collect` | one `mass-ulw` run `wish-<run>-collect`: harvest, extract, explore | `collect` event + `<ER>/collect.md` |
+| `define` | session, seeded by the collect report | `define` event + `<ER>/define.md` + the difference rows in `<ER>/gaps.tsv` |
+| `before` | session (a read-only lane may drive the capture) | `before` event + one `before-<gap>-<tree7>` before the first edit |
+| `plan` | session (ulw-plan's checkbox grammar) | `plan` event (the plan) |
+| `plan_lint` | `scripts/check-plan.mjs` (session or a `quick` node) | `plan_lint` event, exit 0 |
+| `plan_review` | `category: architect` once | `plan_review-architect-<head7>.md` (`OKAY`, or blockers each with a fix) |
+| `decide` | session collects the decision batch | `decide` event + `<ER>/gates.md` entries with a recommended default |
+| `goal` | `ulw-loop` goals + ulw-execute Boulder (format only) | `goal` event (the goal id) |
+| `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit (the commit node loads `git-master`) | `build` events + `build-<node>.json` |
+| `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer` (with `remove-ai-slops` and `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
+| `triage` | session (bugbot trichotomy: fix, dismiss, owner) | `triage` event + `findings.tsv` rows |
+| `fix` | `mass-ulw` run `wish-<run>-fix-r<n>` + the reuse rule | `fix` + `reuse` events |
+| `freeze` | `wish freeze`, `wish pr-body` | `freeze` event (`head`, `tree`, `pr`) |
+| `pr_open` | `gh pr create` + `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
+| `round` | `wish gate` then `category: ultrabrain` (r1 full, r2+ delta and regression) then the session reads the `VERDICT:` line at the frozen head | `final-r<n>-<head7>.md` + `round`, `verdict` events |
+| `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscovery | `switch` event (`round`, `kind`, `premise`, `new_approach`) |
+| `merge` | session (the session that did the work merges) | `merge` event (`sha`, `merged_at`, `pr`) |
+| `post_merge` | `omo-native-qa-executor`: smoke when the tree is identical, full otherwise | `post_merge` event + `post_merge-<tree7>.*` |
+| `checkpoint` | `ulw-loop` `checkpoint` + `omo-native-gate-reviewer` | `checkpoint` event (`checkpoint_op: complete`) |
+| `cleanup` | session: `memory` | `cleanup` event + at least one teardown receipt |
 
-1. 발견: 코드, 건드릴 경로의 git 기록, 메모리, 이전 세션 증거를 조사합니다. REVISE로 돌아오면 지적된 문제를 다시 조사하고 같은 결함 클래스의 변형도 이 단계 안에서 훑습니다. 수정 전에 리뷰어의 재현을 가드 테스트나 시나리오로 남기고, 실패한 전제를 적고, 실제 진입점에서 입력·전이 축을 확인합니다.
-2. 계획 파일 하나: IS 행과 COMPANION 행, 지켜야 할 불변식과 받아들인 알려진 한계(IS·COMPANION 행과 함께 리뷰어가 판단하는 유한한 계약), 갭, 실제 표면의 QA 시나리오, IS 행과 QA 시나리오의 짝, 결함 클래스별 위험 목록(동시성·영속성·상태와 수명을 다루는 행은 high-risk 표시), 그리고 고정 규칙 둘(모든 명령은 worktree에 고정, 커밋은 직렬). IS 행마다 실제 진입점, 결과를 보는 소비자, 상태의 주인을 적습니다.
-3. `architect` 카테고리의 계획 리뷰 한 번: OKAY 또는 차단 사항이고, 차단 사항마다 수정을 기록합니다.
-4. 목표 등록: IS와 QA의 짝을 한 문단으로 적습니다. 줄바꿈이 있으면 브리프가 쪼개지기 때문입니다.
-5. mass-ulw로 실행: 태스크마다 worktree, 쓰기 범위가 겹치지 않는 병렬 노드, 변경과 그 증명은 한 노드가 맡고, 노드 안에서 주입 검사를 하며, 검증된 단위마다 커밋을 직렬로 남깁니다. high-risk 행을 맡은 노드는 작성자와 다른 모델 계열의 적대적 리뷰를 노드 안에서 한 번 받습니다.
-6. PR 전 검증 두 갈래를 병렬로: (a) 저장소 테스트와 변이 검사 (guard 행마다 변이 하나, 행마다 killed/survived 기록), (b) `omo-native-qa-executor`가 실제 표면에서 QA 시나리오를 돌립니다. 실패는 먼저 분류합니다: 범위 안(못 지킨 IS·COMPANION 행, 계획에 오른 기존 버그, 가드를 통과한 같은 패턴 형제, 이번 변경이 만든 회귀)은 이 태스크에서 고치고, 환경 문제는 요건을 복구해 다시 돌려 통과해야 하고, 관련 없는 기존 실패(기준 커밋에서 같은 방식으로 실패, 두 실행 모두 캡처)는 후속 기록과 최종 보고에 남깁니다. 변이는 가드 테스트가 원본에서 통과하고 변이 아래 회귀 단언에서 실패하고 원복 후 다시 통과할 때만 죽은(killed) 것으로 기록합니다. 출시되는 구성으로 첫 사용·재개 경로, 프로세스 종료, 자원 정리까지 확인하고, 없는 표면은 실패, 닿을 수 없는 외부 인증·플랫폼은 미검증으로 둡니다.
-7. `omo-native-code-reviewer`를 라운드마다 한 번: 발견 사항을 CRITICAL/HIGH/MEDIUM/LOW로 나누되, 심각도와 무관하게, 계약 안에서 재현된 코드 차단 결함을 모두 한 번 고친 뒤 넘어갑니다. 나머지는 메모로 남기며 같은 라운드에서 두 번째 코드 리뷰는 하지 않습니다.
-8. PR 생성: 전달한 행동, 돌린 테스트와 QA, 실제 한계를 적습니다. head·명령·종료 코드·개수 주장은 캡처에서 가져오고, 이전 head 기록은 최종 head 주장과 나눕니다.
-9. `ultrabrain` 카테고리의 최종 리뷰 한 번: PR의 코드 결함을 한 판정에 모두 보고합니다.
-10. 증거 문제는 REVISE 사유가 아닙니다. 수정 메모가 되고, 이 스킬을 실행하는 에이전트가 재리뷰 없이 고칩니다. 리뷰 발견은 유한한 계약 안에서만 막습니다: 목록의 불변식 위반이 실패하는 테스트(no-test로 표시한 행동이면 실패하는 QA 시나리오)로 드러났거나 IS·COMPANION 행이 전달되지 않았을 때뿐이고, 나머지는 메모나 후속 기록입니다.
-11. APPROVED면 이 스킬을 실행하는 에이전트가 병합합니다. REVISE(코드 문제만)면 1단계로 돌아가 2, 5~9단계를 같은 worktree, 같은 PR에서 커밋을 더해 이 순서대로 다시 돕니다. 9단계는 7단계에서 계약 안에서 재현된 코드 차단 결함을 수정·검증하고 커밋·푸시한 뒤에만 시작해, 최종 리뷰가 최종 head를 판정합니다. 같은 구성 요소가 두 라운드 연속 REVISE를 받으면 땜질을 멈추고, 실패한 수정들이 공통으로 가정한 전제를 한 문장으로 적어 원인과 그 전제를 `architect` 리뷰 한 번에 맡긴 뒤 고칩니다. 판정은 패치를 덮으므로, rebase로만 head가 움직였다면 판정 head와 새 head의 `git patch-id`를 비교해 같으면 판정을 유지하고(보고에 비교를 적음) 다르면 델타 리뷰를 받습니다.
-12. 병합 후 병합된 결과에서 전체 검증 한 번: 모든 QA 시나리오와 저장소 테스트, 있으면 타입 검사와 빌드. 실패 대상은 6단계 분류 규칙으로 다룹니다: 범위 안은 새 worktree와 별도 PR로 고쳐 재검증하고(main은 직접 고치지 않음), 환경 문제는 복구해 다시 돌리고, 관련 없는 기존 실패는 후속 기록과 최종 보고에 남깁니다.
-13. 정리, 목표 완료, 최종 보고: 결과, 증거 위치, 한계, 범위 밖 발견과 그 후속 기록 경로.
+`before` and `fix` are conditional. When one does not apply, the todo keeps `skip: <reason>`; it is never
+silently dropped. While a unit runs, `wish status --progress` prints one line on every transition that changes a
+number and at least every 30 minutes; a repeat with identical numbers prints nothing.
 
-### 원래 목적이 경계
+```
+PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<round> on <#pr|none> · switch <count> · waiting <what|none>
+```
 
-요청한 목적 하나와 그에 딸린 companion 항목이 발견, 계획, 테스트, QA, 리뷰 전부의 범위를 정합니다. 범위 안은 요청의 IS 행과 COMPANION 행입니다. 전달하지 못한 COMPANION 행은 요청 미달과 같습니다.
+## Tiers
 
-companion은 이번 변경과 같은 결이고, 요청자가 당연히 같이 됐으리라 기대할 항목입니다. 네 가드를 모두 통과해야 합니다: (a) 요청 IS 행에서 한 홉만, companion의 companion은 없음. (b) 새 소유자 결정 없음. (c) 같은 태스크와 PR. (d) 계획에 `COMPANION: <항목> <- <요청 IS 행> : <왜 예상되는지>` 행으로 기록. 고치다 찾은 형제 위치의 같은 패턴 기존 버그도 이 가드 안에서 companion이고, 나중에 찾은 항목도 가드를 통과하면 COMPANION 행으로 더해 같은 태스크에서 고칩니다.
+The tier comes from omo's LIGHT/HEAVY facts and never goes down: a HEAVY fact found mid-run raises it at once.
 
-나머지는 범위 밖이라 이번 태스크에서 고치지 않습니다. 실제 발견이 있을 때만 `<evidenceRoot>/follow-ups.md`에 남기고 최종 보고에 적습니다.
+| Tier | Criterion | What changes (review depth does not) |
+| --- | --- | --- |
+| **S** | ≤2 files and ≤150 lines by the collect estimate, no HEAVY fact | one `explore` node, a short define, a short plan, PLAN-REVIEW may start with BUILD and a blocker `amend`s the run, mutation at most one per guard row |
+| **M** | beyond S, ≤1 HEAVY fact, ≤3 components | serial by default, the full verify wave |
+| **L** | ≥2 HEAVY facts, ≥4 components, or the requester asked for thoroughness | M plus the `adversarial` lane even without a high-risk row, the state and lifetime transition table run in QA, and the mutation cap |
 
-### 지키는 규칙
+## Work types
 
-- 테스트: 코드 먼저, RED를 먼저 쓰라는 규칙은 없습니다. 테스트는 구현이 아니라 행동이 바뀔 때 깨져야 합니다. 저장소가 그 행동의 테스트를 두고 있고 회귀가 그냥 지나갈 때만 테스트를 더합니다. 문서는 읽어서 QA하고 문구 테스트는 쓰지 않습니다. guard 행마다 주입 검사(회귀를 다시 만들고 실패를 캡처, 원복 후 통과를 캡처)를 합니다. 내부만 바꾸는 변경에도 살아남아야 합니다: 관찰 결과가 같은데 구조 변경으로 깨지는 테스트는 구현에 묶인 것이니 다시 쓰거나 지웁니다. 기대값은 실행 결과가 아니라 요구사항에서 가져오고, 테스트 블록 이름은 리뷰 라운드가 아니라 지키는 불변식으로 짓고, 중복 블록은 두지 않습니다.
-- 리팩터링·구조 변경: 저장소가 그 영역의 테스트를 두고 있으면 구조를 옮기기 전에 현재 동작을 고정하는 특성 테스트(characterization test)를 먼저 쓰고, 바뀌지 않은 코드에서 통과시킵니다. RED 먼저 규칙이 아니며 다른 작업은 그대로 코드 먼저입니다.
-- 픽스처: 값 여러 개를 소비하는 행동의 픽스처는 최소 두 값을 담아서, 첫 값만 쓰는 변화에도 깨져야 합니다.
-- 증거 캡처: 명령과 출력을 함께 캡처하고, 캡처에 있는 SHA나 숫자는 손으로 다시 치지 않으며, 확인한 것만 기록합니다.
-- 대기: sleep 없이 이벤트나 상태 변화 자체를 기다립니다.
-- 게이트 순서: 6단계가 통과하고 7단계가 돌기 전에는 PR을 열지 않고, ultrabrain 리뷰의 APPROVED 전에는 병합하지 않습니다.
-- 실패 분류: 실패하는 테스트·시나리오·검사는 먼저 분류합니다. 범위 안은 고치고, 환경 문제는 요건을 복구해 다시 돌려 통과해야 하며, 관련 없는 기존 실패(기준 커밋에서 같은 방식으로 실패, 두 실행 모두 캡처)만 후속 기록으로 넘어갑니다. IS·COMPANION 행을 증명하는 시나리오는 관련 없음이 될 수 없습니다. 변이 검사의 killed는 가드가 원본에서 통과하고 변이 아래 회귀 단언에서 실패하고 원복 후 재통과할 때만 인정됩니다.
+| Type | Playbook | The lanes `status` requires |
+| --- | --- | --- |
+| `code` | `playbooks/code.md` (patch, feature, refactor) | `tests`, `qa`, `sweep`, `code-review`, plus `adversarial` when a high-risk row exists |
+| `design` | `playbooks/design.md` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` |
+| `research` | `playbooks/research.md` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` |
+| `audit` | `playbooks/audit.md` | `lint`, `spot`, `register-schema` |
+| `mixed` | the primary type's playbook | the union of the primary's and secondary's lanes; `wish init` takes `--type mixed --primary … --secondary …` |
 
-### 증거 문제와 수정 메모
+`frontend` builds rendered surfaces and `visual-qa` verifies them; `ulw-research` runs a research unit's phases.
+wish takes their output as receipts and adds the contract, the verdict, the ledger and the progress line; it never
+reimplements those skills.
 
-증거나 보고의 오타, 숫자 오류, 문구·형식 문제는 REVISE 사유가 아닙니다. 리뷰어는 이를 보고서에 수정 메모로만 적고 직접 고치지 않습니다. 이 스킬을 실행하는 에이전트가 메모를 확인해 증거를 직접 고치고, 그 수정은 다시 리뷰하지 않습니다. REVISE는 코드 문제로만 나옵니다. 모든 리뷰어 프롬프트(code-reviewer, ultrabrain, gate-reviewer, architect, 5단계 적대적 리뷰)에 리뷰어용 문장이 원문 그대로 들어갑니다. 리뷰어용 문장에는 유한한 계약 규칙도 들어갑니다: 목록의 불변식 위반이나 전달되지 않은 행만 차단 사유이고, 계획에 적은 알려진 한계는 발견이 아닙니다.
+When one request has to become several PRs, `playbooks/program.md` adds units and waves. A unit is one PR; a wave
+is a set of units whose write scopes do not overlap. One unit's REVISE never blocks another unit's merge.
 
-### 7단계 코드 리뷰
+## Plan, definitions, and the ulw-execute handoff
 
-7단계 리뷰어 프롬프트는 리뷰어가 `remove-ai-slops`와 `programming` 스킬을 불러와 적용하고, 그 점검을 실제로 했는지 보고서에 밝히도록 요구해야 합니다. REVISE 라운드에서는 바뀐 부분의 diff만 봅니다.
+DEFINE runs before any plan and writes `<ER>/define.md`: the end user, how they use the result today and after,
+the ideal state as rows with their reasons, and every difference from today with its reason. Those differences
+become the register, so the plan closes each one.
 
-### 참조 파일
+The plan is written at `.omo/plans/wish-<slug>.md` using ulw-plan's checkbox grammar — column-zero
+`- [ ] <N>. <title>` rows under `## Todos`, `- [ ] F<n>. <title>` rows under `## Final verification wave` — plus
+the contract rows and the required sentences of `references/plan-format.md`. That location and that grammar are
+exactly what `ulw-execute` selects as its plan, so a wish plan is handed to execution without a second planning
+pass. A plan in another location or another shape is a defect: ulw-execute would treat it as no plan at all.
 
-| 파일 | 다루는 단계 |
+## The round rule — a cap is a switch, never an exit
+
+Review has no round ceiling. **`APPROVED` is the only end.**
+
+1. Two consecutive REVISE rounds on the same component **or** the same defect class stop the patch loop and force
+   one `architect` premise review of the assumption the failed fixes shared.
+2. A **third-or-later** REVISE round that repeats a defect class an earlier round already cited forces an
+   approach switch, and every repeat after it adds one kind not yet used: `premise`, `family` (a model family
+   other than the failed fix's), `strategy` (a `SWITCH:` row that redesigns the component), `split` (program
+   only), `rediscover`. A round whose blocking findings are all new classes is not a repeat and needs only the
+   fix lane.
+3. After a switch: fix run, the reuse rule, stale lanes only, `freeze`, the gate table, then a **new** ultrabrain
+   reviewer on the delta and the prior findings.
+4. The requester is never asked whether to keep reviewing. Decisions are theirs only when irreversible,
+   destructive, a spend, or a contract-level LIMIT; the batch closed at DECIDE, and a parked lane never stops
+   another lane.
+
+A REVISE returns the flow to DEFINE for the cited problem: DEFINE again for it, a plan round for it, the fix lane,
+then the same verify wave — and the fix commits append to the same PR.
+
+## Reviews, in the one order that holds
+
+`triage`, `fix`, `freeze`, `pr_open` and `round` are one sequence and the order is mechanical, not advisory.
+`freeze` binds the head and the tree; `round` refuses to run unless a valid `code-review` receipt exists **at the
+frozen head**; `ultrabrain` is dispatched only after that refusal cannot fire. A verdict is valid only for the
+head it reviewed, so the two reviews never share a wave.
+
+The head is frozen for the whole round: a fix lands only after the verdict, as the next round's head. A head that
+moves while a round is in flight is not the head the verdict covers, so a head change during a round is a
+re-review, and `wish gate --round` refuses it with exit 3 and `the head moved after the freeze`.
+
+## The finite contract — what may block
+
+The plan's `IS` and `COMPANION` rows are the request, `INVARIANT` is what must keep holding, `LIMIT` is what is
+knowingly not handled. Only two things block: **a row not delivered, or a listed invariant shown violated by a
+failing test** (or, for a `no-test` row, by its failing QA scenario). Everything else is a note or a follow-up.
+`WARN` never blocks, and a `FAIL` receipt is a claim the session reproduces before it blocks. A known limit
+written in the plan is not a finding. In a program, a unit's contract is its own `IS` rows.
+
+Every reviewer prompt carries the sentence of `references/contract.md` §5 verbatim. A typo, a wrong number or a
+wording problem in evidence is a correction memo, never a REVISE reason.
+
+## Evidence and state
+
+Evidence lives outside the repository (`<ER>`) and never moves a reviewed head. Nothing commits after the freeze;
+a memo goes to `<ER>`.
+
+| File | Content |
 | --- | --- |
-| `references/plan.md` | 1~4단계: 발견, 계획 파일, 계획 리뷰, 목표 등록 |
-| `references/run.md` | 5단계: mass-ulw 실행 |
-| `references/review.md` | 6~13단계: PR 전 검증, 코드 리뷰, PR, 최종 리뷰, 수정 메모, 병합, 병합 후 검증, 정리 |
+| `.omo/plans/wish-<slug>.md` | the plan: ulw-plan checkbox grammar + `IS`/`COMPANION`/`INVARIANT`/`LIMIT`/`DEVICE` rows + front matter |
+| `<ER>/collect.md` | what collection read, the important elements, and the project-viewpoint exploration |
+| `<ER>/define.md` | the end user, journey, ideal state and every difference, with reasons |
+| `<ER>/ledger.jsonl` | stage, lane, head, tree, verdict and round events |
+| `<ER>/receipts/` | per-lane receipts `<stage>-<lane>-<head7>.json` (status `PASS`/`FAIL`/`WARN`/`SKIP`) |
+| `<ER>/findings.tsv` | review, QA, sweep-checklist and final-review findings with their fix status |
+| `<ER>/gaps.tsv` | the completeness register (`kind: defect|taste`) |
+| `<ER>/gates.md` | the decision batch: options, recommended default, answer |
+| `<ER>/follow-ups.md` | everything out of scope, named in the final report |
+| `<ER>/resume.md` | the resume point |
 
-## 모드 동작
+Write authority is fixed: only the session writes the plan, ledger, findings, gaps, collect, define, gates and
+resume; a lane writes only its own receipt; scripts author nothing. A receipt is valid while its `tree` matches (a
+research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its `patch_id` matches.
+`before` captures are deliberately old and are exempt from the reuse check.
 
-- `/wish`는 ultrawork가 켜져 있다고 보고 동작합니다. 꺼져 있으면 플러그인이 확장된 문장의 `ultrawork`/`ulw` 키워드를 보고 호스트 모드를 한 번 켜고 호스트 지시문만 붙입니다. 다른 요청의 `ulw`도 일반 모드를 켤 수 있지만, 그렇다고 그 요청이 wish를 쓰게 되지는 않습니다.
-- 이미 켜져 있으면 상태를 그대로 두고 지시문을 다시 붙이지 않습니다. 미리보기는 모드 상태를 바꾸지 않습니다.
-- 스킬 지침은 시스템·개발자 지시, 나중에 사용자가 명시한 요청, 도구가 실제로 막는 게이트보다 우선하지 않습니다. 엔진이 강제하는 규칙이 아니라 지침의 우선순위입니다.
-- 호스트의 모드 연동을 쓸 수 없거나, 입력이 `before_agent_start`를 거치지 않는 경로(예: 대기열에 쌓인 입력)로 들어오면 플러그인이 모드를 켜지 못할 수 있습니다. 그때도 켰다고 말하지 않고, wish 스킬 지침대로 계속 진행합니다.
-- 승인된 요청이 전체 흐름을 이미 덮으므로 단계 재승인을 다시 묻지 않고 네이티브 리뷰어 루프나 실패 재시도 질문에 멈추지 않으며, 되돌릴 수 없거나 파괴적이거나 비용이 드는 진짜 소유자 결정만 질문 도구로, 도구가 없으면 일을 맡긴 에이전트를 통해 묻습니다.
+## Scripts
 
-## 네이티브 plan 게이트 호환성
+All of them are helper commands an agent calls. None decides a stage or dispatches a review. Exit codes are
+shared: **0** ok, **1** check failed, **2** usage error, **3** state mismatch. The verdict line, patch-id
+equality and receipt reuse are plain rules the session applies from the skill text; `wish gate` enforces
+the head coverage a verdict needs.
 
-`/wish`는 호스트의 네이티브 plan-reviewer 게이트를 쓰지 않습니다. 그 게이트는 사용자가 ulw-plan 흐름을 명시적으로 요청했을 때처럼 호스트 조건이 맞을 때만 열리고, wish 계획에는 적용되지 않습니다.
+| Script | Role |
+| --- | --- |
+| `scripts/wish.mjs` | state and CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate` (reproduction table, `add`, `resolve`), `freeze [--check]`, `pr-body`, `switch record`, `resume-plan` |
+| `scripts/check-plan.mjs` | plan lint: IS↔QA pairing, `DEVICE:` rows, guard and no-test rows, `HIGH-RISK`, front matter, and gap citation with `--register` |
+| `scripts/pr-watch.mjs` | PR state machine as NDJSON (`READY`/`WAITING`/`BLOCKED`/`MERGED`/`CLOSED`) that `tool.monitor` subscribes to |
+| `scripts/lib/schema.mjs`, `scripts/lib/store.mjs` | schema validation, atomic writes, pid locking, ledger replay (internal modules) |
 
-- 계획 리뷰는 `architect` 카테고리 한 라운드로 끝냅니다. 지적된 차단 사항은 고치고 계획의 "Plan review record"에 기록하며 다시 리뷰하지 않습니다.
-- 최종 ultrabrain 리뷰가 그 수정을 확인합니다.
-- `architect`가 호스트 카테고리 목록에 없으면 멈추고 차단 사항으로 보고합니다. 대체 카테고리를 정하지 않습니다.
-- 네이티브 plan-reviewer 경로는 없고, 게이트를 수동으로 풀거나 거부된 호출을 반복해서 재시도하지 않습니다.
-
-## 구조
+## Layout
 
 ```
 omo-wish/
 ├── package.json                  # pi manifest: pi.prompts, pi.extensions, pi.skills
 ├── prompts/
-│   └── wish.md                   # 슬래시 명령 템플릿 (description = 메뉴 설명)
+│   └── wish.md                   # the slash-command template (description = menu text)
 ├── extensions/
-│   └── wish.js                   # ultrawork 키워드로 호스트 모드를 켜는 확장
+│   └── wish.js                   # turns the host mode on for the ultrawork keyword
 ├── skills/
 │   └── wish/
-│       ├── SKILL.md              # 13단계와 핵심 규칙
-│       └── references/
-│           ├── plan.md           # 1~4단계
-│           ├── run.md            # 5단계
-│           └── review.md         # 6~13단계
-├── test/
-│   └── wish.test.js              # 동작 테스트
-└── scripts/
-    └── verify.mjs                # 실제 호스트 로더로 확인하는 검증 스크립트
+│       ├── SKILL.md              # contract + stage map + round rule
+│       ├── playbooks/            # code, design, research, audit, program, lens, revise, resume
+│       ├── references/           # contract, plan-format, ledger, prompts, defect-classes
+│       └── scripts/              # wish, check-plan, pr-watch, lib/
+├── test/                         # loader, CLI, lint and watch tests
+├── scripts/
+│   └── verify.mjs                # the real loader plus a --help smoke over every script
+└── docs/
+    └── experiments/              # experiment ledger, baseline, measurements and rounds CSV
 ```
 
-`package.json`의 `pi.skills: ["skills/wish"]`로 스킬이 호스트에 등록됩니다.
+`package.json`'s `pi.skills: ["skills/wish"]` registers the skill with the host.
 
-## 개발과 검증
+## Development and verification
 
 ```sh
 bun test
 bun scripts/verify.mjs .
 ```
 
-`scripts/verify.mjs`는 설치된 Senpi의 실제 로더(프롬프트 템플릿, 스킬, 확장 러너)로 패키지를 불러와 확인합니다. 테스트와 검증기의 기본 Senpi 위치는 현재 사용자 홈 아래 `.bun/install/global/node_modules/@code-yeongyu/senpi`입니다. 다른 위치에 설치했다면 `SENPI_ROOT` 환경 변수로 설치 경로를 지정하세요.
+`scripts/verify.mjs` loads the package through the installed Senpi's real loader (prompt templates, skills,
+extension runner) and checks:
 
-## 커스터마이징
+- every skill file the manifest names exists, the loader resolves `wish` to `skills/wish/SKILL.md`, and no skill
+  the loader found points at a missing file;
+- the extension's `before_agent_start` behaviour: preview-safe, word-boundary keyword, armed once, silent when
+  already armed or when the host integration is unavailable;
+- every script under `skills/wish/scripts` exits 0 on `--help`, and a public tool (a script directly under
+  `scripts/`) also prints a real usage line.
 
-- 메뉴 설명과 진입 템플릿은 `prompts/wish.md`에 있습니다. 템플릿 문장에서 `ultrawork`와 `wish` 스킬 안내를 빼면 모드가 켜지지 않거나 스킬이 선택되지 않을 수 있습니다.
-- 작업 규칙은 `skills/wish/SKILL.md`와 `references/` 파일(`plan.md`, `run.md`, `review.md`)에서 고칩니다. README는 설명일 뿐이니 규칙을 바꾸면 여기 요약도 맞춰 주세요.
+The default Senpi location is `~/.bun/install/global/node_modules/@code-yeongyu/senpi`. Set `SENPI_ROOT` to point
+at a different installation.
+
+## Experiments
+
+The time targets, quality guards and the measured rows live in `docs/experiments/` (ledger, baseline, and
+the `measurements.csv`/`rounds.csv` data of the parked measurement program; the helper that built the rows
+was removed with the v3 cleanup).
+
+The baseline is 104 merged PRs (2026-10-27): median open→merge 92.8 minutes and 40.4% of PRs needing at least one
+final-review REVISE.
+
+A v3 arm is judged on 20 treated PRs and at least 10 alternating control PRs in the same window. The continue
+condition is median open→merge ≤55 minutes **and** REVISE≥1 ≤25% **and** guards 1-5 passing; the cancel condition
+is median ≥92.8 minutes **or** REVISE≥1 ≥40% **or** a guard violation. A value in between extends by 10 PRs once
+and is judged by the same rule. The first program-mode run is diagnostic only, because it has no control group.
+Rows are read straight from `<ER>/ledger.jsonl` and `<ER>/findings.tsv` when the program resumes.
+
+## Customizing
+
+- The menu text and the entry template live in `prompts/wish.md`. Removing the `ultrawork` and `wish` skill
+  mentions from the template can stop the mode from arming or the skill from being selected.
+- The work rules live in `skills/wish/SKILL.md`, the per-type `playbooks/`, and the machine shapes in
+  `references/`. This README explains; when it and a skill file read differently, the skill file is right, so keep
+  this summary in step when a rule changes.
+
+## Mode behaviour
+
+- `/wish` assumes ultrawork is on. When it is not, the plugin sees the `ultrawork`/`ulw` keyword in the expanded
+  text and turns the host mode on once, appending only the host directive. A `ulw` in another request may turn the
+  generic mode on; that does not select wish for that request.
+- When the mode is already on, the plugin leaves the state alone and appends no directive. A preview never changes
+  mode state.
+- Skill instructions do not outrank system or developer instructions, a later explicit request, or a gate the tool
+  actually enforces. This is instruction precedence, not an engine rule.
+- When the host's mode integration is unavailable, or the input arrives through a path that bypasses
+  `before_agent_start` (queued input, for example), the plugin may fail to turn the mode on. It never claims it did,
+  and the run continues per the skill's instruction.
+- The authorized request already covers the whole flow, so no phase is re-authorized and the run does not stop for
+  a native reviewer loop or a failed-attempt question. Decisions are collected once at DECIDE; an answer that only
+  the requester can give is asked through the question tool, or through whoever assigned the work when the tool is
+  unavailable.
+
+## The native plan gate
+
+`/wish` never opens the host's native plan-reviewer gate itself; the gate opens only when the requester's own
+message asks for the ulw-plan workflow. That fact produces the two plan branches.
+
+The default branch: the session writes the plan to fit ulw-plan's grammar, and ONE `category: architect` review
+checks it. No approval question goes to the requester.
+
+The ulw-plan branch: ulw-plan runs whole, with its approval gate, and the plan gets BOTH reviews — the
+`plan-reviewer` agent and the one `category: architect` review. No third round is added in either branch.
+
+A host that offers neither role leaves the review with the session, which records that in the plan's review
+record. Either way the plan records one fix per blocker and is not re-reviewed; the final ultrabrain review
+confirms those fixes.

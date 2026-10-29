@@ -1,0 +1,62 @@
+# code: the wish playbook for code work
+
+Type `code`: a patch, a feature, or a refactor. Read `../SKILL.md` for the stage contract and
+`../references/ledger.md` for every machine shape. **Copy the steps below into the `todo` list, one
+task each, verbatim.** Skipped steps: `../SKILL.md`.
+`status` is the gate: run `wish.mjs status` before dispatching the next stage and dispatch
+only the stage it names. While any unit runs, print the `PROGRESS:` line at every milestone (cadence: `../SKILL.md`).
+
+Set these once after step 1 and keep them for every command:
+
+```
+ER=<the evidence root ulw-loop reported>            export WISH_EVIDENCE_ROOT=$ER
+PLAN=.omo/plans/wish-<slug>.md                      WT=<absolute worktree>   BR=<branch>
+BASE=<the repository's integration branch for this request>
+wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
+```
+
+`wish init` writes the front matter; `../SKILL.md`'s `intake` row owns the plan rule. The body is appended at this playbook's step 5.
+
+## The steps
+
+- [ ] 1. INTAKE: set the tier from omo's LIGHT/HEAVY facts and create the run: `wish init --run-id w-<slug>-<yyyymmdd-hhmm> --type code --tier <S|M|L> --plan $PLAN --worktree $WT --branch $BR --fact "<each fact the tier rests on>"` [omo: session + `todo` + ultrawork tier triage] [receipt: `intake` event with `tier` and `facts`]
+- [ ] 2. COLLECT: run ONE `mass-ulw` run `wish-<run>-collect` with three node families defined up front: `harvest` (read every source the request names and every source the repository points at, in full), `extract` (one row per important element with its locator; a named corpus is read here with `playbooks/lens.md`'s extract rules), `explore` (read from the viewpoint of the project the request serves, spawning `explore` lanes for the repository and one `librarian` for outside sources); write `<ER>/collect.md`, naming any unread source as unread, then `wish ledger append --event collect --json -` with `{"event":"collect","sources":<number of sources read>,"elements":<number of extracted elements>,"report":"$ER/collect.md"}`; the stage completes only when `elements` is positive, because an empty extraction is not a collection [omo: `mass-ulw` harvest → extract → explore, `explore` ∥ `librarian`, read-only] [receipt: `collect` event + `<ER>/collect.md`]
+- [ ] 3. DEFINE: seeded by `<ER>/collect.md`, write `<ER>/define.md` (end user, journey today and after, ideal-state rows, every difference with its reason and affected party, the boundary per `../references/contract.md` §3) and insert each difference as one register row with `wish gaps add --tsv -`; out-of-scope rows go to `<ER>/follow-ups.md`; append `define` [omo: session; the `remove-ai-slops` report-only lane may feed it] [receipt: `define` event + `<ER>/define.md` + `<ER>/gaps.tsv`]
+- [ ] 4. BEFORE: `skip: no defect row` when the register holds none; otherwise take one capture per defect row before the first edit and append `wish ledger append --event before --json -` with `gap_id` and `artifact` (row shape: `../references/ledger.md`) [omo: session; a read-only lane may drive the capture] [receipt: `before` event + one `before-<gap>-<tree7>` receipt per defect row]
+- [ ] 5. PLAN: first read the related skills and their references (`remove-ai-slops`, `frontend`, `programming`, and this type's own skill), then write `$PLAN` in the `../references/plan-format.md` grammar (its sections, rows and `DEVICE:` rules), decide the unit split here, and carry these sentences verbatim, exactly as the plan-writing step receives them; (c) only when the plan has a rendered surface or a visual QA scenario. A plan forces no test code: the confirmation device takes that role (`../references/plan-format.md` §3). Then `wish ledger append --event plan --json -` [omo: session; grammar is `ulw-plan`'s checkbox contract] [receipt: `plan` event naming the plan]
+
+      ```
+      (a) Implement it, and also include, strictly, a device that confirms the implementation was done.
+      (b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
+      (c) Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
+      ```
+- [ ] 6. PLAN-LINT: `bun $WT/skills/wish/scripts/check-plan.mjs $PLAN [--register $ER/gaps.tsv]` must exit 0 (`--register` only when DEFINE wrote a register), then append `plan_lint` [omo: `scripts/check-plan.mjs`, from the session or a `quick` node] [receipt: `plan_lint` event, exit 0]
+- [ ] 7. PLAN-REVIEW: one `category: architect` review with the `plan-review` prompt (`../references/prompts.md`); add `plan-reviewer` only in the ulw-plan branch (`../SKILL.md`, the two plan branches); write `receipts/plan_review-architect-<head7>.md` and append `plan_review` with `OKAY` or `BLOCKERS`, recording one fix per blocker [omo: `category: architect`] [receipt: `receipts/plan_review-architect-<head7>.md` + `plan_review` event]
+- [ ] 8. DECIDE: write every requester-owned decision as ONE batch in `<ER>/gates.md`, each with a recommended default and one line of reasoning, add each with `wish gate add --id <id> --question <text> --options <a|b> --default <a>`, ask once, and append `decide`; nothing is asked after this step [omo: session] [receipt: `decide` event + `<ER>/gates.md` entries with a recommended default]
+- [ ] 9. GOAL: write the IS↔QA pairing as ONE paragraph per unit and register it with ulw-loop `createGoals`/`create_goal`; write the ulw-execute Boulder record (`.omo/boulder.json`, format only), which hands the plan to ulw-execute as checkbox work; append `goal` with the goal id, then record the BEFORE captures with `recordEvidence({status:"fail"})` [omo: `ulw-loop` goals + Boulder as format only] [receipt: `goal` event with the goal id]
+- [ ] 10. BUILD: restate this sentence verbatim before dispatching any build lane, then run `mass-ulw` run `wish-<run>-build`: one PR per independently verifiable unit with a disjoint write scope, several commits inside it, a `## Before` and an `## After` in each PR body, and a one-unit request stays one PR; one node owns its change plus its proof (injection check: recreate, capture the failure, restore, capture the pass), nodes with disjoint write scopes run in parallel, the commit node loads `git-master` and commits serially; append one `build` per node [omo: `mass-ulw` + `git-master` on the commit node] [receipt: `build` events + `receipts/build-<node>.json`]
+
+      ```
+      (d) After that, don't ask the requester. Proceed exactly as written in this content with mass-ulw, ulw-loop, and ulw-execute, at maximum parallelism, verifying rigorously. Deliver the work as several pull requests, include the before/after directly inside each pull request, and make the improvements clearly visible. As you proceed, report status to the requester very frequently, every time, saying how much of the whole work is done and which parts are done.
+      ```
+- [ ] 11. VERIFY-LANE: one `task` batch at the code-ready head H1: `tests` (`quick`, the repository suite plus one hand-applied mutation per guard row — remove the guard line in a throwaway copy and require the suite to fail there), `qa` (`omo-native-qa-executor` on the real surface), `sweep` (`quick`, the defect-class checklist of `../references/defect-classes.md` §1 walked over the changed files, one row per check), `code-review` (`omo-native-code-reviewer` with `remove-ai-slops` and `programming`, in a review worktree), and `adversarial` (`deep-high`, a family other than the author's) when `status` lists that lane; every lane writes `receipts/verify_lane-<lane>-<H1:7>.json` and one `verify_lane` event each [omo: one `task` batch of `quick` nodes, `omo-native-qa-executor` and `omo-native-code-reviewer`] [receipt: one `verify_lane-<lane>-<head7>.json` per required lane: `tests`, `qa`, `sweep`, `code-review`, plus `adversarial`]
+- [ ] 12. TRIAGE: file every lane finding with `wish findings add --tsv -`, classify it as fix, dismiss (note) or owner (gate), and append `triage` (what blocks: `../references/contract.md` §5) [omo: session, bugbot trichotomy] [receipt: `triage` event + `findings.tsv` rows]
+- [ ] 13. FIX: `skip: no blocking finding`; otherwise run `mass-ulw` run `wish-<run>-fix-r<n>` with the `fix-node` prompt (one component per node), then judge every receipt by the reuse rule (`../references/ledger.md` §2: the receipt's tree is the current tree → VALID; otherwise intersect the changed files with the receipt's `scope`, and a hit is STALE) against the new head, re-run only the STALE lanes, and append `fix` and one `reuse` per receipt [omo: `mass-ulw` fix run + the session's reuse judgment] [receipt: `fix` and `reuse` events]
+- [ ] 14. FREEZE: `wish freeze --head <H2>` then `wish freeze --check`, then `wish pr-body --out $ER/pr-body.md`, whose body carries the unit's `## Before` and `## After` (scratch files live under `<ER>`) [omo: session + `wish.mjs`] [receipt: `freeze` event with `head`, `tree`, `pr`]
+- [ ] 15. PR-OPEN: `gh pr create --base $BASE --head $BR --body-file $ER/pr-body.md`, append `pr_open` with `{"event":"pr_open","pr":<n>,"head":"<H2>","tree":"<T2>"}`, then arm the watch with `tool.monitor` running `bun $WT/skills/wish/scripts/pr-watch.mjs --pr <n> --repo <owner/name> --until ready` (never poll it in a foreground loop) [omo: `gh` + `tool.monitor` on `pr-watch.mjs`] [receipt: `pr_open` event]
+- [ ] 16. ROUND: `wish gate --round <n> --head <H2>` refuses the dispatch (exit 3) unless a valid `code-review` receipt exists at the frozen head, and stops it if any prior blocking reproduction prints `not fixed`; then one `category: ultrabrain` review (`ultrabrain-r1` for round 1, `ultrabrain-r2` for every later round) and read the report's last non-empty line: it must match `VERDICT: <APPROVED|REVISE> round <n> head <sha>` and name the frozen head (`../references/ledger.md` §12); append `round` and `verdict`. On `VERDICT: REVISE`, run `playbooks/revise.md`: back to DEFINE for the cited problem, then PLAN, then PLAN-LINT, then the fix lane and the same verify wave, with the fix commits in the same PR [omo: `wish.mjs gate` + `category: ultrabrain`] [receipt: `receipts/final-r<n>-<head7>.md` + `round` and `verdict` events, plus the `switch` event a REVISE round requires]
+- [ ] 17. MERGE: after `APPROVED` on the frozen head, merge it yourself with `gh pr merge <n> --squash` (or the repository's convention) and append `merge` with `sha`, `merged_at`, `pr` and `head` [omo: session] [receipt: `merge` event]
+- [ ] 18. POST-MERGE: `git rev-parse origin/$BASE^{tree}` against the frozen tree, then `omo-native-qa-executor` runs what the tree comparison calls for (`../SKILL.md`, the `post_merge` row); append `post_merge` [omo: `omo-native-qa-executor`] [receipt: `post_merge` event + `receipts/post_merge-<tree7>.*`]
+- [ ] 19. CHECKPOINT: ulw-loop `agentToolkit.checkpoint({op:"complete", evidence, qualityGateJson})`; `omo-native-gate-reviewer` reads the evidence record and checks presence, criteria and schema only [omo: `ulw-loop` checkpoint + `omo-native-gate-reviewer`] [receipt: `checkpoint` event, `checkpoint_op: complete`]
+- [ ] 20. CLEANUP: record the caught regression classes and the QA invocations with `memory`, remove the worktree and branch with a teardown receipt, and append `cleanup` with at least one receipt [omo: session + `memory`] [receipt: `cleanup` event with ≥1 teardown receipt]
+
+## Tier and variant notes
+
+- **S, M, L:** the tier table in `../SKILL.md` decides what shrinks; nothing here relaxes a lane or the ultrabrain round.
+- **Patch:** a single-file correction still writes the injection check, because a fix without a failing reproduction is a guess.
+- **Refactor:** when the repository keeps tests for the area, the first BUILD node writes a characterization test that passes on the unchanged code, and only then moves the structure. Not a RED-first mandate; nothing else changes.
+- **High-risk row:** record `adversarial_classes` on the build or plan event, because `status` reads the event, never the plan body; eligibility is `../SKILL.md`'s tier table.
+
+## What `status` enforces, and what it never does
+
+What `status` requires is `../SKILL.md`'s. Receipt status semantics are `../references/ledger.md` §4.1. `status` never decides a quality question: it says which stage may run and which receipt blocks it.
