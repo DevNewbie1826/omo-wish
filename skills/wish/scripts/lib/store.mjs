@@ -1402,8 +1402,9 @@ export function blockingFor(context) {
     reasons.push(frozenHead ? `order:code-review missing at ${frozenHead.slice(0, 7)}` : "order:freeze missing before round");
   }
   const verdictTarget = head ?? frozenHead;
-  if (frozenHead && !last) reasons.push("verdict:missing");
-  else if (last && verdictTarget && !verdictCoversHead(context)) {
+  const merged = events.some((event) => event.event === "merge" && event.unit === unit);
+  if (!merged && frozenHead && !last) reasons.push("verdict:missing");
+  else if (!merged && last && verdictTarget && !verdictCoversHead(context)) {
     reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", verdictTarget.slice(0, 7)));
   }
   if (frozenHead && head && frozenHead !== head) reasons.push("head:moved");
@@ -1598,6 +1599,7 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
   const context = contexts.find((entry) => entry.unit === unit) ?? contexts[0];
   const rounds = context ? roundsOf(context.events, context.unit) : [];
   const last = rounds[rounds.length - 1];
+  const merged = context ? context.events.some((event) => event.event === "merge" && event.unit === context.unit) : false;
   const firstInvalid = state ? state.firstInvalid : "intake";
   const actions = [];
   for (const reason of status.blocking) {
@@ -1617,9 +1619,9 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
     } else if (reason.startsWith("order:")) {
       actions.push("run the code-review lane at the frozen head ".concat(reason.slice("order:code-review missing at ".length)));
     } else if (reason.startsWith("verdict:")) {
-      actions.push(last?.verdict === "APPROVED" ? approvedRestore(last) : "dispatch the final review on the frozen head");
+      if (!merged) actions.push(last?.verdict === "APPROVED" ? approvedRestore(last) : "dispatch the final review on the frozen head");
     } else if (reason === "head:moved") {
-      actions.push(last?.verdict === "APPROVED" ? approvedRestore(last) : "freeze the new head, or rebase back to the frozen one");
+      if (!merged) actions.push(last?.verdict === "APPROVED" ? approvedRestore(last) : "freeze the new head, or rebase back to the frozen one");
     } else {
       actions.push(reason);
     }

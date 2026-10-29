@@ -317,3 +317,23 @@ test("an APPROVED verdict that predates a re-freeze asks for the lanes and names
   expect(reviewed.unitStates[0].firstInvalid).toBe("round");
   expect(reviewed.status.progress.waiting).toBe("verdict on #1");
 });
+
+test("a merged unit carries no verdict advice and no restore action", () => {
+  const state = scene();
+  earlierStages(state);
+  for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name);
+  record(state, { event: "round", round: 1, verdict: "APPROVED", head: HEAD });
+  record(state, { event: "merge", sha: HEAD, merged_at: AT, pr: 1, head: HEAD });
+
+  const MOVED = "2".repeat(40);
+  const MOVED_TREE = "3".repeat(40);
+  const moved = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
+  expect(moved.status.next).toBe("post_merge");
+  expect(moved.status.blocking.some((reason) => reason.startsWith("verdict:"))).toBe(false);
+
+  const resumed = resumePlan({
+    status: moved.status, contexts: moved.contexts, unitStates: moved.unitStates, unit: "u1",
+  });
+  expect(resumed.actions.some((action) => action.includes("restore the head the APPROVED verdict judged"))).toBe(false);
+  expect(resumed.actions.some((action) => action.includes("dispatch the final review"))).toBe(false);
+});
