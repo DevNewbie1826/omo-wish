@@ -1,7 +1,7 @@
 # wish v3 — state, receipt, and interface contract
 
-This file is the single interface contract between the modules. M1 (state, CLI), M2 (plan lint),
-M3 (probes), M4 (verdict, patch-id, reuse), M5 (prompts) and M7 (PR watch, metrics) import every shape and
+This file is the single interface contract between the modules. The CLI (`wish.mjs`), the plan linter
+(`check-plan.mjs`), the PR watcher (`pr-watch.mjs`) and the internal `lib/` modules import every shape and
 value set from `scripts/lib/schema.mjs`; none of them re-declares one. The prose states the contract, the
 library enforces it, and `test/schema.test.js` validates every machine example in this file, so prose and
 code cannot drift.
@@ -19,8 +19,8 @@ Sources cited per field:
   and the repeated-failure stop rule.
 - **L** = omo `ulw-loop` `SKILL.md:64` — evidence is bound to a tree hash and a matching tree is reused.
 - **P** = poteto-mode `scripts/orch/store.ts:597-668` — the `gates.md` renderer and reader.
-- **C44** = PR #44 `skills/wish/scripts/check-verdict.mjs` and `test/verdict.test.js` — the `VERDICT:` line
-  pattern, parser semantics, and reason strings, carried verbatim.
+- **C44** = PR #44 — the `VERDICT:` line pattern, parser semantics, and reason strings, carried verbatim
+  in `scripts/lib/schema.mjs` (the standalone parser script was removed with the v3 cleanup).
 - **C43** = PR #43's shared experiment columns, quoted in D §2.10 and preserved in
   `docs/experiments/{measurements,rounds}.csv`.
 - **O/** = `<omo-skills-root>`, the host's omo skills root.
@@ -47,7 +47,7 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | `<ER>/receipts/*` | the lane that produced it | one lane's evidence, §4 | D §2.8, A §C.4 |
 | `<ER>/gates.md` | session | owner questions parked with a default, §13 | P, D §2.8 |
 | `<ER>/resume.md` | session | one line per stage transition: intent, current stage, valid receipts, next action | D §2.9 |
-| `<ER>/metrics/{measurements,rounds}.csv` | session (`wish.mjs metrics`) | shared experiment rows, §10 | C43, D §2.10 |
+| `<ER>/metrics/{measurements,rounds}.csv` | session (experiment rows, §10) | shared experiment rows, §10 | C43, D §2.10 |
 | `.omo/ulw-loop/<session>/` | ulw-loop SDK only | loop state | U |
 
 1. **One writer per file.** The session alone writes boulder, plan, ledger, findings, gaps, lens, ideal,
@@ -118,13 +118,13 @@ Body fields (D §2.8 + A §C.4):
 | `stage` | ledger event | required for `kind: lane`; the stage the receipt answers | D §4 |
 | `head` | §2 | the head (or research sha256) it ran against | D §2.7, A §C.1 |
 | `tree` | §2 or `null` | the tree it is bound to | D §2.7, L |
-| `scope` | non-empty array of paths/globs | what the lane covered; `reuse-check` intersects it with changed files | D §2.7 |
+| `scope` | non-empty array of paths/globs | what the lane covered; the reuse rule intersects it with changed files | D §2.7 |
 | `started_at`, `ended_at` | ISO-8601 UTC (`Z`) | lane wall clock; `ended_at ≥ started_at` | D §2.8/§2.10 |
 | `status` | `PASS` \| `FAIL` \| `WARN` \| `SKIP` | lane verdict, §4.1 | D §2.8 |
 | `rows` | array of `{id, command, observable, verdict, artifact, class?, note?}` | one row per check; `verdict` adds `INVALID` for a probe row that could not decide | D §2.8, O `exp/x1` sweep summary |
 | `artifacts` | array of paths | captures under `<ER>` | D §2.8 |
 | `cleanup` | array of strings | teardown receipts for resources the lane started | D §2.8 |
-| `gap`, `name`, `pass`, `env_sha` | per kind / optional | `before`/`after` name their gap; `lint` names the lint; a `vqa-*` receipt sets `pass` to its own suffix (`passA`, `passB`, `capture`); `env_sha` is the 64-hex surface/build artifact hash — a changed value makes the receipt STALE (M4) | A §B3/§C.4, D §2.7, A §F M4 |
+| `gap`, `name`, `pass`, `env_sha` | per kind / optional | `before`/`after` name their gap; `lint` names the lint; a `vqa-*` receipt sets `pass` to its own suffix (`passA`, `passB`, `capture`); `env_sha` is the 64-hex surface/build artifact hash — a changed value makes the receipt STALE | A §B3/§C.4, D §2.7, A §F M4 |
 
 Every row's `command` is the literal command (or `no command` for a read-through row), `observable` is the
 one binary observation that decided it, and `artifact` is a path or `null`.
@@ -167,7 +167,7 @@ Eleven columns in this order, a header first, TSV with no quoting: a field never
 | `id` | `[A-Za-z0-9][A-Za-z0-9._-]*` | stable id, never reused | D §2.8 |
 | `round` | integer ≥ 0 | `0` before the unit's first `round` event, otherwise the number of the latest `round` event when the row is filed, which is the round a REVISE loop is in | D §2.8 |
 | `source` | `code-review` \| `qa` \| `sweep` \| `ultrabrain` \| `architect` \| `adversarial` | the reporting lane; `qa` covers real-surface and visual-qa lanes, `sweep` covers scripted probe and lint lanes (M0) | D §2.8 |
-| `class` | the run type's §5.1 set | the defect class; identical string in M3's dictionary and M5's axes | D §2.8, A §C.1 |
+| `class` | the run type's §5.1 set | the defect class; identical string in the defect-class dictionary and the review axes | D §2.8, A §C.1 |
 | `severity` | `CRITICAL` \| `HIGH` \| `MEDIUM` \| `LOW` | reviewer severity, not the blocking decision | v1 step 7 |
 | `file_line` | `<path>:<line>` or `-` | where it was observed | D §2.8 |
 | `blocking` | `0` \| `1` | `1` blocks; a `note` or `owner` row is always `0` | D §2.6/§2.8 |
@@ -182,7 +182,7 @@ before the next gate. `note` is a memo; `owner` is parked in `gates.md`.
 
 ### 5.1 Class value sets, per work type
 
-One alphabet per type; M3's dictionary key, M5's axis name and this column are the same string
+One alphabet per type; the defect-class dictionary's key, the review axis name and this column are the same string
 (A §C.1 last row, A §B10). A class outside the run type's set is rejected.
 
 | Type | Values | Source |
@@ -263,8 +263,8 @@ Every IS/GAP row carries ≥1 `DEVICE:` row, and the form is fixed by the work t
 | `research` | `DEVICE: claim C<n> gate(primary, domains>=<n>, counter-search)` |
 | `audit` | `DEVICE: lint <command> exit 0` or `DEVICE: spot <n> rows reproduce` |
 
-M2's `check-plan.mjs` lints the pairing (IS↔DEVICE, DEVICE form↔type, IS↔gap id when a register exists); M0
-owns the grammar only.
+`check-plan.mjs` lints the pairing (IS↔DEVICE, DEVICE form↔type, IS↔gap id when a register exists); this
+contract owns the grammar only.
 
 ## 9. `ledger.jsonl`
 
@@ -437,7 +437,9 @@ verdict reason and `head:moved` with restoring the head the verdict judged, beca
 
 ## 10. Shared experiment columns
 
-M7 writes these in exactly this order (C43), appending the v2 columns and never reordering:
+The experiment rows are written in exactly this order (C43), appending the v2 columns and never reordering
+(the helper that built them was removed with the v3 cleanup; a resumed measurement program reads the
+ledger directly):
 
 | File | Columns | Source |
 | --- | --- | --- |
@@ -490,7 +492,8 @@ body fails with `body is empty`; a mismatch fails with
 no upper bound; a seven-character head is rejected. Coverage fails with
 `verdict head <a> does not cover current head <b>`, and `requireApproved` fails with
 `verdict is REVISE, not APPROVED`. `schema.mjs` exports `VERDICT_PATTERN_SOURCE`, `parseVerdict` and
-`checkVerdictCoverage`; M4's `check-verdict.mjs` imports them instead of copying the pattern.
+`checkVerdictCoverage`; the session reads the line against them, and `wish gate` refuses a round whose
+verdict head does not cover the frozen head.
 
 ## 13. `gates.md` — owner questions
 
@@ -513,7 +516,7 @@ questions and defaults; only the affected lane parks while other lanes continue.
 
 ## 14. CLI — `$SKILL/scripts/wish.mjs`
 
-M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
+The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, arguments and exit codes.
 
 | Verb | Arguments | Effect | Exit codes | Source |
 | --- | --- | --- | --- | --- |
@@ -525,14 +528,33 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
-| `reuse-check` | `<receipt> --head <sha>` | tree match → VALID; else intersect changed files and their reference holders with `scope` | 0 VALID; 1 STALE; 2 usage; 3 unparseable or another run's receipt | D §2.7 |
 | `switch` | `record --round <n> --kind <kind> --premise <text> --new-approach <text>` | record the approach switch (§9.4) | 0 ok; 1 schema failure; 2 usage; 3 no REVISE at that round | A §C.6 |
-| `metrics` | `export [--out <dir>] [--ledger <path>]`; `post-merge --days <n> [--pr <n>]` | write §10 rows; count post-merge refixes. `export` supplies the run's own ledger (`rootPaths(root).ledger`, from `--root` or `WISH_EVIDENCE_ROOT`) unless the caller names one with `--ledger`; every other form still forwards its argv unchanged | 0 ok; 1 a row or query fails; 2 usage; 3 freeze/merge data missing | C43, D §2.10 |
 | `resume-plan` | — | print the first invalid stage and the resume actions | 0 ok; 2 usage; 3 ledger missing | D §2.9 |
 
 Exit codes are fixed by D §4: **0** ok, **1** check failed, **2** usage, **3** state mismatch. A usage
 mistake never exits 1 and a schema failure never exits 3, so the session can branch without parsing text.
 `--help` exits 0 on every verb and prints the usage above.
+
+### 14.1 `$SKILL/scripts/pr-watch.mjs`
+
+`pr-watch.mjs --pr <n> --repo <owner/name> [--until ready|merged] [--all] [--interval <s>]` watches one
+pull request and prints one NDJSON object per observation (`tool.monitor` subscribes to stdout and stops
+on the terminal line; never poll it in a foreground loop):
+
+```
+{"seq":1,"at":"…","pr":49,"repo":"owner/name","state":"BLOCKED","reasons":["conflict"],"head":"…","checks":{"total":3,"failing":0,"pending":1},"next_poll_s":60,"error":null}
+```
+
+States are `READY`, `WAITING`, `BLOCKED`, `MERGED`, `CLOSED`. A blocker always names its reason:
+`conflict`, `checks-failing`, `changes-requested`, `blocked`, `unknown-state`, `query-failed`. Waiting
+reasons: `draft`, `checks-pending`, `review-required`, `behind`, `merge-state-unknown`.
+
+The wait is `min(max(interval, 60) * 2^(attempt - 1), max_interval)` and the attempt count resets to 1
+whenever the state changes. A check whose state cannot be read, and a rollup that is not an array, count
+as pending — an unknown shape never becomes `READY`. Exit codes: `0` the requested terminal state, `1` a
+different terminal state, a `CLOSED` PR, or exhausted polls, `2` usage, `3` auth or not-found (reported
+once). No caller value reaches a shell: every argv is an array and `--repo`/`--pr` are validated before
+`gh` is spawned; token values are replaced by `[redacted]` in output.
 
 ## 15. Machine-checked examples
 
@@ -559,7 +581,7 @@ A code lane receipt (`kind: lane`):
   "rows": [
     {
       "id": "secrets-canary",
-      "command": "bun $SKILL/scripts/sweep.mjs --probe secrets",
+      "command": "env CANARY_TOKEN=wish-canary ./changed-entry --failing-case >out 2>&1; ! grep -q wish-canary out",
       "observable": "the canary token appears in neither stdout nor any artifact",
       "verdict": "PASS",
       "artifact": "/evidence/w-u1-20261027-1610/receipts/sweep-secrets.log",
@@ -567,8 +589,8 @@ A code lane receipt (`kind: lane`):
     },
     {
       "id": "docs-flags",
-      "command": "bun $SKILL/scripts/sweep.mjs --probe docs",
-      "observable": "every flag documented in ledger.md exists in --help",
+      "command": "comm -23 <(grep -o -- '--[a-z-]*' README.md | sort -u) <(./changed-entry --help | grep -o -- '--[a-z-]*' | sort -u)",
+      "observable": "every flag documented in README.md exists in --help",
       "verdict": "WARN",
       "artifact": null,
       "class": "DOC",

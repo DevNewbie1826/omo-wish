@@ -11,7 +11,6 @@ import { spawnSync } from "node:child_process";
 import {
   chmodSync,
   copyFileSync,
-  cpSync,
   existsSync,
   linkSync,
   mkdirSync,
@@ -292,7 +291,7 @@ describe("help and usage contract", () => {
       expect(one.code).toBe(0);
       expect(one.out.length).toBeGreaterThan(20);
     }
-    expect(CLI_VERBS.length).toBe(12);
+    expect(CLI_VERBS.length).toBe(10);
   });
 
   test("runs its verbs when invoked through a symlink", () => {
@@ -1224,186 +1223,6 @@ describe("resume-plan", () => {
     const box = sandbox();
     mkdirSync(box.root, { recursive: true });
     expect(cli(["resume-plan", "--root", box.root]).code).toBe(3);
-  });
-});
-
-describe("module-owned verbs", () => {
-  test("every module-owned verb names its missing script and exits 3", () => {
-    // The sibling modules land on the integration branch one at a time, so the absence
-    // case is not "the scripts do not exist yet" - the test has to create it.
-    //
-    // The set is discovered from the tree and the CLI's own verb list, never from the
-    // dispatch source text: a quoted comparison or a guard that moves behind a comment
-    // cannot make a verb disappear from this check the way a regex over the source can.
-    const scriptsDir = join(HERE, "..", "skills", "wish", "scripts");
-    const moduleVerbs = readdirSync(scriptsDir)
-      .filter((name) => name.endsWith(".mjs") && name !== "wish.mjs")
-      .map((name) => name.slice(0, -4))
-      .filter((name) => CLI_VERBS.includes(name));
-    expect(moduleVerbs.length).toBeGreaterThan(0);
-    expect(moduleVerbs).toContain("reuse-check");
-    for (const verb of moduleVerbs) {
-      const box = sandbox();
-      const skill = join(box.dir, "wish");
-      cpSync(join(HERE, "..", "skills", "wish"), skill, { recursive: true });
-      const scripts = join(skill, "scripts");
-      // With the script present the verb runs (and may well fail on an incomplete
-      // argv) but it must never claim the module is not installed.
-      const present = spawnSync(process.execPath, [join(scripts, "wish.mjs"), verb, "--root", join(box.dir, "er")], { encoding: "utf8" });
-      expect(present.stderr).not.toContain("is not installed");
-      rmSync(join(scripts, `${verb}.mjs`));
-      const missing = spawnSync(process.execPath, [join(scripts, "wish.mjs"), verb, "--root", join(box.dir, "er")], { encoding: "utf8" });
-      expect(missing.status).toBe(3);
-      expect(missing.stderr).toContain(`${verb}.mjs`);
-      expect(missing.stderr).toContain("is not installed");
-      expect(missing.stdout.trim()).toBe("");
-    }
-  });
-
-  test("pass argv through unchanged and propagate the child's exit code", () => {
-    const box = sandbox();
-    const scripts = join(box.dir, "scripts");
-    mkdirSync(join(scripts, "lib"), { recursive: true });
-    copyFileSync(CLI, join(scripts, "wish.mjs"));
-    copyFileSync(join(LIB, "store.mjs"), join(scripts, "lib", "store.mjs"));
-    copyFileSync(join(LIB, "schema.mjs"), join(scripts, "lib", "schema.mjs"));
-    writeFileSync(join(scripts, "reuse-check.mjs"), "console.log(JSON.stringify(process.argv.slice(2))); process.exitCode = 3;\n");
-    const result = spawnSync(process.execPath, [join(scripts, "wish.mjs"), "reuse-check", "receipt.json", "--head", HEAD], { encoding: "utf8" });
-    expect(result.status).toBe(3);
-    expect(JSON.parse(result.stdout.trim())).toEqual(["receipt.json", "--head", HEAD]);
-  });
-});
-
-describe("metrics delegation", () => {
-  // A run whose ledger names a PR: metrics derives its measurement row from pr_open, so
-  // every case here starts from a real run built by the CLI itself, never a hand-written
-  // ledger line that could satisfy the parser without describing a run.
-  function runNamingPr(pr) {
-    const state = scene();
-    upToBuild(state);
-    const opened = append(state, { event: "pr_open", pr, head: state.repo.head, tree: state.repo.tree });
-    expect(opened.code).toBe(0);
-    return state;
-  }
-
-  function measurementRow(dir) {
-    const text = readFileSync(join(dir, "measurements.csv"), "utf8");
-    const lines = text.split("\n").filter((line) => line !== "");
-    const header = lines[0].split(",");
-    return Object.fromEntries(header.map((column, index) => [column, lines[1].split(",")[index]]));
-  }
-
-  test("the documented metrics export form resolves the run's ledger", () => {
-    const state = runNamingPr(51);
-    const out = join(state.box.dir, "metrics");
-    // Exactly the documented form: the evidence root plus --out, no --ledger.
-    const result = cli(["metrics", "export", "--root", state.root, "--out", out]);
-    expect(result.code).toBe(0);
-    expect(existsSync(join(out, "measurements.csv"))).toBe(true);
-    expect(existsSync(join(out, "rounds.csv"))).toBe(true);
-    expect(measurementRow(out).pr).toBe("51");
-    expect(result.out).toContain("measurements.csv");
-  });
-
-  test("an explicit ledger still wins over the resolved one", () => {
-    const resolved = runNamingPr(51);
-    const named = runNamingPr(77);
-    const out = join(named.box.dir, "metrics");
-    const result = cli([
-      "metrics", "export", "--root", resolved.root,
-      "--ledger", join(named.root, "ledger.jsonl"), "--out", out,
-    ]);
-    expect(result.code).toBe(0);
-    expect(measurementRow(out).pr).toBe("77");
-  });
-
-  test("an explicit ledger needs no evidence root at all", () => {
-    const named = runNamingPr(77);
-    const out = join(named.box.dir, "metrics");
-    // No --root and no environment root: the named ledger is the whole input.
-    const result = cli([
-      "metrics", "export", "--ledger", join(named.root, "ledger.jsonl"), "--out", out,
-    ], { env: { WISH_EVIDENCE_ROOT: "" } });
-    expect(result.code).toBe(0);
-    expect(measurementRow(out).pr).toBe("77");
-  });
-
-  test("the environment root alone writes the run's default metrics directory", () => {
-    const state = runNamingPr(64);
-    // The shipped CLEANUP step is the bare form: no --root, no --out.
-    const result = cli(["metrics", "export"], { env: { WISH_EVIDENCE_ROOT: state.root } });
-    expect(result.code).toBe(0);
-    expect(existsSync(join(state.root, "metrics", "measurements.csv"))).toBe(true);
-    expect(existsSync(join(state.root, "metrics", "rounds.csv"))).toBe(true);
-    expect(measurementRow(join(state.root, "metrics")).pr).toBe("64");
-  });
-
-  test("export options pass through to metrics.mjs unchanged", () => {
-    const state = runNamingPr(51);
-    const register = join(state.box.dir, "register.tsv");
-    writeFileSync(register, [
-      GAPS_COLUMNS.join("\t"),
-      ["G1", "cli", "wish metrics export", "skill:wish:metrics-export", "today", "after",
-        "-", "HIGH", "defect", "C", "code", "u1", "open", "-", "-"].join("\t"),
-    ].join("\n"));
-    expect(cli(["gaps", "add", "--tsv", register, "--root", state.root]).code).toBe(0);
-    const out = join(state.box.dir, "metrics");
-    const result = cli([
-      "metrics", "export", "--root", state.root, "--gaps", join(state.root, "gaps.tsv"),
-      "--out", out, "--json",
-    ]);
-    expect(result.code).toBe(0);
-    expect(JSON.parse(result.out.trim()).ok).toBe(true);
-    expect(measurementRow(out).gaps_total).toBe("1");
-    // Only --root is the CLI's: a flag metrics.mjs never accepted is still refused.
-    const unaccepted = cli(["metrics", "export", "--root", state.root, "--plan", state.plan, "--out", out]);
-    expect(unaccepted.code).toBe(2);
-    expect(unaccepted.err).toContain("unknown option for export: --plan");
-  });
-
-  test("an option operand is never read as a wish flag", () => {
-    const state = runNamingPr(51);
-    const out = join(state.box.dir, "metrics");
-    // `--arm` takes a value, so `--ledger` here is that value: the run's own ledger must
-    // still be injected, and the operand must reach metrics.mjs untouched.
-    const operandLedger = cli(["metrics", "export", "--root", state.root, "--arm", "--ledger", "--out", out]);
-    expect(operandLedger.code).toBe(0);
-    expect(measurementRow(out).pr).toBe("51");
-    expect(measurementRow(out).arm).toBe("--ledger");
-    // `--arm --root` is the same hazard on the CLI's own flag: it is a value, not a root.
-    const named = runNamingPr(77);
-    const out2 = join(named.box.dir, "metrics");
-    const operandRoot = cli([
-      "metrics", "export", "--ledger", join(named.root, "ledger.jsonl"),
-      "--arm", "--root", "--out", out2,
-    ], { env: { WISH_EVIDENCE_ROOT: "" } });
-    expect(operandRoot.code).toBe(0);
-    expect(measurementRow(out2).pr).toBe("77");
-    expect(measurementRow(out2).arm).toBe("--root");
-  });
-
-  test("the other metrics subcommands keep their verbatim delegation", () => {
-    const state = runNamingPr(51);
-    const out = join(state.box.dir, "metrics");
-    expect(cli(["metrics", "export", "--root", state.root, "--out", out]).code).toBe(0);
-    // validate reads a file the caller names: nothing about it may change.
-    const validated = cli(["metrics", "validate", "--file", join(out, "measurements.csv"), "--name", "measurements"]);
-    expect(validated.code).toBe(0);
-    // A shared flag is still not translated for a subcommand that is not export.
-    const shared = cli(["metrics", "validate", "--root", state.root, "--file", join(out, "measurements.csv")]);
-    expect(shared.code).toBe(2);
-    expect(shared.err).toContain("unknown option for validate: --root");
-    const merge = cli(["metrics", "post-merge", "--days", "7", "--root", state.root]);
-    expect(merge.code).toBe(2);
-    expect(merge.err).toContain("unknown option for post-merge: --root");
-  });
-
-  test("no evidence root is a usage error for the documented form", () => {
-    const out = join(sandbox().dir, "metrics");
-    const result = cli(["metrics", "export", "--out", out], { env: { WISH_EVIDENCE_ROOT: "" } });
-    expect(result.code).toBe(2);
-    expect(result.err).toContain("no evidence root: pass --root <ER> or set WISH_EVIDENCE_ROOT");
-    expect(existsSync(out)).toBe(false);
   });
 });
 

@@ -87,7 +87,7 @@ Examples:
   └─ SKILL.md: the contract and the stage map (this file is authoritative)
       ├─ the work type's playbook (playbooks/<type>.md): the steps copied into `todo`
       └─ references/: plan grammar, finite contract, ledger shapes, delegation prompts,
-                      defect classes, metrics
+                      defect classes
 ```
 
 `/wish` opens no goal or notepad at bootstrap: the plan file holds the notes, and the GOAL stage registers one
@@ -112,17 +112,17 @@ recommended default; a decision that appears mid-run parks only its own lane and
 | `decide` | session collects the decision batch | `decide` event + `<ER>/gates.md` entries with a recommended default |
 | `goal` | `ulw-loop` goals + ulw-execute Boulder (format only) | `goal` event (the goal id) |
 | `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit (the commit node loads `git-master`) | `build` events + `build-<node>.json` |
-| `verify_lane` | one `task` batch per head: `quick` tests and mutation, `omo-native-qa-executor`, `omo-native-code-reviewer` (with `remove-ai-slops` and `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
+| `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer` (with `remove-ai-slops` and `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
 | `triage` | session (bugbot trichotomy: fix, dismiss, owner) | `triage` event + `findings.tsv` rows |
-| `fix` | `mass-ulw` run `wish-<run>-fix-r<n>` + `reuse-check.mjs` | `fix` + `reuse` events |
+| `fix` | `mass-ulw` run `wish-<run>-fix-r<n>` + the reuse rule | `fix` + `reuse` events |
 | `freeze` | `wish freeze`, `wish pr-body` | `freeze` event (`head`, `tree`, `pr`) |
 | `pr_open` | `gh pr create` + `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
-| `round` | `wish gate` then `category: ultrabrain` (r1 full, r2+ delta and regression) then `check-verdict.mjs` | `final-r<n>-<head7>.md` + `round`, `verdict` events |
+| `round` | `wish gate` then `category: ultrabrain` (r1 full, r2+ delta and regression) then the session reads the `VERDICT:` line at the frozen head | `final-r<n>-<head7>.md` + `round`, `verdict` events |
 | `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscovery | `switch` event (`round`, `kind`, `premise`, `new_approach`) |
 | `merge` | session (the session that did the work merges) | `merge` event (`sha`, `merged_at`, `pr`) |
 | `post_merge` | `omo-native-qa-executor`: smoke when the tree is identical, full otherwise | `post_merge` event + `post_merge-<tree7>.*` |
 | `checkpoint` | `ulw-loop` `checkpoint` + `omo-native-gate-reviewer` | `checkpoint` event (`checkpoint_op: complete`) |
-| `cleanup` | session: `metrics export`, then `memory` | `cleanup` event + at least one teardown receipt |
+| `cleanup` | session: `memory` | `cleanup` event + at least one teardown receipt |
 
 `before` and `fix` are conditional. When one does not apply, the todo keeps `skip: <reason>`; it is never
 silently dropped. While a unit runs, `wish status --progress` prints one line on every transition that changes a
@@ -150,7 +150,7 @@ The tier comes from omo's LIGHT/HEAVY facts and never goes down: a HEAVY fact fo
 | `design` | `playbooks/design.md` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` |
 | `research` | `playbooks/research.md` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` |
 | `audit` | `playbooks/audit.md` | `lint`, `spot`, `register-schema` |
-| `mixed` | the primary type's playbook | the union of the primary's and secondary's lanes; `wish init` and `sweep.mjs` take `--type mixed --primary … --secondary …` |
+| `mixed` | the primary type's playbook | the union of the primary's and secondary's lanes; `wish init` takes `--type mixed --primary … --secondary …` |
 
 `frontend` builds rendered surfaces and `visual-qa` verifies them; `ulw-research` runs a research unit's phases.
 wish takes their output as receipts and adds the contract, the verdict, the ledger and the progress line; it never
@@ -182,7 +182,7 @@ Review has no round ceiling. **`APPROVED` is the only end.**
    other than the failed fix's), `strategy` (a `SWITCH:` row that redesigns the component), `split` (program
    only), `rediscover`. A round whose blocking findings are all new classes is not a repeat and needs only the
    fix lane.
-3. After a switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a **new** ultrabrain
+3. After a switch: fix run, the reuse rule, stale lanes only, `freeze`, the gate table, then a **new** ultrabrain
    reviewer on the delta and the prior findings.
 4. The requester is never asked whether to keep reviewing. Decisions are theirs only when irreversible,
    destructive, a spend, or a contract-level LIMIT; the batch closed at DECIDE, and a parked lane never stops
@@ -225,7 +225,7 @@ a memo goes to `<ER>`.
 | `<ER>/define.md` | the end user, journey, ideal state and every difference, with reasons |
 | `<ER>/ledger.jsonl` | stage, lane, head, tree, verdict and round events |
 | `<ER>/receipts/` | per-lane receipts `<stage>-<lane>-<head7>.json` (status `PASS`/`FAIL`/`WARN`/`SKIP`) |
-| `<ER>/findings.tsv` | review, QA, probe and final-review findings with their fix status |
+| `<ER>/findings.tsv` | review, QA, sweep-checklist and final-review findings with their fix status |
 | `<ER>/gaps.tsv` | the completeness register (`kind: defect|taste`) |
 | `<ER>/gates.md` | the decision batch: options, recommended default, answer |
 | `<ER>/follow-ups.md` | everything out of scope, named in the final report |
@@ -239,18 +239,15 @@ research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict
 ## Scripts
 
 All of them are helper commands an agent calls. None decides a stage or dispatches a review. Exit codes are
-shared: **0** ok, **1** check failed, **2** usage error, **3** state mismatch.
+shared: **0** ok, **1** check failed, **2** usage error, **3** state mismatch. The verdict line, patch-id
+equality and receipt reuse are plain rules the session applies from the skill text; `wish gate` enforces
+the head coverage a verdict needs.
 
 | Script | Role |
 | --- | --- |
-| `scripts/wish.mjs` | state and CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate` (reproduction table, `add`, `resolve`), `freeze [--check]`, `pr-body`, `reuse-check`, `switch record`, `metrics export\|post-merge`, `resume-plan` |
+| `scripts/wish.mjs` | state and CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate` (reproduction table, `add`, `resolve`), `freeze [--check]`, `pr-body`, `switch record`, `resume-plan` |
 | `scripts/check-plan.mjs` | plan lint: IS↔QA pairing, `DEVICE:` rows, guard and no-test rows, `HIGH-RISK`, front matter, and gap citation with `--register` |
-| `scripts/sweep.mjs` + `scripts/probes/*.mjs` | the defect-class probe runner: secret canaries, boundary inputs, race and lifetime, error chains, mutation, doc and help, config, draft guard. It writes a lane receipt; a probe also runs standalone |
-| `scripts/check-verdict.mjs` | verdict-line parser: the last non-empty line must be `VERDICT: <APPROVED\|REVISE> round <n> head <sha>` and cover the head; `--require-approved` |
-| `scripts/patch-id.mjs` | `git patch-id --verbatim` comparison and interdiff — whether a verdict covers a patch |
-| `scripts/reuse-check.mjs` | receipt validity: `VALID` when the tree matches, `STALE` from changed files and referrers against the receipt's scope |
 | `scripts/pr-watch.mjs` | PR state machine as NDJSON (`READY`/`WAITING`/`BLOCKED`/`MERGED`/`CLOSED`) that `tool.monitor` subscribes to |
-| `scripts/metrics.mjs` | builds and validates `measurements.csv` and `rounds.csv` rows, detects post-merge rework |
 | `scripts/lib/schema.mjs`, `scripts/lib/store.mjs` | schema validation, atomic writes, pid locking, ledger replay (internal modules) |
 
 ## Layout
@@ -266,10 +263,9 @@ omo-wish/
 │   └── wish/
 │       ├── SKILL.md              # contract + stage map + round rule
 │       ├── playbooks/            # code, design, research, audit, program, lens, revise, resume
-│       ├── references/           # contract, plan-format, ledger, prompts, defect-classes, metrics
-│       └── scripts/              # wish, check-plan, sweep(+probes), check-verdict, patch-id,
-│                                 # reuse-check, pr-watch, metrics, lib/
-├── test/                         # loader, CLI, lint, probe, verdict, reuse, watch and metrics tests
+│       ├── references/           # contract, plan-format, ledger, prompts, defect-classes
+│       └── scripts/              # wish, check-plan, pr-watch, lib/
+├── test/                         # loader, CLI, lint and watch tests
 ├── scripts/
 │   └── verify.mjs                # the real loader plus a --help smoke over every script
 └── docs/
@@ -300,7 +296,10 @@ at a different installation.
 
 ## Experiments
 
-The time targets and quality guards live in `docs/experiments/ledger.md` and `skills/wish/references/metrics.md`.
+The time targets, quality guards and the measured rows live in `docs/experiments/` (ledger, baseline, and
+the `measurements.csv`/`rounds.csv` data of the parked measurement program; the helper that built the rows
+was removed with the v3 cleanup).
+
 The baseline is 104 merged PRs (2026-10-27): median open→merge 92.8 minutes and 40.4% of PRs needing at least one
 final-review REVISE.
 
@@ -308,13 +307,7 @@ A v3 arm is judged on 20 treated PRs and at least 10 alternating control PRs in 
 condition is median open→merge ≤55 minutes **and** REVISE≥1 ≤25% **and** guards 1-5 passing; the cancel condition
 is median ≥92.8 minutes **or** REVISE≥1 ≥40% **or** a guard violation. A value in between extends by 10 PRs once
 and is judged by the same rule. The first program-mode run is diagnostic only, because it has no control group.
-
-Rows are built and checked from the ledger:
-
-```sh
-bun skills/wish/scripts/metrics.mjs export --ledger "$ER/ledger.jsonl" --findings "$ER/findings.tsv" --gaps "$ER/gaps.tsv" --out "$ER/metrics"
-bun skills/wish/scripts/metrics.mjs validate --dir "$ER/metrics"
-```
+Rows are read straight from `<ER>/ledger.jsonl` and `<ER>/findings.tsv` when the program resumes.
 
 ## Customizing
 

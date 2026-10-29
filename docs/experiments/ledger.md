@@ -141,7 +141,7 @@ C1 사전 등록 취소 기준은 위 실험 목록의 C1 행(계속 조건·취
 
 ## wish v2 — 등록 (2026-10-27, M7)
 
-이 절은 위 실험 장부의 **기록을 지우지 않고** v2가 무엇을 계승하고 무엇을 바꾸는지만 적습니다. 위 표의 팔별 취소 기준은 그 팔의 기록으로 그대로 남습니다. v2 본문의 판정 기준은 `skills/wish/references/metrics.md` §5가 권위이고, 이 절은 그 표를 인용하며 숫자를 다시 적지 않습니다.
+이 절은 위 실험 장부의 **기록을 지우지 않고** v2가 무엇을 계승하고 무엇을 바꾸는지만 적습니다. 위 표의 팔별 취소 기준은 그 팔의 기록으로 그대로 남습니다. v2 본문의 판정 기준은 `skills/wish/references/metrics.md` §5가 권위였고(해당 파일은 2026-10-29 v3 블로트 정리에서 삭제됐다), 이 절은 그 표를 인용하며 숫자를 다시 적지 않습니다.
 
 ### 계승
 
@@ -180,5 +180,5 @@ C1 사전 등록 취소 기준은 위 실험 목록의 C1 행(계속 조건·취
 ### 측정 파일
 
 - `measurements.csv`·`rounds.csv`는 이제 M0 계약의 기본 열 뒤에 v2 열(`type, unit, program_id, switch_count, rounds_after_switch, lens_rules, gaps_total, gaps_fixed, before_receipts` / `type, unit, program_id, switch_count, switch_kinds`)을 붙인 헤더를 씁니다.
-- 행은 `bun skills/wish/scripts/metrics.mjs export`가 장부에서 만들고, `validate`가 계약을 검사합니다. 손으로 열을 바꾸지 않습니다.
+- 행은 `bun skills/wish/scripts/metrics.mjs export(2026-10-29 삭제됨)`가 장부에서 만들고, `validate`가 계약을 검사합니다. 손으로 열을 바꾸지 않습니다.
 - 이 디렉터리의 파일은 M7이 소유합니다. M8은 파일럿 **행**만 덧붙이고 기준·열을 바꾸지 않습니다.
