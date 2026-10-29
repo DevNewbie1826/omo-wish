@@ -20,11 +20,22 @@ A sweep row is a **claim, not a verdict** (design §2.6, M0 §4.1):
 | --- | --- | --- |
 | `FAIL` | reproduce it, then file a finding with `blocking=1` and the row's `command` as `repro_cmd` | `FAIL`, exit 1 |
 | `WARN` | file a `note` finding or drop it; it never blocks and never fails the run | `WARN`, exit 0 |
-| `INVALID` | the probe could not decide (a mutation that did not compile, a checker with no machine report); the class returns to the checklist pass | `WARN`, exit 0 — an INVALID row is unproven, so it can never leave the receipt `PASS` and never blocks |
+| `INVALID` | the probe could not decide (a checker with no machine report, a candidate line that no longer exists); the class returns to the checklist pass | `WARN`, exit 0 — an INVALID row is unproven, so it can never leave the receipt `PASS` and never blocks |
 | `SKIP` | the probe did not apply; it never satisfies a required lane | `SKIP`, exit 0 |
 | `PASS` | nothing to file; the PASS is still a claim the reviewer may contradict | `PASS`, exit 0 |
 
 The derivation is fixed: any `FAIL` row makes the lane `FAIL` (exit 1); otherwise any `WARN` or `INVALID` row makes it `WARN` (exit 0); otherwise any `PASS` row makes it `PASS`; otherwise `SKIP`. M0's status set is `PASS|FAIL|WARN|SKIP`, and `PASS` means "every row passed", so an undecided line must cost the lane its PASS.
+
+A **non-candidate** is not a row of that table: it is a line the probe refused before mutating, so no
+claim about a test is made. Two rules produce one:
+
+- A line whose text is entirely comment is never a candidate. A marker test cannot decide that, because a
+  block comment's body carries no marker of its own; the probe reads the file and drops the line.
+- In a compiled language a deletion that cannot build is not a mutation any test could observe. The probe
+  reports those lines as **one `mutation/noncandidate/<file>` row per file** with verdict `SKIP`, naming every
+  line and the reason, and the lane's status is decided by the candidates that were actually probed. That is
+  deliberately not `INVALID`: an unbuildable deletion is a property of the line's shape, not an undecided
+  claim about the suite, so it must not cost the lane its `PASS` on every compiled change.
 
 ## 2. The measured table
 
@@ -69,7 +80,7 @@ Which probes a run may use is fixed by the work type (M0 §3, §5.1):
 | `race` | `S` | the project's own race detector or the crash scan reported something | a race the detector cannot see |
 | `lifecycle` | `S` | no readiness line, a living session survivor after the child exited (including one that moved into its own group), or an exit past the budget; `budgetMs` and `readyTimeoutMs` are clamped to 300 s | a survivor that left the session too |
 | `errors` | `C` | a wrap site hides its cause (`%v`/`%s` instead of `%w`, `new Error(err.message)`, an empty catch); `strict: false` reports `WARN` | whether the message text is useful |
-| `mutation` | `T` | `SURVIVED`: the suite stayed green with one added production line removed. A mutant that does not parse is `INVALID`, never a kill | a test that asserts the wrong thing but still fails on removal |
+| `mutation` | `T` | `SURVIVED`: the suite stayed green with one added production line removed. A line that is comment-only is never a candidate, and in a compiled language a deletion that cannot build is a `mutation/noncandidate/<file>` `SKIP` row, never a kill | a test that asserts the wrong thing but still fails on removal |
 | `docs` | `DOC` | a documented flag is in neither the help output nor the `known` list | whether the prose describes the behavior correctly |
 | `config` | `CFG` | the program accepted a declared reject case, or rejected a declared accept case | keys nobody declared a case for |
 | `draft-guard` | design rules (`edge-stripe`, `promo-copy`, …), never `taste` | the omo `frontend` draft-guard checker exited 1 for the declared targets | anything the checker has no rule for |
@@ -79,10 +90,12 @@ report-only lane in M5's prompts, because judging a category needs a reader. `dr
 probe that is machine-decidable end to end, because its decision is an exit code.
 
 `errors` and `mutation` look at **added production source lines** only: a line whose file matches the test
-globs, or whose extension is not a source extension, is skipped (`testGlobs` and `codeExtensions` in the
-config override both). Two reasons, both measured by this module's own first sweep: mutating a documentation
-line demands a test that pins prose (which the flow forbids, and prose lines were consuming the mutation cap),
-and scanning a test file reports its fixture needles as production wraps.
+globs, whose extension is not a source extension, or whose text is entirely comment is skipped (`testGlobs`,
+`codeExtensions` and the file's own comment syntax). Three reasons, each measured by this module's own first
+sweep: mutating a documentation line demands a test that pins prose (which the flow forbids, and prose lines
+were consuming the mutation cap), scanning a test file reports its fixture needles as production wraps, and a
+comment-only line demands a kill no test could ever give — a block comment's body carries no marker, so a
+marker test let it through and the lane failed on it.
 
 `draft-guard` takes its checker from `probes.draft-guard.checker` or `SWEEP_DRAFT_GUARD`, so this file names
 no install path. Its rules must follow the omo `frontend` draft-guard contract: exit 0 clean, 1 findings, 2
