@@ -1361,6 +1361,27 @@ describe("metrics delegation", () => {
     expect(unaccepted.err).toContain("unknown option for export: --plan");
   });
 
+  test("an option operand is never read as a wish flag", () => {
+    const state = runNamingPr(51);
+    const out = join(state.box.dir, "metrics");
+    // `--arm` takes a value, so `--ledger` here is that value: the run's own ledger must
+    // still be injected, and the operand must reach metrics.mjs untouched.
+    const operandLedger = cli(["metrics", "export", "--root", state.root, "--arm", "--ledger", "--out", out]);
+    expect(operandLedger.code).toBe(0);
+    expect(measurementRow(out).pr).toBe("51");
+    expect(measurementRow(out).arm).toBe("--ledger");
+    // `--arm --root` is the same hazard on the CLI's own flag: it is a value, not a root.
+    const named = runNamingPr(77);
+    const out2 = join(named.box.dir, "metrics");
+    const operandRoot = cli([
+      "metrics", "export", "--ledger", join(named.root, "ledger.jsonl"),
+      "--arm", "--root", "--out", out2,
+    ], { env: { WISH_EVIDENCE_ROOT: "" } });
+    expect(operandRoot.code).toBe(0);
+    expect(measurementRow(out2).pr).toBe("77");
+    expect(measurementRow(out2).arm).toBe("--root");
+  });
+
   test("the other metrics subcommands keep their verbatim delegation", () => {
     const state = runNamingPr(51);
     const out = join(state.box.dir, "metrics");

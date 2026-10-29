@@ -1151,47 +1151,54 @@ function verbResumePlan(parsed, root) {
   return null;
 }
 
-// `--root` is the wish CLI's own flag, not metrics.mjs's. Only `metrics export`
-// consumes it (see metricsArgv); every other delegated call still hands its argv over
-// unchanged, so a module script keeps rejecting what it never accepted.
-const SHARED_FLAGS = Object.freeze(["--root"]);
-
-function splitSharedFlags(argv) {
-  const kept = [];
-  const shared = {};
-  for (let index = 0; index < argv.length; index += 1) {
-    const arg = argv[index];
-    const eq = arg.startsWith("--") ? arg.indexOf("=") : -1;
-    const name = eq === -1 ? arg : arg.slice(0, eq);
-    if (!SHARED_FLAGS.includes(name)) {
-      kept.push(arg);
-      continue;
-    }
-    let value;
-    if (eq !== -1) value = arg.slice(eq + 1);
-    else {
-      value = argv[index + 1];
-      index += 1;
-      if (value === undefined) throw usage(`${name} needs a value`);
-    }
-    if (shared[name] !== undefined) throw usage(`${name} given twice`);
-    shared[name] = value;
-  }
-  return { kept, shared };
-}
+// The flags `metrics.mjs export` accepts, and which of them take a value. The wish CLI
+// needs this table for one reason: an option's operand is that option's value, so a token
+// spelled `--root` or `--ledger` in that position is data, never a wish flag. Without it,
+// `--arm --ledger` read as an explicit ledger and `--arm --root` threw on a missing value.
+const METRICS_EXPORT_VALUE_FLAGS = Object.freeze([
+  "--ledger", "--findings", "--gaps", "--out", "--unit", "--repo", "--arm",
+  "--type", "--program-id", "--extra",
+]);
 
 // `metrics export` is the one documented form that names no ledger: the run's ledger is
 // this CLI's own state (`rootPaths(root).ledger`), so the CLI resolves the same root every
 // other verb uses and supplies it. An explicit `--ledger` still wins and needs no root at
-// all, and every option metrics.mjs accepts reaches it unchanged. A subcommand other than
-// export keeps today's verbatim argv.
+// all, and every option metrics.mjs accepts reaches it unchanged, operands included. A
+// subcommand other than export keeps today's verbatim argv.
 function metricsArgv(argv) {
   if (argv[0] !== "export") return argv;
-  const { kept, shared } = splitSharedFlags(argv.slice(1));
-  const named = kept.some((arg) => arg === "--ledger" || arg.startsWith("--ledger="));
-  if (named) return ["export", ...kept];
-  const root = resolveRootValue(shared["--root"]);
-  return ["export", ...kept, "--ledger", rootPaths(root).ledger];
+  const kept = [];
+  let root;
+  let ledgerNamed = false;
+  const rest = argv.slice(1);
+  for (let index = 0; index < rest.length; index += 1) {
+    const arg = rest[index];
+    const eq = arg.startsWith("--") ? arg.indexOf("=") : -1;
+    const name = eq === -1 ? arg : arg.slice(0, eq);
+    if (name === "--root") {
+      if (root !== undefined) throw usage("--root given twice");
+      if (eq !== -1) {
+        root = arg.slice(eq + 1);
+        continue;
+      }
+      const value = rest[index + 1];
+      if (value === undefined) throw usage("--root needs a value");
+      root = value;
+      index += 1;
+      continue;
+    }
+    if (name === "--ledger") ledgerNamed = true;
+    kept.push(arg);
+    // Take the operand with its flag, so the next iteration cannot read it as a flag.
+    if (eq === -1 && METRICS_EXPORT_VALUE_FLAGS.includes(arg)) {
+      const value = rest[index + 1];
+      if (value === undefined) throw usage(`${arg} needs a value`);
+      kept.push(value);
+      index += 1;
+    }
+  }
+  if (ledgerNamed) return ["export", ...kept];
+  return ["export", ...kept, "--ledger", rootPaths(resolveRootValue(root)).ledger];
 }
 
 // `reuse-check` (M4) and `metrics` (M7) are other modules' scripts. M1 owns the
