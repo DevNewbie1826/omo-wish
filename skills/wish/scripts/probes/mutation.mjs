@@ -38,9 +38,10 @@ Only added production source lines are candidates: prose, comment-only lines and
 test files are never mutated, because a doc or comment line would demand a test
 that pins prose and a test line would demand a test of its own fixtures. A line is
 dropped as comment only when the language's own tool proves it carries no code:
-the file is compiled with that line removed and the result must be identical. A
-language with no such tool on this machine keeps every line, so a real survivor is
-never hidden.
+the line is replaced with a code-free line and the program must come out
+identical. A language with no such tool on this machine falls back to the comment
+heuristic, and every exclusion it makes is disclosed as one
+mutation/unverified/<file> WARN row, so the lane can read WARN but never PASS.
 "testGlobs" and "codeExtensions" override that filter. At most 12 production lines
 are probed whatever "max" says (a lower "max" is honoured: tier S declares 3); the
 rest are reported as one WARN row so an unprobed line can never read as covered.`;

@@ -693,20 +693,24 @@ export function carriesNoCode(source, file) {
     if (original !== null && line >= 1 && line <= lines.length) {
       if (!lines[line - 1].trim()) verdict = true;
       else {
+        // One rung that leaves the program identical is proof, and no later rung can overturn
+        // it: the rungs are alternatives, so a rung that differs is not evidence the line
+        // carries code. Reading "any rung differs" as decisive made every C comment opener
+        // read as code, because replacing "/* note" with "" leaves a stray "*/" token.
         let decided = false;
-        let changed = false;
+        let equal = false;
         for (const proposal of proposals) {
           const copy = [...lines];
           copy[line - 1] = proposal;
           const mutated = compile(copy.join("\n"));
           if (mutated === null) continue;
           decided = true;
-          if (mutated !== original) {
-            changed = true;
+          if (mutated === original) {
+            equal = true;
             break;
           }
         }
-        verdict = decided ? !changed : null;
+        verdict = equal ? true : (decided ? false : null);
       }
     }
     cache.set(line, verdict);

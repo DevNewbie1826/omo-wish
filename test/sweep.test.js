@@ -1,5 +1,5 @@
 import { afterAll, expect, test } from "bun:test";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -407,7 +407,7 @@ test("a receipt written into a directory takes the canonical filename", () => {
   const explicit = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", canonical, "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   expect(explicit.exit).toBe(0);
   expect(existsSync(canonical)).toBe(true);
-});
+}, 120000);
 
 test("no derivable head is a state mismatch, not a usage error", () => {
   const dir = stage("clean");
@@ -555,9 +555,9 @@ The transport may refuse the request; the failure never echoes the credential.
   expect(git("commit", "-q", "-m", "add the comment").exitCode).toBe(0);
   writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", base: "HEAD~1" } } });
   const derived = sweepOnce();
-  // The comment body is gone from the candidate list; the delimiters themselves stay,
-  // because deleting a lone "/*" makes the file unparseable and the oracle refuses to
-  // decide. That is the safe direction: it costs a noise row, never a hidden survivor.
+  // The comment body and its delimiters are gone from the candidate list: the oracle's
+  // proposal ladder replaces a lone "/*" or "*/" with a code-free line, so a delimiter is
+  // decided like any other comment line.
   expect(derived.receipt.rows.some((entry) => entry.id === `mutation/cli.js:${comment}`)).toBe(false);
   expect(derived.receipt.rows.some((entry) => entry.verdict === "FAIL")).toBe(false);
   expect(derived.exit).toBe(0);
@@ -887,6 +887,42 @@ test("a line that opens a block comment and carries code after it is still code"
   expect(receipt.rows.some((entry) => entry.id === "mutation" && entry.verdict === "SKIP")).toBe(false);
   expect(run.exit).toBe(0);
 }, 120000);
+
+test("the front-end oracle drops a comment body and keeps code in every language it decides", () => {
+  // Each case names the comment lines and the code lines. A lone block delimiter is only
+  // decidable through the proposal ladder, so it is asserted explicitly: without the ladder
+  // every "/*" and "*/" reads as undecided and stays a candidate.
+  const cases = [
+    ["a.js", ["const a = 1;", "/* note", "body", "*/", "const b = 2;", ""], [2, 3, 4], [1, 5]],
+    ["a.js", ["/**", " * doc", " */", "export const a = 1;", ""], [1, 2, 3], [4]],
+    ["a.py", ["x = 1", "# note", "y = 2", ""], [2], [1, 3]],
+    ["a.c", ["int a = 1;", "/* note", "body", "*/", "int b = 2;", ""], [2, 3, 4], [1, 5]],
+  ];
+  for (const [file, lines, comments, code] of cases) {
+    const judge = carriesNoCode(lines.join("\n") + "\n", file);
+    for (const line of comments) expect(judge(line)).toBe(true);
+    for (const line of code) expect(judge(line)).toBe(false);
+    judge.dispose?.();
+  }
+}, 30000);
+
+test("the C adapter keeps a preprocessor body and passes an include through", () => {
+  const source = ["#include <stdio.h>", "int main(void) {", "#ifdef DEBUG", "  int x = 1;", "#endif", "  return 0;", "}", ""].join("\n");
+  const judge = carriesNoCode(source, "a.c");
+  expect(judge(4)).toBe(false);
+  expect(judge(6)).toBe(false);
+  expect(judge(1)).toBe(false);
+  judge.dispose?.();
+}, 30000);
+
+test("the oracle leaves no scratch directory behind", () => {
+  const before = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
+  const judge = carriesNoCode("const a = 1;\n/* c\n*/\n", "a.js");
+  judge(2);
+  judge.dispose?.();
+  const after = readdirSync(tmpdir()).filter((name) => name.startsWith("wish-lines-")).length;
+  expect(after).toBe(before);
+}, 30000);
 
 test("a language with no front-end drops a comment line but discloses the exclusion", () => {
   const dir = stage("clean");
