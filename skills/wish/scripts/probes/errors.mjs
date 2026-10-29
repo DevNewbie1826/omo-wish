@@ -20,13 +20,9 @@ export const usage = `config:
   } }
 
 Reads the added production source lines of "git diff <base>...HEAD" unless "lines"
-are declared ("base" must be a revision, never an option). Prose, comment-only
-lines and test files are not scanned: a test file's own fixture text is not a
-production wrap, a comment is not a wrap site, and no prose line may demand a
-test. A line counts as comment only when the language's own tool proves deleting
-it changes nothing; a language with no such tool falls back to the comment
-heuristic and discloses every exclusion as one errors/unverified/<file> WARN row.
-"testGlobs" and "codeExtensions" override that filter.
+are declared ("base" must be a revision, never an option). Prose and test files are
+not scanned: a test file's own fixture text is not a production wrap, and no prose
+line may demand a test. "testGlobs" and "codeExtensions" override that filter.
 "strict": true makes a match FAIL; otherwise it is a WARN memo. The default
 patterns are: a formatter that re-wraps with %v or %s instead of %w, a constructor
 that re-wraps only the message, and an empty catch.`;
