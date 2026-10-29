@@ -1231,7 +1231,13 @@ export function deriveNext(stage, context) {
   const last = rounds[rounds.length - 1];
   if (last && last.verdict === "APPROVED") {
     const merged = events.some((event) => event.event === "merge" && event.unit === unit);
-    if (!merged) return "merge";
+    if (!merged) {
+      // A verdict covers only the head it judged: a set frozen head the branch left, or a
+      // verdict a later freeze passed, is unreviewed content and answers the re-review path.
+      if (head && frozenHead && frozenHead !== head) return "freeze";
+      if (head && !verdictCoversHead(context)) return context.lanes.ok ? "round" : "verify_lane";
+      return "merge";
+    }
     const posted = events.some((event) => event.event === "post_merge" && event.unit === unit);
     if (!posted) return "post_merge";
     const checkpoint = [...events].reverse().find((event) => event.event === "checkpoint" && event.unit === unit);
@@ -1267,6 +1273,24 @@ export function codeReviewAt(receipts, unit, head) {
 function codeReviewMissing({ receipts, requiredLanes, unit, frozenHead, tree }) {
   return requiredLanes.includes("code-review")
     && (!frozenHead || !codeReviewAt(receipts, unit, frozenHead).some((receipt) => receipt.body.tree === tree));
+}
+
+// A verdict is valid only for the head it reviewed: it covers the frozen head and the
+// observed one, and the round it closes is only complete once that review says APPROVED.
+function lastRoundOf(context) {
+  const rounds = roundsOf(context.events, context.unit);
+  return rounds[rounds.length - 1];
+}
+
+function verdictCoversHead(context) {
+  const last = lastRoundOf(context);
+  if (!last) return false;
+  return (!context.frozenHead || last.head === context.frozenHead)
+    && (!context.head || last.head === context.head);
+}
+
+function approvedCoversHead(context) {
+  return lastRoundOf(context)?.verdict === "APPROVED" && verdictCoversHead(context);
 }
 
 export function requireCodeReview(context) {
@@ -1377,11 +1401,11 @@ export function blockingFor(context) {
       || STAGE_ORDER.indexOf(context.stage) >= STAGE_ORDER.indexOf("freeze"))) {
     reasons.push(frozenHead ? `order:code-review missing at ${frozenHead.slice(0, 7)}` : "order:freeze missing before round");
   }
-  if (frozenHead) {
-    if (!last) reasons.push("verdict:missing");
-    else if (last.head !== frozenHead) {
-      reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", frozenHead.slice(0, 7)));
-    }
+  const verdictTarget = head ?? frozenHead;
+  const merged = events.some((event) => event.event === "merge" && event.unit === unit);
+  if (!merged && frozenHead && !last) reasons.push("verdict:missing");
+  else if (!merged && last && verdictTarget && !verdictCoversHead(context)) {
+    reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", verdictTarget.slice(0, 7)));
   }
   if (frozenHead && head && frozenHead !== head) reasons.push("head:moved");
   if (last && last.verdict === "REVISE" && last.round >= 3
@@ -1414,7 +1438,7 @@ function stageComplete(stage, context) {
     case "fix": return !stageApplies("fix", context) || has("fix");
     case "freeze": return Boolean(frozenHead) && has("freeze") && (!head || frozenHead === head);
     case "pr_open": return has("pr_open");
-    case "round": return has("round") && !codeReviewMissing(context);
+    case "round": return has("round") && !codeReviewMissing(context) && approvedCoversHead(context);
     case "merge": return has("merge");
     case "post_merge": return has("post_merge");
     case "checkpoint": return has("checkpoint", (event) => event.checkpoint_op === "complete");
@@ -1560,13 +1584,22 @@ export function progressLine(status, pr) {
 
 // ---------------------------------------------------------------- resume plan
 
+// After an APPROVED verdict no round may follow, so the in-run remedy is the head that
+// verdict judged, never a dispatch the ledger sequence refuses.
+function approvedRestore(last) {
+  return "restore the head the APPROVED verdict judged (".concat(String(last.head).slice(0, 7), "), because a round may not follow APPROVED");
+}
+
 // §2.9: the first invalid stage plus the actions that clear it. 'status' says
 // what is true; 'resume-plan' says where to start again.
 export function resumePlan({ status, contexts, unitStates, unit }) {
-  void contexts;
   // One unit's answer must name that unit's own missing step: a sibling's state is
   // not a resume instruction.
   const state = unitStates.find((entry) => entry.id === unit) ?? unitStates[0];
+  const context = contexts.find((entry) => entry.unit === unit) ?? contexts[0];
+  const rounds = context ? roundsOf(context.events, context.unit) : [];
+  const last = rounds[rounds.length - 1];
+  const merged = context ? context.events.some((event) => event.event === "merge" && event.unit === context.unit) : false;
   const firstInvalid = state ? state.firstInvalid : "intake";
   const actions = [];
   for (const reason of status.blocking) {
@@ -1586,9 +1619,9 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
     } else if (reason.startsWith("order:")) {
       actions.push("run the code-review lane at the frozen head ".concat(reason.slice("order:code-review missing at ".length)));
     } else if (reason.startsWith("verdict:")) {
-      actions.push("dispatch the final review on the frozen head");
+      if (!merged) actions.push(last?.verdict === "APPROVED" ? approvedRestore(last) : "dispatch the final review on the frozen head");
     } else if (reason === "head:moved") {
-      actions.push("freeze the new head, or rebase back to the frozen one");
+      if (!merged) actions.push(last?.verdict === "APPROVED" ? approvedRestore(last) : "freeze the new head, or rebase back to the frozen one");
     } else {
       actions.push(reason);
     }

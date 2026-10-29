@@ -4,7 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  appendEvent, codeReviewAt, computeStatus, firstInvalidStage, mergeFrontMatter, rootPaths, writeFrontMatter,
+  appendEvent, codeReviewAt, computeStatus, firstInvalidStage, mergeFrontMatter, resumePlan, rootPaths,
+  writeFrontMatter,
 } from "../skills/wish/scripts/lib/store.mjs";
 
 const HEAD = "0123456789abcdef0123456789abcdef01234567";
@@ -54,6 +55,19 @@ function lane(state, name, patch = {}) {
 
 function view(state) {
   return computeStatus({ root: state.root, planPath: state.planPath, head: HEAD, tree: TREE });
+}
+
+// The stages before the verify wave, so the first-invalid answer reaches the round.
+function earlierStages(state) {
+  record(state, { event: "collect", sources: 1, elements: 1, report: join(state.root, "collect.md") });
+  record(state, { event: "define", round: 0, ideal: 1, gaps: 0, report: join(state.root, "define.md") });
+  record(state, { event: "plan", artifact: state.planPath });
+  record(state, { event: "plan_lint", verdict: "PASS" });
+  record(state, { event: "plan_review", verdict: "OKAY" });
+  record(state, { event: "decide", count: 0, gates: [], recommended: [] });
+  record(state, { event: "goal", artifact: "goal:order-test" });
+  record(state, { event: "build", task: "n-order", head: HEAD });
+  record(state, { event: "triage" });
 }
 
 function cli(state, args, input) {
@@ -209,7 +223,7 @@ test("collect and define receipts gate the plan stage", () => {
   expect(view(state).status.next).toBe("plan");
 });
 
-test("a research unit reaches round with neither a frozen head nor a code review receipt", () => {
+test("a research unit without a freeze reaches round, merges an unchanged artifact and re-reviews a moved one", () => {
   const root = mkdtempSync(join(tmpdir(), "round-research-"));
   roots.push(root);
   const planPath = join(root, "plan.md");
@@ -248,4 +262,78 @@ test("a research unit reaches round with neither a frozen head nor a code review
     .toMatchObject({ event: "round", round: 1 });
   expect(observed().next).toBe("merge");
   expect(observed().blocking.some((reason) => reason.startsWith("order:"))).toBe(false);
+  const MOVED_SHA = "b".repeat(64);
+  const moved = computeStatus({ root, planPath, head: MOVED_SHA, tree: null });
+  expect(moved.status.next).toBe("verify_lane");
+  expect(moved.unitStates[0].firstInvalid).toBe("verify_lane");
+  expect(moved.status.blocking).toContain(`verdict:round 1 head does not cover ${MOVED_SHA.slice(0, 7)}`);
+  expect(moved.status.progress.waiting).not.toContain("merge go");
+});
+
+test("an APPROVED round at a head the freeze does not cover never advises merge", () => {
+  const state = scene();
+  earlierStages(state);
+  for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name);
+  record(state, { event: "round", round: 1, verdict: "APPROVED", head: HEAD });
+  const frozen = view(state).status;
+  expect(frozen.next).toBe("merge");
+  expect(frozen.progress.waiting).toContain("merge go");
+
+  const MOVED = "2".repeat(40);
+  const MOVED_TREE = "3".repeat(40);
+  const moved = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
+  expect(moved.status.next).toBe("freeze");
+  expect(moved.unitStates[0].firstInvalid).not.toBe("merge");
+  expect(moved.status.blocking).toContain("head:moved");
+  expect(moved.status.blocking).toContain(`verdict:round 1 head does not cover ${MOVED.slice(0, 7)}`);
+  expect(moved.status.progress.waiting).toBe("none");
+
+  const resumed = resumePlan({
+    status: moved.status, contexts: moved.contexts, unitStates: moved.unitStates, unit: "u1",
+  });
+  expect(resumed.actions.some((action) => action.includes("dispatch the final review"))).toBe(false);
+  expect(resumed.actions.some((action) => action.includes(`restore the head the APPROVED verdict judged (${HEAD.slice(0, 7)})`)))
+    .toBe(true);
+});
+
+test("an APPROVED verdict that predates a re-freeze asks for the lanes and names the uncovered head", () => {
+  const state = scene();
+  earlierStages(state);
+  for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name);
+  record(state, { event: "round", round: 1, verdict: "APPROVED", head: HEAD });
+
+  const MOVED = "2".repeat(40);
+  const MOVED_TREE = "3".repeat(40);
+  mergeFrontMatter(state.planPath, { frozen_head: MOVED });
+  const refrozen = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
+  expect(refrozen.status.next).toBe("verify_lane");
+  expect(refrozen.unitStates[0].firstInvalid).toBe("verify_lane");
+  expect(refrozen.status.blocking).toContain(`verdict:round 1 head does not cover ${MOVED.slice(0, 7)}`);
+  expect(refrozen.status.progress.waiting).toBe("none");
+
+  for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name, { head: MOVED, tree: MOVED_TREE });
+  const reviewed = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
+  expect(reviewed.status.next).toBe("round");
+  expect(reviewed.unitStates[0].firstInvalid).toBe("round");
+  expect(reviewed.status.progress.waiting).toBe("verdict on #1");
+});
+
+test("a merged unit carries no verdict advice and no restore action", () => {
+  const state = scene();
+  earlierStages(state);
+  for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name);
+  record(state, { event: "round", round: 1, verdict: "APPROVED", head: HEAD });
+  record(state, { event: "merge", sha: HEAD, merged_at: AT, pr: 1, head: HEAD });
+
+  const MOVED = "2".repeat(40);
+  const MOVED_TREE = "3".repeat(40);
+  const moved = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
+  expect(moved.status.next).toBe("post_merge");
+  expect(moved.status.blocking.some((reason) => reason.startsWith("verdict:"))).toBe(false);
+
+  const resumed = resumePlan({
+    status: moved.status, contexts: moved.contexts, unitStates: moved.unitStates, unit: "u1",
+  });
+  expect(resumed.actions.some((action) => action.includes("restore the head the APPROVED verdict judged"))).toBe(false);
+  expect(resumed.actions.some((action) => action.includes("dispatch the final review"))).toBe(false);
 });
