@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
 import {
-  carriesNoCode, clampMs, commentOnlyLines, ctxFor, killSession, liveScratch, q, runCommand,
+  carriesNoCode, clampMs, commentOnlyLines, commentPolicy, ctxFor, killSession, liveScratch, q, runCommand,
   sessionMembers, sweepBudget,
 } from "../skills/wish/scripts/probes/lib.mjs";
 import { COMPILED_EXTENSIONS } from "../skills/wish/scripts/probes/mutation.mjs";
@@ -969,6 +969,60 @@ test("the oracle leaves no scratch directory behind", () => {
   judge.dispose?.();
   expect(liveScratch()).toBe(before);
 }, 30000);
+
+test("the errors probe discloses an exclusion it did not prove", () => {
+  const dir = stage("clean");
+  // Rust has no front-end here, so the comment decision is a heuristic and the line the
+  // heuristic dropped must be named in one errors/unverified row, or the lane would read
+  // PASS on an exclusion nothing proved.
+  writeFileSync(join(dir, "source.rs"), [
+    "fn main() {",
+    "/* a comment",
+    "comment body",
+    "*/",
+    "    let live = 1;",
+    "}",
+    "",
+  ].join("\n"));
+  const body = lineOf(dir, "source.rs", "comment body");
+  const code = lineOf(dir, "source.rs", "let live");
+  writeConfig(dir, { probes: { errors: { strict: true, lines: [
+    { file: "source.rs", line: body }, { file: "source.rs", line: code },
+  ] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const disclosed = receipt.rows.find((entry) => entry.id === "errors/unverified/source.rs");
+  expect(disclosed.verdict).toBe("WARN");
+  expect(disclosed.note).toContain(String(body));
+  expect(receipt.status).toBe("WARN");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("the errors probe reports nothing probed when only exclusions remain", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "source.rs"), [
+    "fn main() {",
+    "/* a comment */",
+    "}",
+    "",
+  ].join("\n"));
+  const body = lineOf(dir, "source.rs", "a comment");
+  writeConfig(dir, { probes: { errors: { strict: true, lines: [{ file: "source.rs", line: body }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(verdictOf(receipt, "errors")).toBe("SKIP");
+  expect(receipt.rows.some((entry) => entry.id === "errors/unverified/source.rs")).toBe(true);
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a language with a closed grammar is scanned, one with a front-end is asked, the rest guessed", () => {
+  // The three-way choice is a property of the language, and a caller reading PASS depends
+  // on it: Go must never fall to the heuristic, or its exclusions would be undisclosed.
+  expect(commentPolicy("watch.go")).toBe("scanner");
+  expect(commentPolicy("cli.js")).toBe("oracle");
+  expect(commentPolicy("guard.c")).toBe("oracle");
+  expect(commentPolicy("lib.rs")).toBe("heuristic");
+});
 
 test("a language with no front-end drops a comment line but discloses the exclusion", () => {
   const dir = stage("clean");
