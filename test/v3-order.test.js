@@ -57,6 +57,19 @@ function view(state) {
   return computeStatus({ root: state.root, planPath: state.planPath, head: HEAD, tree: TREE });
 }
 
+// The stages before the verify wave, so the first-invalid answer reaches the round.
+function earlierStages(state) {
+  record(state, { event: "collect", sources: 1, elements: 1, report: join(state.root, "collect.md") });
+  record(state, { event: "define", round: 0, ideal: 1, gaps: 0, report: join(state.root, "define.md") });
+  record(state, { event: "plan", artifact: state.planPath });
+  record(state, { event: "plan_lint", verdict: "PASS" });
+  record(state, { event: "plan_review", verdict: "OKAY" });
+  record(state, { event: "decide", count: 0, gates: [], recommended: [] });
+  record(state, { event: "goal", artifact: "goal:order-test" });
+  record(state, { event: "build", task: "n-order", head: HEAD });
+  record(state, { event: "triage" });
+}
+
 function cli(state, args, input) {
   const result = spawnSync(process.execPath, [
     join(import.meta.dir, "..", "skills", "wish", "scripts", "wish.mjs"),
@@ -250,13 +263,16 @@ test("a research unit without a freeze reaches round, merges an unchanged artifa
   expect(observed().next).toBe("merge");
   expect(observed().blocking.some((reason) => reason.startsWith("order:"))).toBe(false);
   const MOVED_SHA = "b".repeat(64);
-  const moved = computeStatus({ root, planPath, head: MOVED_SHA, tree: null }).status;
-  expect(moved.next).toBe("verify_lane");
-  expect(moved.progress.waiting).not.toContain("merge go");
+  const moved = computeStatus({ root, planPath, head: MOVED_SHA, tree: null });
+  expect(moved.status.next).toBe("verify_lane");
+  expect(moved.unitStates[0].firstInvalid).toBe("verify_lane");
+  expect(moved.status.blocking).toContain(`verdict:round 1 head does not cover ${MOVED_SHA.slice(0, 7)}`);
+  expect(moved.status.progress.waiting).not.toContain("merge go");
 });
 
 test("an APPROVED round at a head the freeze does not cover never advises merge", () => {
   const state = scene();
+  earlierStages(state);
   for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name);
   record(state, { event: "round", round: 1, verdict: "APPROVED", head: HEAD });
   const frozen = view(state).status;
@@ -267,6 +283,7 @@ test("an APPROVED round at a head the freeze does not cover never advises merge"
   const MOVED_TREE = "3".repeat(40);
   const moved = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
   expect(moved.status.next).toBe("freeze");
+  expect(moved.unitStates[0].firstInvalid).not.toBe("merge");
   expect(moved.status.blocking).toContain("head:moved");
   expect(moved.status.blocking).toContain(`verdict:round 1 head does not cover ${MOVED.slice(0, 7)}`);
   expect(moved.status.progress.waiting).toBe("none");
@@ -281,6 +298,7 @@ test("an APPROVED round at a head the freeze does not cover never advises merge"
 
 test("an APPROVED verdict that predates a re-freeze asks for the lanes and names the uncovered head", () => {
   const state = scene();
+  earlierStages(state);
   for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name);
   record(state, { event: "round", round: 1, verdict: "APPROVED", head: HEAD });
 
@@ -289,11 +307,13 @@ test("an APPROVED verdict that predates a re-freeze asks for the lanes and names
   mergeFrontMatter(state.planPath, { frozen_head: MOVED });
   const refrozen = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
   expect(refrozen.status.next).toBe("verify_lane");
+  expect(refrozen.unitStates[0].firstInvalid).toBe("verify_lane");
   expect(refrozen.status.blocking).toContain(`verdict:round 1 head does not cover ${MOVED.slice(0, 7)}`);
   expect(refrozen.status.progress.waiting).toBe("none");
 
   for (const name of ["tests", "qa", "sweep", "code-review"]) lane(state, name, { head: MOVED, tree: MOVED_TREE });
   const reviewed = computeStatus({ root: state.root, planPath: state.planPath, head: MOVED, tree: MOVED_TREE });
   expect(reviewed.status.next).toBe("round");
+  expect(reviewed.unitStates[0].firstInvalid).toBe("round");
   expect(reviewed.status.progress.waiting).toBe("verdict on #1");
 });

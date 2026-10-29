@@ -1235,7 +1235,7 @@ export function deriveNext(stage, context) {
       // A verdict covers only the head it judged: a set frozen head the branch left, or a
       // verdict a later freeze passed, is unreviewed content and answers the re-review path.
       if (head && frozenHead && frozenHead !== head) return "freeze";
-      if (head && last.head !== head) return context.lanes.ok ? "round" : "verify_lane";
+      if (head && !verdictCoversHead(context)) return context.lanes.ok ? "round" : "verify_lane";
       return "merge";
     }
     const posted = events.some((event) => event.event === "post_merge" && event.unit === unit);
@@ -1273,6 +1273,24 @@ export function codeReviewAt(receipts, unit, head) {
 function codeReviewMissing({ receipts, requiredLanes, unit, frozenHead, tree }) {
   return requiredLanes.includes("code-review")
     && (!frozenHead || !codeReviewAt(receipts, unit, frozenHead).some((receipt) => receipt.body.tree === tree));
+}
+
+// A verdict is valid only for the head it reviewed: it covers the frozen head and the
+// observed one, and the round it closes is only complete once that review says APPROVED.
+function lastRoundOf(context) {
+  const rounds = roundsOf(context.events, context.unit);
+  return rounds[rounds.length - 1];
+}
+
+function verdictCoversHead(context) {
+  const last = lastRoundOf(context);
+  if (!last) return false;
+  return (!context.frozenHead || last.head === context.frozenHead)
+    && (!context.head || last.head === context.head);
+}
+
+function approvedCoversHead(context) {
+  return lastRoundOf(context)?.verdict === "APPROVED" && verdictCoversHead(context);
 }
 
 export function requireCodeReview(context) {
@@ -1384,11 +1402,9 @@ export function blockingFor(context) {
     reasons.push(frozenHead ? `order:code-review missing at ${frozenHead.slice(0, 7)}` : "order:freeze missing before round");
   }
   const verdictTarget = head ?? frozenHead;
-  if (frozenHead) {
-    if (!last) reasons.push("verdict:missing");
-    else if (last.head !== frozenHead || last.head !== verdictTarget) {
-      reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", verdictTarget.slice(0, 7)));
-    }
+  if (frozenHead && !last) reasons.push("verdict:missing");
+  else if (last && verdictTarget && !verdictCoversHead(context)) {
+    reasons.push("verdict:round ".concat(String(last.round), " head does not cover ", verdictTarget.slice(0, 7)));
   }
   if (frozenHead && head && frozenHead !== head) reasons.push("head:moved");
   if (last && last.verdict === "REVISE" && last.round >= 3
@@ -1421,7 +1437,7 @@ function stageComplete(stage, context) {
     case "fix": return !stageApplies("fix", context) || has("fix");
     case "freeze": return Boolean(frozenHead) && has("freeze") && (!head || frozenHead === head);
     case "pr_open": return has("pr_open");
-    case "round": return has("round") && !codeReviewMissing(context);
+    case "round": return has("round") && !codeReviewMissing(context) && approvedCoversHead(context);
     case "merge": return has("merge");
     case "post_merge": return has("post_merge");
     case "checkpoint": return has("checkpoint", (event) => event.checkpoint_op === "complete");

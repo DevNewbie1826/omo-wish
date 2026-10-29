@@ -429,8 +429,11 @@ when `frozen_head` is set, the frozen head. When a set frozen head no longer equ
 `blocking` carries `head:moved` and `next` returns `freeze`; when the freeze moved past the verdict, `blocking`
 carries `verdict:round <n> head does not cover <head7>` and `next` returns `verify_lane` until the lanes hold at
 that head, then `round`. The reason names the observed head when it is known, so a second move still produces
-one line. `PROGRESS:`'s `waiting` follows `next`, and `resume-plan` answers an APPROVED verdict reason and
-`head:moved` with restoring the head the verdict judged, because no round may follow `APPROVED` (§9.4).
+one line, and a unit with no frozen head (research) gets the same reason from its artifact sha. The `round`
+stage is complete only when its last verdict is `APPROVED` and covers those heads, so the first-invalid answer
+of that state is never `merge`. `PROGRESS:`'s `waiting` follows `next`, and `resume-plan` answers an APPROVED
+verdict reason and `head:moved` with restoring the head the verdict judged, because no round may follow
+`APPROVED` (§9.4).
 
 ## 10. Shared experiment columns
 
