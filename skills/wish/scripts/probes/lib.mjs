@@ -812,10 +812,6 @@ export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExten
   return kept;
 }
 
-export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, max = 12, root = null } = {}) {
-  return productionLines(raw, { testGlobs, codeExtensions, root }).slice(0, max);
-}
-
 export function lineBody(ctx, entry) {
   if (entry.text !== undefined) return entry.text;
   const file = resolve(ctx.root, entry.file);
