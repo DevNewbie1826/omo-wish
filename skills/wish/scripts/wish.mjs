@@ -110,7 +110,11 @@ const VERB_USAGE = {
     "switch record --round <n> --kind <premise|family|strategy|split|rediscover> --premise <text> --new-approach <text>",
     "     Record an approach switch. A cap is a switch, never an exit (§9.4).",
   ],
-  metrics: ["metrics export [--out <dir>] | metrics post-merge --days <n> [--pr <n>]", "     Delegates to scripts/metrics.mjs (module M7)."],
+  metrics: [
+    "metrics export [--out <dir>] [--ledger <path>] | metrics post-merge --days <n> [--pr <n>]",
+    "     Delegates to scripts/metrics.mjs (module M7). export reads the run's own ledger",
+    "     (--root, else WISH_EVIDENCE_ROOT) unless --ledger names one.",
+  ],
   "resume-plan": ["resume-plan", "     Print the first invalid stage and the actions that clear it."],
 };
 
@@ -202,10 +206,16 @@ function expectPositional(parsed, allowed, label) {
   return command;
 }
 
+// One root resolution for every verb, including the delegated one: `--root` first, then
+// the environment, and a usage error when neither is present.
+function resolveRootValue(explicit) {
+  const value = explicit ?? process.env.WISH_EVIDENCE_ROOT;
+  if (!value) throw usage("no evidence root: pass --root <ER> or set WISH_EVIDENCE_ROOT");
+  return resolve(value);
+}
+
 function resolveRoot(parsed) {
-  const explicit = parsed.get("--root") ?? process.env.WISH_EVIDENCE_ROOT;
-  if (!explicit) throw usage("no evidence root: pass --root <ER> or set WISH_EVIDENCE_ROOT");
-  return resolve(explicit);
+  return resolveRootValue(parsed.get("--root"));
 }
 
 function sessionId(parsed) {
@@ -1141,6 +1151,48 @@ function verbResumePlan(parsed, root) {
   return null;
 }
 
+// The shared flags are the wish CLI's, not a module script's. Only `metrics export`
+// consumes them (see metricsArgv); every other delegated call still hands them over
+// unchanged, so a module script keeps rejecting what it never accepted.
+const SHARED_FLAGS = Object.freeze(["--root", "--plan", "--session"]);
+
+function splitSharedFlags(argv) {
+  const kept = [];
+  const shared = {};
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const eq = arg.startsWith("--") ? arg.indexOf("=") : -1;
+    const name = eq === -1 ? arg : arg.slice(0, eq);
+    if (!SHARED_FLAGS.includes(name)) {
+      kept.push(arg);
+      continue;
+    }
+    let value;
+    if (eq !== -1) value = arg.slice(eq + 1);
+    else {
+      value = argv[index + 1];
+      index += 1;
+      if (value === undefined) throw usage(`${name} needs a value`);
+    }
+    if (shared[name] !== undefined) throw usage(`${name} given twice`);
+    shared[name] = value;
+  }
+  return { kept, shared };
+}
+
+// `metrics export` is the one documented form that names no ledger: the run's ledger is
+// this CLI's own state (`rootPaths(root).ledger`), so the CLI resolves the same root every
+// other verb uses and supplies it. An explicit `--ledger` still wins, and a subcommand
+// other than export keeps today's verbatim argv.
+function metricsArgv(argv) {
+  if (argv[0] !== "export") return argv;
+  const { kept, shared } = splitSharedFlags(argv.slice(1));
+  const named = kept.some((arg) => arg === "--ledger" || arg.startsWith("--ledger="));
+  if (named) return ["export", ...kept];
+  const root = resolveRootValue(shared["--root"]);
+  return ["export", ...kept, "--ledger", rootPaths(root).ledger];
+}
+
 // `reuse-check` (M4) and `metrics` (M7) are other modules' scripts. M1 owns the
 // entry point only: it hands argv over unchanged, with no shell, and returns the
 // child's exit code so a caller never has to parse text.
@@ -1244,8 +1296,11 @@ export function run(argv) {
       printVerbUsage(verb);
       return 0;
     }
-    if (verb === "reuse-check" || verb === "metrics") {
+    if (verb === "reuse-check") {
       return delegate(verb, rest).exit;
+    }
+    if (verb === "metrics") {
+      return delegate(verb, metricsArgv(rest)).exit;
     }
     const handler = HANDLERS[verb];
     if (!handler) throw usage(`unknown verb ${verb}`);

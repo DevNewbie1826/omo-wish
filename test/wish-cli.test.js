@@ -1274,6 +1274,79 @@ describe("module-owned verbs", () => {
   });
 });
 
+describe("metrics delegation", () => {
+  // A run whose ledger names a PR: metrics derives its measurement row from pr_open, so
+  // every case here starts from a real run built by the CLI itself, never a hand-written
+  // ledger line that could satisfy the parser without describing a run.
+  function runNamingPr(pr) {
+    const state = scene();
+    upToBuild(state);
+    const opened = append(state, { event: "pr_open", pr, head: state.repo.head, tree: state.repo.tree });
+    expect(opened.code).toBe(0);
+    return state;
+  }
+
+  function measurementRow(dir) {
+    const text = readFileSync(join(dir, "measurements.csv"), "utf8");
+    const lines = text.split("\n").filter((line) => line !== "");
+    const header = lines[0].split(",");
+    return Object.fromEntries(header.map((column, index) => [column, lines[1].split(",")[index]]));
+  }
+
+  test("the documented metrics export form resolves the run's ledger", () => {
+    const state = runNamingPr(51);
+    const out = join(state.box.dir, "metrics");
+    // Exactly the documented form: the evidence root plus --out, no --ledger.
+    const result = cli(["metrics", "export", "--root", state.root, "--out", out]);
+    expect(result.code).toBe(0);
+    expect(existsSync(join(out, "measurements.csv"))).toBe(true);
+    expect(existsSync(join(out, "rounds.csv"))).toBe(true);
+    expect(measurementRow(out).pr).toBe("51");
+    expect(result.out).toContain("measurements.csv");
+  });
+
+  test("an explicit ledger still wins over the resolved one", () => {
+    const resolved = runNamingPr(51);
+    const named = runNamingPr(77);
+    const out = join(named.box.dir, "metrics");
+    const result = cli([
+      "metrics", "export", "--root", resolved.root,
+      "--ledger", join(named.root, "ledger.jsonl"), "--out", out,
+    ]);
+    expect(result.code).toBe(0);
+    expect(measurementRow(out).pr).toBe("77");
+  });
+
+  test("the environment root alone is enough for the documented form", () => {
+    const state = runNamingPr(64);
+    const out = join(state.box.dir, "metrics");
+    const result = cli(["metrics", "export", "--out", out], { env: { WISH_EVIDENCE_ROOT: state.root } });
+    expect(result.code).toBe(0);
+    expect(measurementRow(out).pr).toBe("64");
+  });
+
+  test("the other metrics subcommands keep their verbatim delegation", () => {
+    const state = runNamingPr(51);
+    const out = join(state.box.dir, "metrics");
+    expect(cli(["metrics", "export", "--root", state.root, "--out", out]).code).toBe(0);
+    // validate reads a file the caller names: nothing about it may change.
+    const validated = cli(["metrics", "validate", "--file", join(out, "measurements.csv"), "--name", "measurements"]);
+    expect(validated.code).toBe(0);
+    // A shared flag is still not translated for a subcommand that is not export.
+    const shared = cli(["metrics", "validate", "--root", state.root, "--file", join(out, "measurements.csv")]);
+    expect(shared.code).toBe(2);
+    expect(shared.err).toContain("unknown option for validate: --root");
+  });
+
+  test("no evidence root is a usage error for the documented form", () => {
+    const out = join(sandbox().dir, "metrics");
+    const result = cli(["metrics", "export", "--out", out], { env: { WISH_EVIDENCE_ROOT: "" } });
+    expect(result.code).toBe(2);
+    expect(result.err).toContain("no evidence root");
+    expect(existsSync(out)).toBe(false);
+  });
+});
+
 describe("lock and concurrency", () => {
   test("a live holder blocks the mutation, is left in place, and releases it", () => {
     const state = scene();
