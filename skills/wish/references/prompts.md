@@ -1516,7 +1516,7 @@ truth and `test/schema.test.js` guards it.
 
 | Literal | Exact value | Source |
 | --- | --- | --- |
-| Verdict line | `VERDICT: <APPROVED\|REVISE> round <n> head <40 hex>` as the last non-empty line; pattern `^VERDICT: (APPROVED\|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$` | `ledger.md` §12, `VERDICT_PATTERN_SOURCE` |
+| Verdict line | `VERDICT: <APPROVED\|REVISE> round <n> head <40 hex>` as the last non-empty line; pattern `^VERDICT: (APPROVED\|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$` | `ledger.md` §12 |
 | Findings columns | `id, round, source, class, severity, file_line, blocking, repro_cmd, head_found, status, fixed_head` | `ledger.md` §5 |
 | Findings sources | `code-review, qa, sweep, ultrabrain, architect, adversarial` | `ledger.md` §5 |
 | Findings statuses | `open, fixed, not-fixed, no-command, note, owner` | `ledger.md` §5 |

@@ -143,7 +143,7 @@ A `FAIL` receipt is a claim, not a verdict: the session reproduces it before `bl
 
 ### 4.2 Filenames
 
-`parseReceiptFilename` / `receiptFilename` / `validateReceiptAgainstFilename`:
+`parseReceiptFilename` / `validateReceiptAgainstFilename`:
 
 | Kind | Filename | Source |
 | --- | --- | --- |
@@ -448,8 +448,7 @@ ledger directly):
 
 v2 appends (A §F M7, M0 for the round-level names): `measurements` gains
 `type, unit, program_id, switch_count, rounds_after_switch, gaps_total, gaps_fixed,
-before_receipts`; `rounds` gains `type, unit, program_id, switch_count, switch_kinds`. `validateCsvHeader`
-accepts the base header or the base plus its exact suffix.
+before_receipts`; `rounds` gains `type, unit, program_id, switch_count, switch_kinds`.
 
 ## 11. `status --json` and the `PROGRESS:` line
 
@@ -491,9 +490,8 @@ body fails with `body is empty`; a mismatch fails with
 `last non-empty line is not a verdict line: <line>`. `round` is a positive integer with no leading zero and
 no upper bound; a seven-character head is rejected. Coverage fails with
 `verdict head <a> does not cover current head <b>`, and `requireApproved` fails with
-`verdict is REVISE, not APPROVED`. `schema.mjs` exports `VERDICT_PATTERN_SOURCE`, `parseVerdict` and
-`checkVerdictCoverage`; the session reads the line against them, and `wish gate` refuses a round whose
-verdict head does not cover the frozen head.
+`verdict is REVISE, not APPROVED`. The session reads the line against this pattern, and `wish gate` refuses
+a round whose verdict head does not cover the frozen head.
 
 ## 13. `gates.md` — owner questions
 
@@ -812,13 +810,6 @@ Gates, open and resolved:
 - Answer: no; it edits this table, schema.mjs, M3, M5 and the test together
 ```
 
-A verdict body (last non-empty line is the verdict):
-
-```text wish:verdict
-Axes: state none; boundary one note; tests none; docs none.
-VERDICT: APPROVED round 4 head 0123456789abcdef0123456789abcdef01234567
-```
-
 Receipt filenames:
 
 ```text wish:receipt-name
@@ -847,14 +838,4 @@ DEVICE: claim C1 gate(primary, domains>=2, counter-search)
 
 ```text wish:device-audit
 DEVICE: spot 12 rows reproduce
-```
-
-The shared CSV headers:
-
-```csv wish:csv-measurements
-pr,repo,arm,common_arms,route_class,size_bucket,stacked_on,opened_at,merged_at,open_to_merge_min,rounds_total,ultrabrain_calls,code_reviewer_calls,architect_calls,content_commits_after_approval,step12_result,post_merge_refix,blind_rereview,invalid_flag,notes
-```
-
-```csv wish:csv-rounds
-pr,round_index,round_kind,verdict_head,dispatch_at,verdict_at,minutes,reviewer,reviewer_family,defect_count,defect_axes,finding_scope,counterexample_present,gate_rows_fixed,gate_rows_not_fixed,gate_rows_no_command,c2_split,axis_lines_present,verdict_line_present,verdict_head_match
 ```
