@@ -347,13 +347,17 @@ export function isCodeFile(file, extensions = DEFAULT_CODE_EXTENSIONS) {
 // is code. An extension outside it has no comment opinion: the caller keeps the
 // line rather than guessing, because dropping a real statement would let a
 // surviving mutation escape.
-const C_LIKE = Object.freeze({ line: ["//"], block: [["/*", "*/"]], quotes: ['"', "'", "`"] });
+const C_LIKE = Object.freeze({ line: ["//"], block: [["/*", "*/"]], quotes: ['"', "'", "`"], template: "`" });
+// Rust, Swift, Scala, Kotlin and Dart nest block comments: an inner close does not end
+// the outer comment, so the scanner counts depth for them only. In C and JavaScript a
+// nested opener is plain text and the first close ends the comment.
+const C_NESTED = Object.freeze({ ...C_LIKE, nested: true });
 const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
 
 const COMMENT_SYNTAX = Object.freeze({
   js: C_LIKE, mjs: C_LIKE, cjs: C_LIKE, jsx: C_LIKE, ts: C_LIKE, tsx: C_LIKE, mts: C_LIKE, cts: C_LIKE,
   go: C_LIKE, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, cxx: C_LIKE, hpp: C_LIKE, hh: C_LIKE, cs: C_LIKE, java: C_LIKE,
-  kt: C_LIKE, kts: C_LIKE, swift: C_LIKE, rs: C_LIKE, scala: C_LIKE, dart: C_LIKE, zig: C_LIKE,
+  kt: C_NESTED, kts: C_NESTED, swift: C_NESTED, rs: C_NESTED, scala: C_NESTED, dart: C_NESTED, zig: C_LIKE,
   php: C_LIKE, css: C_LIKE, scss: C_LIKE, less: C_LIKE, sol: C_LIKE, vue: C_LIKE, svelte: C_LIKE,
   py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
   pl: HASH_LINE, jl: HASH_LINE, rego: HASH_LINE, ex: HASH_LINE, exs: HASH_LINE,
@@ -384,32 +388,85 @@ export function extensionOf(file) {
 }
 
 // The 1-based lines of a file that carry no code: blank lines and lines whose only
-// content is comment. A string literal counts as code, so a line is never dropped
-// for containing one. `null` means this module has no syntax for the extension.
+// content is comment. The decision errs one way on purpose: when this scanner is unsure
+// it keeps the line, because a dropped line lets a surviving mutation escape the lane.
+// Four rules carry that:
+//   - a string literal is code, and a template or raw string that spans lines keeps its
+//     state across them, so a /* inside a string never opens a comment;
+//   - a block comment carries to the next line only when its opener is the line's first
+//     non-space token, so a /* that appears inside a regular expression or after code
+//     cannot swallow the lines below it;
+//   - a language whose block comments nest (Rust, Swift, Scala, Kotlin, Dart) counts
+//     depth, so an inner close does not end the outer comment;
+//   - a line-start block comment that never closes is read as code from its body on: an
+//     unterminated opener is more often a string or a regular expression than a comment.
+// `null` means this module has no syntax for the extension.
 export function commentOnlyLines(source, file) {
   const syntax = COMMENT_SYNTAX[extensionOf(file)];
   if (!syntax) return null;
+  const [openDelim, closeDelim] = syntax.block[0] ?? [null, null];
+  const template = syntax.template ?? null;
   const only = new Set();
-  let block = null;
   const lines = String(source ?? "").replace(/\r\n?/g, "\n").split("\n");
+  let inBlock = false;
+  let depth = 0;
+  let openedAt = -1;
+  let inString = false;
   for (let index = 0; index < lines.length; index += 1) {
     let rest = lines[index];
     let code = false;
+    let atLineStart = true;
     while (rest.length > 0) {
-      if (block !== null) {
-        const at = rest.indexOf(block);
-        if (at === -1) {
+      if (inString) {
+        code = true;
+        let cursor = 0;
+        let closed = false;
+        while (cursor < rest.length) {
+          if (rest[cursor] === "\\") { cursor += 2; continue; }
+          if (rest[cursor] === template) { closed = true; cursor += 1; break; }
+          cursor += 1;
+        }
+        rest = closed ? rest.slice(cursor) : "";
+        if (closed) inString = false;
+        continue;
+      }
+      if (inBlock) {
+        const closeAt = rest.indexOf(closeDelim);
+        const openAt = syntax.nested ? rest.indexOf(openDelim) : -1;
+        if (closeAt === -1 && openAt === -1) {
           rest = "";
           break;
         }
-        rest = rest.slice(at + block.length);
-        block = null;
+        if (openAt !== -1 && (closeAt === -1 || openAt < closeAt)) {
+          depth += 1;
+          rest = rest.slice(openAt + openDelim.length);
+          continue;
+        }
+        depth -= 1;
+        rest = rest.slice(closeAt + closeDelim.length);
+        if (depth === 0) {
+          inBlock = false;
+          openedAt = -1;
+        }
         continue;
       }
-      const pair = syntax.block.find(([open]) => rest.startsWith(open));
-      if (pair) {
-        block = pair[1];
-        rest = rest.slice(pair[0].length);
+      if (openDelim !== null && rest.startsWith(openDelim)) {
+        if (atLineStart) {
+          inBlock = true;
+          depth = 1;
+          openedAt = index;
+          rest = rest.slice(openDelim.length);
+          continue;
+        }
+        // Mid-line opener: it belongs to this line only. If it never closes here, the
+        // rest is treated as code and no state escapes to the lines below.
+        const closeAt = rest.indexOf(closeDelim);
+        if (closeAt === -1) {
+          code = true;
+          rest = "";
+          break;
+        }
+        rest = rest.slice(closeAt + closeDelim.length);
         continue;
       }
       if (syntax.line.some((marker) => rest.startsWith(marker))) {
@@ -421,24 +478,39 @@ export function commentOnlyLines(source, file) {
         code = true;
         let cursor = 1;
         while (cursor < rest.length && rest[cursor] !== head) cursor += rest[cursor] === "\\" ? 2 : 1;
+        if (cursor >= rest.length) {
+          // Unterminated on this line: only a template or raw string may span lines.
+          if (head === template) inString = true;
+          rest = "";
+          continue;
+        }
         rest = rest.slice(cursor + 1);
         continue;
       }
-      if (!/\s/.test(head)) code = true;
+      if (!/\s/.test(head)) {
+        code = true;
+        atLineStart = false;
+      }
       rest = rest.slice(1);
     }
     if (!code) only.add(index + 1);
   }
+  // A line-start block that never closes is not a comment: its body is code.
+  if (inBlock && openedAt !== -1) {
+    for (const line of [...only]) if (line > openedAt) only.delete(line);
+  }
   return only;
 }
 
-function isNoise(candidate, testGlobs) {
+function isNoise(candidate, testGlobs, commentAware = false) {
   if (testGlobs.some((glob) => glob.test(candidate.file))) return true;
   const text = candidate.text;
   if (text === undefined) return false;
   if (!text.trim()) return true;
   if (/^\s*(import|from|#include|package|using)\b/.test(text)) return true;
-  if (/^\s*(\/\/|#|\*|\/\*)/.test(text)) return true;
+  // A known syntax answers the comment question for the whole line, so a line that
+  // starts with a marker and carries code after it ("/* short */ x = 1;") is code.
+  if (!commentAware && /^\s*(\/\/|#|\*|\/\*)/.test(text)) return true;
   if (/^\s*[)}\]],?\s*$/.test(text)) return true;
   if (/[({[,]\s*$/.test(text)) return true;
   return false;
@@ -481,7 +553,7 @@ export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExten
     return indexes.get(candidate.file)?.has(candidate.line) ?? false;
   };
   return raw.filter((candidate) => isCodeFile(candidate.file, codeExtensions)
-    && !isNoise(candidate, globs)
+    && !isNoise(candidate, globs, hasCommentSyntax(extensionOf(candidate.file)))
     && !isCommentOnly(candidate));
 }
 

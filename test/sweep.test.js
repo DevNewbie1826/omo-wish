@@ -639,7 +639,10 @@ test("a green suite survives even when the log says syntax error", () => {
 test("every extension the compiled set names has a comment syntax and drops a comment body", () => {
   // A compiled extension outside the comment table would fall back to the marker test,
   // and the block-comment body symptom would return for it. The table must cover the set.
-  const compiled = Object.keys(COMPILED_EXTENSIONS);
+  // A Set has no enumerable keys, so the set must be spread: Object.keys here would make
+  // this loop vacuous and the coverage claim false.
+  const compiled = [...COMPILED_EXTENSIONS];
+  expect(compiled.length).toBeGreaterThan(20);
   for (const extension of compiled) {
     expect(hasCommentSyntax(extension)).toBe(true);
   }
@@ -664,6 +667,133 @@ test("every extension the compiled set names has a comment syntax and drops a co
     expect(receipt.rows.some((entry) => entry.id === `mutation/${name}:4`)).toBe(true);
   }
   expect(run.exit).toBe(1);
+}, 120000);
+
+test("a string or regular expression that looks like a comment never hides real code", () => {
+  const dir = stage("clean");
+  // A template string holding "/*" whose closing "*/" only appears after the statement
+  // below it, and a regular expression containing "/*": both used to open a phantom block
+  // comment that swallowed the next statement.
+  writeFileSync(join(dir, "app.js"), [
+    "export const banner = `",
+    "/* this is inside a string, not a comment",
+    "`;",
+    "export const re = /[/*]/;",
+    "export const victim = 2;",
+    "export const tail = `*/ still a string`;",
+    "",
+  ].join("\n"));
+  // The suite never reads `victim`, so removing it leaves the run green: a real survivor
+  // the filter must not have swallowed.
+  writeFileSync(join(dir, "check.js"), [
+    'import { banner, re, tail } from "./app.js";',
+    "let failures = 0;",
+    "if (!banner.includes(\"not a comment\")) failures += 1;",
+    "if (!re.test(\"/\")) failures += 1;",
+    "if (!tail.includes(\"still a string\")) failures += 1;",
+    "if (failures > 0) { console.log(\"CHECK FAILED\"); process.exit(1); }",
+    "",
+  ].join("\n"));
+  const victimLine = lineOf(dir, "app.js", "export const victim");
+  // The candidates carry their own text, the shape the diff reader produces: without it
+  // the marker-prefix heuristic never runs and this test would miss a real shape.
+  const appLines = readFileSync(join(dir, "app.js"), "utf8").split("\n");
+  const candidate = (line) => ({ file: "app.js", line, text: appLines[line - 1] });
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED", max: 6,
+    candidates: [candidate(2), candidate(lineOf(dir, "app.js", "export const re")), candidate(victimLine)],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(verdictOf(receipt, `mutation/app.js:${victimLine}`)).toBe("FAIL");
+  expect(receipt.status).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a line that opens a block comment and carries code after it is still code", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "app.js"), [
+    "/* short */ export const kept = 1;",
+    "export const plain = 2;",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    'import { kept, plain } from "./app.js";',
+    "let failures = 0;",
+    "if (kept !== 1) failures += 1;",
+    "if (failures > 0) { console.log(\"CHECK FAILED\"); process.exit(1); }",
+    "",
+  ].join("\n"));
+  const appLines = readFileSync(join(dir, "app.js"), "utf8").split("\n");
+  const keptLine = lineOf(dir, "app.js", "export const kept");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED", max: 4,
+    candidates: [{ file: "app.js", line: keptLine, text: appLines[keptLine - 1] }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  // The line starts with a comment marker but carries real code, so it reaches the probe.
+  // Deleting a whole declaration breaks the import, which the probe reports as INVALID
+  // rather than a kill; the property under test is that the line is a candidate at all.
+  expect(receipt.rows.some((entry) => entry.id === `mutation/app.js:${keptLine}`)).toBe(true);
+  expect(receipt.rows.some((entry) => entry.id === "mutation" && entry.verdict === "SKIP")).toBe(false);
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a nested block comment stays comment in a language that nests it", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "source.rs"), [
+    "/* outer",
+    "/* inner */",
+    "body still inside the outer comment",
+    "*/",
+    "fn real() {}",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "wrap.rs"), [
+    "/* outer",
+    "/* inner */",
+    "the old handler used new Error(error.message)",
+    "*/",
+    "fn real() {}",
+    "",
+  ].join("\n"));
+  const body = 3;
+  writeConfig(dir, { probes: {
+    mutation: { testCmd: "true", failMarker: "CHECK FAILED", candidates: [{ file: "source.rs", line: body }] },
+    errors: { strict: true, lines: [{ file: "wrap.rs", line: body }] },
+  } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id === `mutation/source.rs:${body}`)).toBe(false);
+  expect(receipt.rows.some((entry) => entry.id.startsWith("errors/"))).toBe(false);
+  expect(verdictOf(receipt, "mutation")).toBe("SKIP");
+  expect(verdictOf(receipt, "errors")).toBe("SKIP");
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a native compiler diagnostic marks the deletion a non-candidate", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "guard.c"), "int guard(int x) {\n  if (x > 0) return 1;\n  return 0;\n}\n");
+  writeFileSync(join(dir, "main.c"), "#include <stdio.h>\nint guard(int x);\nint main(void) { if (guard(1) != 1) { printf(\"CHECK FAILED\\n\"); return 1; } return 0; }\n");
+  writeFileSync(join(dir, "run.sh"), [
+    "#!/bin/sh",
+    "if ! cc -std=c99 -o prog guard.c main.c 2>build.log; then",
+    "  cat build.log",
+    "  exit 1",
+    "fi",
+    "./prog",
+    "",
+  ].join("\n"));
+  const signature = lineOf(dir, "guard.c", "int guard(int x) {");
+  writeConfig(dir, { probes: { mutation: { testCmd: "sh run.sh", failMarker: "CHECK FAILED", candidates: [{ file: "guard.c", line: signature }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  // cc prints "guard.c:1:1: error: ..." — the default pattern must classify it.
+  expect(verdictOf(receipt, "mutation/noncandidate/guard.c")).toBe("SKIP");
+  expect(receipt.rows.some((entry) => entry.verdict === "INVALID")).toBe(false);
+  expect(receipt.status).toBe("WARN");
+  expect(run.exit).toBe(0);
 }, 120000);
 
 test("the error scan skips a comment line and still reports a real wrap site", () => {

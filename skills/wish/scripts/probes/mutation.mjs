@@ -117,7 +117,11 @@ export async function run(config, ctx) {
   }
 
   const failMarker = new RegExp(config.failMarker ?? "--- FAIL:|^FAIL\\b|✗|\\(fail\\)|AssertionError|not ok \\d+", "m");
-  const compileError = new RegExp(config.compileErrorPattern ?? "BuildMessage|build failed|setup failed|syntax error|SyntaxError|Cannot find module|error TS\\d+|undefined reference|^error: (?:Unexpected|Expected)", "m");
+  // A native compiler prints "path:line:col: error: ..." (cc, clang) or "error[E0308]:"
+  // (rustc); a bundler prints "BuildMessage"/"error TS1234". The heuristic runs only on a
+  // non-zero exit, so a green suite is never excused by a log line.
+  const compileError = new RegExp(config.compileErrorPattern
+    ?? "BuildMessage|build failed|setup failed|syntax error|SyntaxError|Cannot find module|error TS\\d+|undefined reference|: error:|^error(?:\\[E\\d+\\])?: ", "m");
   const results = await mapPool(candidates, Math.min(8, ctx.parallel), async (candidate) => {
     const id = `mutation/${candidate.file}:${candidate.line}`;
     const observable = "removing this line makes the declared suite fail";
