@@ -165,7 +165,7 @@ Eleven columns in this order, a header first, TSV with no quoting: a field never
 | Column | Value set | Meaning | Source |
 | --- | --- | --- | --- |
 | `id` | `[A-Za-z0-9][A-Za-z0-9._-]*` | stable id, never reused | D §2.8 |
-| `round` | integer ≥ 0 | `0` for pre-review lanes, the ultrabrain round otherwise | D §2.8 |
+| `round` | integer ≥ 0 | `0` before the unit's first `round` event, otherwise the number of the latest `round` event when the row is filed, which is the round a REVISE loop is in | D §2.8 |
 | `source` | `code-review` \| `qa` \| `sweep` \| `ultrabrain` \| `architect` \| `adversarial` | the reporting lane; `qa` covers real-surface and visual-qa lanes, `sweep` covers scripted probe and lint lanes (M0) | D §2.8 |
 | `class` | the run type's §5.1 set | the defect class; identical string in M3's dictionary and M5's axes | D §2.8, A §C.1 |
 | `severity` | `CRITICAL` \| `HIGH` \| `MEDIUM` \| `LOW` | reviewer severity, not the blocking decision | v1 step 7 |
@@ -322,7 +322,7 @@ All stages not marked conditional always apply. Side events (`reuse`, `gate`, `v
 | `head`, `tree` | §2 values when the event reports on a state | D §2.8, U |
 | `ended_at`, `duration_s` | ISO timestamp, seconds ≥ 0 | D §2.10 |
 | `commands`, `artifact`, `cleanup`, `attempt`, `checkpoint_opened_at`, `adversarial_classes` | U's field set | U |
-| `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
+| `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task`, `prior_repeat` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
 
 ### 9.3 Extras per event
 
@@ -349,7 +349,7 @@ recommendations are arrays of non-empty strings. Optional fields do not make a s
 | `freeze` | `head`, `tree` (the git tree; `null` for research, whose `head` is the artifact sha256), `pr` (integer or `null` before the PR) | D §2.6 |
 | `pr_open` | `pr` | D §2.2 |
 | `gate` | `gate_id`, `gate_status` | D §2.6, P |
-| `round` | `round` ≥ 1, `verdict` ∈ `APPROVED`/`REVISE` | C43, D §2.2 |
+| `round` | `round` ≥ 1, `verdict` ∈ `APPROVED`/`REVISE`; `prior_repeat` (boolean) on the round that follows a third-or-later REVISE, written by `wish ledger append` | C43, D §2.2 |
 | `verdict` | `round`, `verdict`, `artifact` (the reviewer body), `head` | C44 |
 | `switch` | `round`, `kind`, `premise`, `new_approach` | A §C.6 |
 | `progress` | `progress` (§11 values) | A §B7/§C.4 |
@@ -369,10 +369,19 @@ D §2.2 step 10's `[~]` row, which A §C.6 deletes).
 
 1. `round` events for a unit are `1, 2, 3, …` with no gap.
 2. No further `round` follows an `APPROVED` round for that unit.
-3. A third-or-later `REVISE` round requires a `switch` event for the same round **before the next round** —
-   otherwise the review continued without a change of approach, which is not an outcome.
+3. A third-or-later `REVISE` round that **repeats** a defect class requires a `switch` event for the same
+   round **before the next round** — otherwise the review continued without a change of approach, which is not an
+   outcome. Round n is a **repeat** unless it has at least one `findings.tsv` row with `round` = n and
+   `blocking` = 1 and no such row's `class` appears on a row with `round` < n (round `0` included) and
+   `blocking` = 1, whatever its status; a round with no blocking row of its own is a repeat. The decision is
+   taken once, when the next `round` event lands: that event carries `prior_repeat`, and only
+   `prior_repeat: false` lifts the obligation. An absent field or `true` keeps it, so a ledger written before
+   this rule still validates, and a value supplied by the caller is a usage error (exit 2).
 4. A `switch` follows a `REVISE` round of the same round number, and its `kind` differs from the kinds already used until every applicable kind has been used — then the cycle may repeat (single-unit runs have four applicable kinds: `split` is program-mode only). This keeps A §C.6.1's "one more kind per REVISE" without creating the cap A §C.6.3 forbids: review has no round ceiling.
 5. No event carries `[~]` or a terminal marker.
+
+A `switch` may also be recorded on a round that is not a repeat: round rule item 1's premise review does exactly
+that, and the event consumes a kind like any other. The repeat test decides the obligation, never the permission.
 
 `switch.kind` values (A §C.6.2): `premise` (the architect premise review has not run), `family` (the fix
 node moves to a model family different from the one that produced the failed fix), `strategy` (a
@@ -412,7 +421,7 @@ reports it afterwards as `the last round judged <head7>, not the frozen head <he
 
 After a `REVISE` in round n, `next` requires this unit's `define` event with `round: n`, then its `plan`
 event with `round: n`, then its `plan_lint` event with `round: n`, before checking lanes, blocking findings,
-the changed-head freeze and the third-round switch obligation. The fix stays in the same PR.
+the changed-head freeze and the round-switch obligation. The fix stays in the same PR.
 `plan_review`, `decide` and `goal` do not run again. The first pass (no round yet) is unchanged.
 
 ## 10. Shared experiment columns

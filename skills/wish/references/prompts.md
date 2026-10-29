@@ -270,12 +270,12 @@ The sweep is not optional: a fix that only closes the cited line but leaves the 
 input is reported as `not-fixed` for the sibling and fixed in this node. Keep the reviewer's reproduction as
 a guard test or QA scenario before the first correction edit.
 
-### 2.4 `switch-fix` — approach switch after a third-or-later REVISE
+### 2.4 `switch-fix` — approach switch after a repeat third-or-later REVISE
 
 **TEMPLATE:** `switch-fix`
 
 ```
-Purpose: <the request>. Round <n> returned REVISE again; a cap is an approach-switch signal, not an exit.
+Purpose: <the request>. Round <n> returned REVISE on a class an earlier round already cited; a cap is an approach-switch signal, not an exit.
 Scope: change the approach for <component>, not the patch.
 
 TASK: write the failed premise, record one switch kind not yet used, and rebuild <component> under the new
@@ -1529,8 +1529,8 @@ the requester's private data. Use `<ER>`, `<worktree>` and repository-relative p
 
 ## 8. What a prompt never decides
 
-- It never decides that review is over. A round budget, a timebox expiry, or a third REVISE is an
-  approach-switch signal; the review continues until a verdict line says `APPROVED`, or the work is
+- It never decides that review is over. A round budget, a timebox expiry, or a repeat third REVISE is
+  an approach-switch signal; the review continues until a verdict line says `APPROVED`, or the work is
   `unverified` because a platform or credential cannot be reached (a limit, not a defect).
 - It never widens the contract. A finding outside the plan's rows and invariants is a note or a follow-up,
   and a follow-up is recorded in `<ER>/follow-ups.md`, never fixed in the task.

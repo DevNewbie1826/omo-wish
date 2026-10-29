@@ -26,6 +26,7 @@ import {
   parseGatesMarkdown,
   parseReceiptFilename,
   requiredReceiptsFor,
+  switchRepeats,
   validateLedgerEvent,
   validateLedgerSequence,
   validatePlanFrontMatter,
@@ -358,9 +359,23 @@ export function resolvePlanPath(events, override) {
 
 // §9.4 rules M1 enforces beyond the schema: `intake` opens a unit, and the
 // round/switch/terminal rules come from the M0 validator on the whole replay.
+//
+// Rule 3 needs a decision the events alone cannot carry, so this writer makes it: the
+// repeat test is read from findings.tsv once, when the round that follows lands, and
+// stamped on that event. A replay then reads the stamp, which is why a later findings
+// row can never re-open a window the ledger already closed.
+function repeatStamp(root, events, event) {
+  const previous = roundsOf(events, event.unit).pop();
+  if (!previous || previous.verdict !== "REVISE" || previous.round < 3) return undefined;
+  return switchRepeats(readFindings(root) ?? [], previous.round) !== false;
+}
+
 export function appendEvent(root, input, { plan, sessionId = "senpi:wish-cli", now = nowIso() } = {}) {
   if (input === null || typeof input !== "object" || Array.isArray(input)) {
     throw usage("the event must be one JSON object");
+  }
+  if (input.prior_repeat !== undefined) {
+    throw usage("prior_repeat is the ledger's own decision: append the round and the writer stamps it");
   }
   const event = { ...input };
   if (event.stage === undefined) event.stage = event.event;
@@ -370,6 +385,10 @@ export function appendEvent(root, input, { plan, sessionId = "senpi:wish-cli", n
   const checked = validateLedgerEvent(event);
   if (!checked.ok) throw checkFailed("the event does not match the ledger contract", checked.errors);
   const existing = readLedger(root);
+  if (event.event === "round") {
+    const stamp = repeatStamp(root, existing, event);
+    if (stamp !== undefined) event.prior_repeat = stamp;
+  }
   if (event.event !== "intake") {
     const opened = existing.some((other) => other.unit === event.unit && other.event === "intake");
     if (!opened) {
@@ -1229,7 +1248,7 @@ export function deriveNext(stage, context) {
     if (blockingFindings(findings).length > 0) return "fix";
     if (frozenHead !== head) return "freeze";
     const switched = switchesOf(events, unit).some((event) => event.round === last.round);
-    if (last.round >= 3 && !switched) return "switch";
+    if (last.round >= 3 && !switched && switchRepeats(findings, last.round) !== false) return "switch";
     if (codeReviewMissing(context)) return "verify_lane";
     return "round";
   }
@@ -1366,6 +1385,7 @@ export function blockingFor(context) {
   }
   if (frozenHead && head && frozenHead !== head) reasons.push("head:moved");
   if (last && last.verdict === "REVISE" && last.round >= 3
+      && switchRepeats(findings, last.round) !== false
       && !switchesOf(events, unit).some((event) => event.round === last.round)) {
     reasons.push("round:".concat(String(last.round), " needs an approach switch"));
   }

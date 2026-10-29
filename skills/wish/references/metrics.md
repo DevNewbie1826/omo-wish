@@ -150,8 +150,8 @@ needs.
 
 ## 5. v2 targets and the round rule
 
-A round cap is an approach switch, not an exit: a third-or-later REVISE round requires a
-`switch` event, the review continues with a new approach, and it ends only at `APPROVED`
+A round cap is an approach switch, not an exit: a third-or-later REVISE round that repeats a defect
+class requires a `switch` event, the review continues with a new approach, and it ends only at `APPROVED`
 (`references/ledger.md` §9.4). The metrics therefore measure switching, not stopping.
 
 | Metric | Target | Note |
@@ -161,7 +161,7 @@ A round cap is an approach switch, not an exit: a third-or-later REVISE round re
 | final review REVISE ≥1 | ≤20% (accept ≤25%) | a rate of 40% or more cancels the treatment |
 | blocking defects per round | ≤1.0 | baseline 2.64 |
 | content commits after approval | 0 | the frozen head |
-| `switch` recorded on every third-or-later REVISE round | 100% | a missing switch means the review stopped without approval, which is not an outcome |
+| `switch` recorded on every third-or-later REVISE round that repeats a class | 100% | a missing switch means the review stopped without approval, which is not an outcome |
 | `rounds_after_switch` median | ≤2 | the switch must actually change the outcome |
 | test-only REVISE rounds | reported separately | `rounds` rows with `finding_scope = test` and `defect_count > 0`; this is a separate report column and never changes a pre-registered cancel criterion |
 | tail (≥4 rounds) | reported, no cap | review continues to `APPROVED` |

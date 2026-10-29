@@ -1105,6 +1105,31 @@ describe("freeze and pr-body", () => {
   });
 });
 
+// The round-rule fixture: three REVISE rounds with one finding filed per round for the
+// first two, then the round-3 revisit, so the next stage is the switch decision itself.
+function revisitToRoundThree(state, classes) {
+  upToBuild(state);
+  ["tests", "qa", "sweep"].forEach((name) => lane(state, { lane: name }));
+  reviewedFreeze(state);
+  for (const round of [1, 2]) {
+    expect(append(state, { event: "round", round, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
+    expect(addFindings(state, [findingRow({
+      id: `F${round}`, round: String(round), class: classes[round - 1], status: "fixed", fixed_head: OTHER,
+    })]).code).toBe(0);
+  }
+  expect(append(state, { event: "round", round: 3, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
+  for (const event of [
+    { event: "define", round: 3 },
+    { event: "plan", round: 3, artifact: state.plan },
+    { event: "plan_lint", round: 3, verdict: "PASS" },
+  ]) expect(append(state, event).code).toBe(0);
+  return state;
+}
+
+const switchOwed = (state) => status(state).json.blocking.join(" ").includes("needs an approach switch");
+
+const roundThreeFinding = (cls) => findingRow({ id: "F3", round: "3", class: cls, status: "fixed", fixed_head: OTHER });
+
 describe("switch", () => {
   test("records one approach switch per REVISE after the third and never caps the rounds", () => {
     const state = scene();
@@ -1142,6 +1167,42 @@ describe("switch", () => {
     expect(reported.json.next).toBe("switch");
     expect(reported.json.blocking).toContain("round:3 needs an approach switch");
     expect(reported.json.units[0].switches).toBe(0);
+  });
+
+  test("a repeated class still owes a switch and a new class does not", () => {
+    const repeated = revisitToRoundThree(scene(), ["C", "T"]);
+    expect(addFindings(repeated, [roundThreeFinding("C")]).code).toBe(0);
+    expect(switchOwed(repeated)).toBe(true);
+    expect(status(repeated).json.next).toBe("switch");
+    const refused = append(repeated, { event: "round", round: 4, verdict: "REVISE", head: repeated.repo.head });
+    expect(refused.code).toBe(3);
+    expect(refused.err).toContain("requires an approach switch");
+
+    const fresh = revisitToRoundThree(scene(), ["C", "T"]);
+    expect(switchOwed(fresh), "no row filed for round 3 yet: the obligation stands").toBe(true);
+    expect(addFindings(fresh, [roundThreeFinding("DOC")]).code).toBe(0);
+    expect(switchOwed(fresh), "a round whose classes are all new owes no switch").toBe(false);
+    expect(status(fresh).json.next).toBe("round");
+    expect(append(fresh, { event: "round", round: 4, verdict: "APPROVED", head: fresh.repo.head }).code).toBe(0);
+    expect(ledgerEvents(fresh).filter((event) => event.event === "round").pop().prior_repeat).toBe(false);
+  });
+
+  test("a stamp holds the decision when a later row would repeat a class", () => {
+    const state = revisitToRoundThree(scene(), ["C", "T"]);
+    expect(addFindings(state, [roundThreeFinding("DOC")]).code).toBe(0);
+    expect(append(state, { event: "round", round: 4, verdict: "APPROVED", head: state.repo.head }).code).toBe(0);
+    expect(ledgerEvents(state).filter((event) => event.event === "round").pop().prior_repeat).toBe(false);
+
+    // findings.tsv has one writer: a later round-3 row cannot un-decide round 4.
+    expect(addFindings(state, [findingRow({ id: "F9", round: "3", class: "C", status: "fixed", fixed_head: OTHER })]).code).toBe(0);
+    const after = status(state);
+    expect(after.code).toBe(0);
+    expect(after.json.blocking.join(" ")).not.toContain("needs an approach switch");
+    expect(ledgerEvents(state).filter((event) => event.event === "round").pop().prior_repeat).toBe(false);
+
+    const supplied = append(state, { event: "round", round: 5, verdict: "REVISE", head: state.repo.head, prior_repeat: false });
+    expect(supplied.code).toBe(2);
+    expect(supplied.err).toContain("prior_repeat");
   });
 });
 
