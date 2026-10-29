@@ -23,12 +23,16 @@ export const usage = `config:
 The suite must be green first. Each candidate line is then deleted in its own
 copy of the tree and the suite is re-run:
   PASS    the suite failed with a test-failure marker (the mutation was killed)
-  FAIL    the suite stayed green (SURVIVED: nothing tests this line)
+  FAIL    the suite stayed green (SURVIVED: nothing tests this line). The exit code
+          is read before the build-error heuristic, so a survivor is never excused by
+          a log line.
   INVALID the run failed without a failure marker, or the mutant did not parse in a
           language whose loader this probe can check; INVALID is never a kill.
           In a compiled language a deletion that cannot build is not a candidate at
           all: it is reported once per file as mutation/noncandidate/<file> (SKIP)
           naming every line, so no row asks for a kill no test could ever give.
+          When every candidate of a run is one of those, one mutation/unprobed WARN
+          row records that nothing was probed, so the lane cannot read PASS.
 "candidates" replaces the diff-derived list (fixtures, or a diff already merged).
 Only added production source lines are candidates: prose, comment-only lines and
 test files are never mutated, because a doc or comment line would demand a test
@@ -40,7 +44,7 @@ rest are reported as one WARN row so an unprobed line can never read as covered.
 // A language whose build refuses a broken deletion: removing a declaration, a
 // brace-owning statement or a used variable is a compile error, not a mutation a
 // test can observe. Reported as a non-candidate, never as a row to kill.
-const COMPILED_EXTENSIONS = new Set([
+export const COMPILED_EXTENSIONS = new Set([
   "go", "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "rs", "java", "kt", "kts", "cs", "swift",
   "scala", "ml", "mli", "hs", "zig", "nim", "dart", "ex", "exs", "erl", "sol",
 ]);
@@ -153,11 +157,14 @@ export async function run(config, ctx) {
       writeFileSync(target, mutated);
       const result = await runCommand({ cmd: config.testCmd, cwd: tree, timeoutMs: config.timeoutMs ?? ctx.timeoutMs });
       const output = `${result.stdout}\n${result.stderr}`;
+      // A green suite means the mutant survived, whatever the log happens to say: the
+      // build-error heuristic is consulted only after the exit code, so a test log that
+      // prints "syntax error" cannot turn a survivor into a non-candidate.
+      if (result.code === 0) return { row: row({ id, command: config.testCmd, observable, verdict: "FAIL", cls, note: "SURVIVED: the suite stayed green with this line removed" }) };
       if (compileError.test(output)) {
         if (isCompiled(candidate.file)) return nonCandidate("deleting it does not build");
         return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not compile; not counted as killed" }) };
       }
-      if (result.code === 0) return { row: row({ id, command: config.testCmd, observable, verdict: "FAIL", cls, note: "SURVIVED: the suite stayed green with this line removed" }) };
       if (failMarker.test(output)) return { row: row({ id, command: config.testCmd, observable, verdict: "PASS", cls, note: `killed (exit ${result.code})` }) };
       return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: `failed without a test-failure marker (exit ${result.code})` }) };
     } finally {

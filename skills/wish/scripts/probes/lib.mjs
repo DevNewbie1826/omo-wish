@@ -11,7 +11,7 @@
 // row cannot carry a class the contract rejects.
 
 import { spawn, spawnSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classValid, PRIMARY_TYPES } from "../lib/schema.mjs";
@@ -352,7 +352,7 @@ const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
 
 const COMMENT_SYNTAX = Object.freeze({
   js: C_LIKE, mjs: C_LIKE, cjs: C_LIKE, jsx: C_LIKE, ts: C_LIKE, tsx: C_LIKE, mts: C_LIKE, cts: C_LIKE,
-  go: C_LIKE, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, hpp: C_LIKE, cs: C_LIKE, java: C_LIKE,
+  go: C_LIKE, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, cxx: C_LIKE, hpp: C_LIKE, hh: C_LIKE, cs: C_LIKE, java: C_LIKE,
   kt: C_LIKE, kts: C_LIKE, swift: C_LIKE, rs: C_LIKE, scala: C_LIKE, dart: C_LIKE, zig: C_LIKE,
   php: C_LIKE, css: C_LIKE, scss: C_LIKE, less: C_LIKE, sol: C_LIKE, vue: C_LIKE, svelte: C_LIKE,
   py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
@@ -364,10 +364,18 @@ const COMMENT_SYNTAX = Object.freeze({
   lua: Object.freeze({ line: ["--"], block: [["--[[", "]]"]], quotes: ['"', "'"] }),
   sql: Object.freeze({ line: ["--"], block: [["/*", "*/"]], quotes: ["'", '"'] }),
   ml: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'] }),
+  mli: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'] }),
   clj: Object.freeze({ line: [";"], block: [], quotes: ['"'] }),
   html: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
   astro: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
 });
+
+// Whether this module knows a comment syntax for the extension. Exported so a test can
+// hold the table and the compiled-extension set equal: a compiled extension outside the
+// table would fall back to the marker test and the block-comment symptom would return.
+export function hasCommentSyntax(extension) {
+  return Object.hasOwn(COMMENT_SYNTAX, String(extension).toLowerCase());
+}
 
 export function extensionOf(file) {
   const name = String(file);
@@ -448,11 +456,16 @@ export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExten
   const sourceOf = (file) => {
     if (root === null) return null;
     if (sources.has(file)) return sources.get(file);
-    const target = resolve(root, file);
+    const base = resolve(root);
+    const target = resolve(base, file);
     let source = null;
-    if (target.startsWith(`${resolve(root)}${sep}`) && existsSync(target)) {
+    // The read is contained to the root even through a link: a file that resolves
+    // outside the checkout is not the candidate's own text, so the comment question
+    // stays unanswered and the line is kept rather than silently dropped.
+    if (target.startsWith(`${base}${sep}`) && existsSync(target)) {
       try {
-        source = readFileSync(target, "utf8");
+        const real = realpathSync(target);
+        if (real.startsWith(`${realpathSync(base)}${sep}`)) source = readFileSync(real, "utf8");
       } catch {
         source = null;
       }

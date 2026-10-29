@@ -36,6 +36,11 @@ claim about a test is made. Two rules produce one:
   line and the reason, and the lane's status is decided by the candidates that were actually probed. That is
   deliberately not `INVALID`: an unbuildable deletion is a property of the line's shape, not an undecided
   claim about the suite, so it must not cost the lane its `PASS` on every compiled change.
+- A run whose **every** candidate turned out to be a non-candidate records one `mutation/unprobed` `WARN` row.
+  Nothing was probed, so the lane may not read `PASS`; `WARN` is the unproven verdict and never blocks.
+
+The exit code is read before the build-error heuristic: a green suite means the mutant survived, whatever a test
+log happens to print.
 
 ## 2. The measured table
 

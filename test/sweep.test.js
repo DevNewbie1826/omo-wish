@@ -4,7 +4,10 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
-import { clampMs, ctxFor, killSession, q, runCommand, sessionMembers, sweepBudget } from "../skills/wish/scripts/probes/lib.mjs";
+import {
+  clampMs, ctxFor, hasCommentSyntax, killSession, q, runCommand, sessionMembers, sweepBudget,
+} from "../skills/wish/scripts/probes/lib.mjs";
+import { COMPILED_EXTENSIONS } from "../skills/wish/scripts/probes/mutation.mjs";
 import {
   classValid, findingsClassesFor, receiptFilename, validateReceipt, validateReceiptAgainstFilename,
 } from "../skills/wish/scripts/lib/schema.mjs";
@@ -609,6 +612,58 @@ test("a run where every candidate cannot build never reads as PASS", () => {
   expect(verdictOf(receipt, "mutation/unprobed")).toBe("WARN");
   expect(receipt.status).toBe("WARN");
   expect(run.exit).toBe(0);
+}, 120000);
+
+test("a green suite survives even when the log says syntax error", () => {
+  const dir = stage("clean");
+  // A compiled candidate whose build succeeds and whose suite stays green, while the
+  // suite's own log prints a build-error phrase. The exit code decides, so this is a
+  // SURVIVED mutation and never a non-candidate.
+  writeFileSync(join(dir, "guard.go"), "package guard\n\nfunc Guard(x int) bool {\n\treturn x > 0\n}\n");
+  writeFileSync(join(dir, "build.sh"), [
+    "#!/bin/sh",
+    "echo 'syntax error: this line is a test log, not a build failure'",
+    "exit 0",
+    "",
+  ].join("\n"));
+  const guard = lineOf(dir, "guard.go", "return x > 0");
+  writeConfig(dir, { probes: { mutation: { testCmd: "sh build.sh", failMarker: "CHECK FAILED", candidates: [{ file: "guard.go", line: guard }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(verdictOf(receipt, `mutation/guard.go:${guard}`)).toBe("FAIL");
+  expect(receipt.rows.some((entry) => entry.id.startsWith("mutation/noncandidate/"))).toBe(false);
+  expect(receipt.status).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("every extension the compiled set names has a comment syntax and drops a comment body", () => {
+  // A compiled extension outside the comment table would fall back to the marker test,
+  // and the block-comment body symptom would return for it. The table must cover the set.
+  const compiled = Object.keys(COMPILED_EXTENSIONS);
+  for (const extension of compiled) {
+    expect(hasCommentSyntax(extension)).toBe(true);
+  }
+  const dir = stage("clean");
+  // Per-extension syntax: a C-family block, and the ML block for the ML extensions.
+  const sources = {
+    "guard.cxx": ["/*", "body of a comment with a ' quote", "*/", "real statement", ""],
+    "guard.hh": ["/*", "body of a comment with a \" quote", "*/", "real statement", ""],
+    "guard.mli": ["(*", "body of a comment with a ' quote", "*)", "real statement", ""],
+  };
+  for (const [name, lines] of Object.entries(sources)) writeFileSync(join(dir, name), lines.join("\n"));
+  writeFileSync(join(dir, "build.sh"), "#!/bin/sh\nexit 0\n");
+  const files = Object.keys(sources);
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "sh build.sh", failMarker: "CHECK FAILED", codeExtensions: [...files.map((name) => name.split(".")[1]), "js"],
+    candidates: files.flatMap((file) => [{ file, line: 2 }, { file, line: 4 }]),
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  for (const name of files) {
+    expect(receipt.rows.some((entry) => entry.id === `mutation/${name}:2`)).toBe(false);
+    expect(receipt.rows.some((entry) => entry.id === `mutation/${name}:4`)).toBe(true);
+  }
+  expect(run.exit).toBe(1);
 }, 120000);
 
 test("the error scan skips a comment line and still reports a real wrap site", () => {
