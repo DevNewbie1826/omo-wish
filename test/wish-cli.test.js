@@ -20,6 +20,7 @@ import {
   readdirSync,
   rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -728,6 +729,186 @@ describe("gaps", () => {
     expect(JSON.parse(listed.out).length).toBe(2);
     expect(cli(["gaps", "set", "--id", "nope", "--status", "open", "--root", state.root]).code).toBe(3);
     expect(addGaps(state, [gapRow()]).code).toBe(1);
+  });
+
+  test("a defect row stored with before_artifact '-' binds its before receipt on move to fixed", async () => {
+    const state = scene({ type: "design" });
+    // Register a defect row in 'open' with no before artifact (legal: only 'open' allows '-').
+    const added = addGaps(state, [gapRow({ before_artifact: "-", status: "open" })]);
+    expect(added.code).toBe(0);
+    // Write a before receipt for G1 into the evidence root.
+    const receiptsDir = join(state.root, "receipts");
+    mkdirSync(receiptsDir, { recursive: true });
+    const beforeName = `before-G1-${state.repo.tree.slice(0, 7)}.png`;
+    writeFileSync(join(receiptsDir, beforeName), "png");
+    // Move to fixed without the flag: the existing before receipt is bound automatically.
+    const fixedNoFlag = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--root", state.root]);
+    expect(fixedNoFlag.code).toBe(0);
+    const noFlagRow = JSON.parse(fixedNoFlag.out);
+    expect(noFlagRow.before_artifact).toBe(join(receiptsDir, beforeName));
+    // Reopen for the next case.
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
+    // Move to fixed with an explicit --before-artifact that names the existing receipt: succeeds.
+    const fixedWithFlag = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", join(receiptsDir, beforeName), "--root", state.root,
+    ]);
+    expect(fixedWithFlag.code).toBe(0);
+    expect(JSON.parse(fixedWithFlag.out).before_artifact).toBe(join(receiptsDir, beforeName));
+    // A relative path is not a location-independent capture: it is refused, and
+    // the register is left unchanged so the session must name the absolute
+    // receipt path instead.
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
+    const relativePath = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", beforeName, "--root", state.root,
+    ]);
+    expect(relativePath.code).toBe(1);
+    expect(relativePath.err).toContain("must name an absolute receipt path");
+    // An absolute receipt path still binds the capture.
+    const absoluteAgain = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", join(receiptsDir, beforeName), "--root", state.root,
+    ]);
+    expect(absoluteAgain.code).toBe(0);
+    expect(JSON.parse(absoluteAgain.out).before_artifact).toBe(join(receiptsDir, beforeName));
+    // Reopen again for the bad-path case.
+    expect(cli(["gaps", "set", "--id", "G1", "--status", "open", "--root", state.root]).code).toBe(0);
+    // An explicit --before-artifact that does not name any existing receipt: refused.
+    const badPath = cli([
+      "gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER,
+      "--before-artifact", "/tmp/made-up.png", "--root", state.root,
+    ]);
+    expect(badPath.code).toBe(1);
+    expect(badPath.err).toContain("names no existing before receipt");
+    // A gap may hold more than one valid before capture (several trees or
+    // formats): the flag must bind any of them, not only the first in sort order.
+    writeFileSync(
+      join(state.root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
+    );
+    writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`), "webp");
+    const secondFormat = cli([
+      "gaps", "set", "--id", "G1", "--status", "planned",
+      "--before-artifact", join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`), "--root", state.root,
+    ]);
+    expect(secondFormat.code).toBe(0);
+    expect(JSON.parse(secondFormat.out).before_artifact).toBe(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
+    // A relative path is refused wherever it is given, so the register never
+    // stores a capture whose location depends on the caller's working directory.
+    writeFileSync(
+      join(state.root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
+    );
+    writeFileSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`), "png");
+    const relative = cli([
+      "gaps", "set", "--id", "G1", "--status", "planned",
+      "--before-artifact", `before-G1-${state.repo.tree.slice(0, 7)}.png`, "--root", state.root,
+    ]);
+    expect(relative.code).toBe(1);
+    expect(relative.err).toContain("must name an absolute receipt path");
+    rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.png`));
+    rmSync(join(receiptsDir, `before-G1-${state.repo.tree.slice(0, 7)}.webp`));
+
+    // A bound capture is part of the write's own guarantee: the register a bound
+    // setGap leaves must always parse under the M0 contract, and the move itself
+    // must not be reachable through a capture-less row.
+    const store = await import("../skills/wish/scripts/lib/store.mjs");
+    const box = sandbox();
+    const repo = makeRepo(box, "race");
+    const raceRunId = "w-race-20261028-0000";
+    const planPath = join(box.dir, "plan.md");
+    writePlan(planPath, { runId: raceRunId, tier: "S", type: "design", unit: "u1", worktree: repo.dir });
+    const root = join(box.dir, "er");
+    expect(cli(["init", "--run-id", raceRunId, "--type", "design", "--tier", "S", "--plan", planPath,
+      "--root", root, "--unit", "u1", "--worktree", repo.dir, "--branch", "fixture",
+      "--fact", "race"]).code).toBe(0);
+    const raceDir = join(root, "receipts");
+    mkdirSync(raceDir, { recursive: true });
+    const raceName = `before-G1-${repo.tree.slice(0, 7)}.png`;
+    writeFileSync(join(raceDir, raceName), "png");
+    const raceRow = { ...gapRow({ type: "design" }), before_artifact: "-", status: "open", fixed_head: "-" };
+    const raceTsv = join(box.dir, `gaps-${Date.now()}-race.tsv`);
+    writeFileSync(raceTsv, [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"));
+    expect(cli(["gaps", "add", "--tsv", raceTsv, "--root", root]).code).toBe(0);
+    // The bound capture is part of the write's own guarantee: a same-status write
+    // that would leave the row capture-less must not be reachable. The public
+    // surface enforces this two ways: gaps set cannot move the row to a capture
+    // state it does not carry, and the register it leaves always parses under
+    // the M0 contract (a planned defect row with a "-" capture is unparseable).
+    const autoBound = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(autoBound.code).toBe(0);
+    expect(JSON.parse(autoBound.out).before_artifact).toBe(join(raceDir, raceName));
+    expect(JSON.parse(autoBound.out).status).toBe("planned");
+    // The register never holds a capture-less non-open defect row: the bound
+    // row carries the receipt path in its before_artifact cell, so the discarded
+    // state is unreachable through the public surface.
+    expect(readFileSync(join(root, "gaps.tsv"), "utf8")).toContain(`\t${join(raceDir, raceName)}\t`);
+    // A receipt that is a symlink escaping the receipts directory is not a
+    // capture: it must not be bindable, so the move is refused rather than
+    // writing an outside path into the register.
+    const outside = join(box.dir, "outside-capture.png");
+    writeFileSync(outside, "outside");
+    const escapeName = `before-G1-${repo.tree.slice(0, 7)}.png`;
+    unlinkSync(join(raceDir, escapeName));
+    symlinkSync(outside, join(raceDir, escapeName));
+    // Reset the register to an open, capture-less row so the next move must
+    // auto-bind a receipt; the only receipt is the escaping symlink.
+    writeFileSync(
+      join(root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"),
+    );
+    const escaped = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(escaped.code).toBe(1);
+    expect(escaped.err).toContain("needs a before receipt");
+    // A lexically-earlier escaping symlink must not shadow a later, valid,
+    // contained receipt: auto-bind binds the first receipt that is both valid
+    // and contained, so the contained one wins even when it sorts later. The
+    // escape receipt sorts first (0000001), the contained receipt sorts after
+    // (89abcde), so the ordering the guarantee depends on is explicit.
+    unlinkSync(join(raceDir, escapeName));
+    symlinkSync(outside, join(raceDir, "before-G1-0000001.png"));
+    const shadowName = `before-G1-89abcde.png`;
+    writeFileSync(join(raceDir, shadowName), "contained");
+    const shadowed = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(shadowed.code).toBe(0);
+    expect(JSON.parse(shadowed.out).before_artifact).toBe(join(raceDir, shadowName));
+    // Reopen again for the no-receipt case: reset the register to an open row
+    // with no capture (gaps set cannot clear before_artifact by design); the
+    // escape and shadow receipts are removed above.
+    rmSync(join(raceDir, "before-G1-0000001.png"));
+    rmSync(join(raceDir, shadowName));
+    writeFileSync(
+      join(state.root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => gapRow({ before_artifact: "-", status: "open", fixed_head: "-" })[column]).join("\t")].join("\n"),
+    );
+    const noReceipt = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", OTHER, "--root", state.root]);
+    expect(noReceipt.code).toBe(1);
+    expect(noReceipt.err).toContain("needs a before receipt");
+    // The receipts directory itself must also remain under the evidence root:
+    // a directory symlink to an outside directory cannot make its files valid
+    // before receipts.
+    const outsideReceipts = join(box.dir, "outside-receipts");
+    mkdirSync(outsideReceipts, { recursive: true });
+    writeFileSync(join(outsideReceipts, `before-G1-${repo.tree.slice(0, 7)}.png`), "outside");
+    rmSync(raceDir, { recursive: true, force: true });
+    symlinkSync(outsideReceipts, raceDir);
+    writeFileSync(
+      join(root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"),
+    );
+    const escapedDirectory = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(escapedDirectory.code).toBe(1);
+    expect(escapedDirectory.err).toContain("needs a before receipt");
+    rmSync(raceDir, { recursive: true, force: true });
+    writeFileSync(
+      join(root, "gaps.tsv"),
+      [GAPS_COLUMNS.join("\t"), GAPS_COLUMNS.map((column) => raceRow[column]).join("\t")].join("\n"),
+    );
+    const missingReceiptsDir = cli(["gaps", "set", "--id", "G1", "--status", "planned", "--root", root]);
+    expect(missingReceiptsDir.code).toBe(1);
+    expect(missingReceiptsDir.err).toContain("needs a before receipt");
+    expect(missingReceiptsDir.err).not.toContain("internal error");
   });
 });
 
