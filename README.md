@@ -177,9 +177,11 @@ Review has no round ceiling. **`APPROVED` is the only end.**
 
 1. Two consecutive REVISE rounds on the same component **or** the same defect class stop the patch loop and force
    one `architect` premise review of the assumption the failed fixes shared.
-2. A **third-or-later** REVISE round forces an approach switch, and every REVISE after it adds one kind not yet
-   used: `premise`, `family` (a model family other than the failed fix's), `strategy` (a `SWITCH:` row that
-   redesigns the component), `split` (program only), `rediscover`.
+2. A **third-or-later** REVISE round that repeats a defect class an earlier round already cited forces an
+   approach switch, and every repeat after it adds one kind not yet used: `premise`, `family` (a model family
+   other than the failed fix's), `strategy` (a `SWITCH:` row that redesigns the component), `split` (program
+   only), `rediscover`. A round whose blocking findings are all new classes is not a repeat and needs only the
+   fix lane.
 3. After a switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a **new** ultrabrain
    reviewer on the delta and the prior findings.
 4. The requester is never asked whether to keep reviewing. Decisions are theirs only when irreversible,

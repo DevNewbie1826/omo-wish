@@ -141,7 +141,7 @@ part of the finite contract, so a reviewer may not report it as a finding (`cont
 - SWITCH: <the premise the failed fixes assumed> -> <the approach that replaces it>
 ```
 
-`playbooks/revise.md` (M6) writes one after a third REVISE round, and the ledger records the same switch as a
+`playbooks/revise.md` (M6) writes one after a repeat third-or-later REVISE round, and the ledger records the same switch as a
 `switch` event (`ledger.md` §9.4). The plan row states the redesign; the ledger event carries the round and the
 kind. Two sides are required; the plan's `round` front matter says which round it belongs to.
 
