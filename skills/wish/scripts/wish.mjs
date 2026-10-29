@@ -598,6 +598,13 @@ async function runDispatchGate(parsed, root) {
   const head = headArg(parsed.get("--head"), identity)
     ?? (identity === "research" ? plan.wish.frozen_head : observed.head);
   if (!head) throw stateMismatch("the gate needs a head: pass --head or freeze a worktree with a commit");
+  // The freeze binds the head a round is judged at, so a stale freeze is refused before
+  // the argument check: the playbooks dispatch with the frozen head itself, and a moved
+  // head must not read as a bad --head. Research has no worktree head to compare.
+  if (identity !== "research" && plan.wish.frozen_head && observed.head
+      && plan.wish.frozen_head !== observed.head) {
+    throw stateMismatch(`the head moved after the freeze: frozen ${plan.wish.frozen_head.slice(0, 7)}, now ${String(observed.head).slice(0, 7)}`);
+  }
   // The rows run in this checkout: a head that is not the observed one would bind
   // PASS evidence to a head whose tree was never executed.
   if (identity !== "research" && head !== observed.head) {
