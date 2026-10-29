@@ -511,6 +511,99 @@ test("prose and test files are never mutation candidates", () => {
   expect(run.exit).toBe(0);
 });
 
+test("a comment-only added line is never a mutation candidate, declared or diff-derived", () => {
+  const dir = stage("clean");
+  const git = (...args) => Bun.spawnSync(["git", "-c", "user.name=sweep", "-c", "user.email=sweep@test", ...args], { cwd: dir });
+  const facts = () => ({
+    head: git("rev-parse", "HEAD").stdout.toString().trim(),
+    tree: git("rev-parse", "HEAD^{tree}").stdout.toString().trim(),
+  });
+  const sweepOnce = () => {
+    const { head, tree } = facts();
+    const out = join(dir, `verify_lane-sweep-${head.slice(0, 7)}.json`);
+    const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", out, "--unit", "u-m3", "--head", head, "--tree", tree]);
+    return { ...run, receipt: existsSync(out) ? JSON.parse(readFileSync(out, "utf8")) : null };
+  };
+  expect(git("init", "-q").exitCode).toBe(0);
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "base").exitCode).toBe(0);
+  const cli = join(dir, "cli.js");
+  const base = readFileSync(cli, "utf8");
+  // A block comment's body carries no marker of its own: that is the line that
+  // used to survive and fail the lane, and the guarded line beside it is the
+  // control that must still be probed and killed.
+  writeFileSync(cli, `${base}
+/*
+Sends one message and reports it.
+The transport may refuse the request; the failure never echoes the credential.
+*/
+`);
+  const comment = lineOf(dir, "cli.js", "may refuse the request");
+  const guard = lineOf(dir, "cli.js", "upstream rejected");
+
+  writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", candidates: [{ file: "cli.js", line: comment }, { file: "cli.js", line: guard }] } } });
+  const declared = sweepOnce();
+  expect(declared.receipt.rows.some((entry) => entry.id === `mutation/cli.js:${comment}`)).toBe(false);
+  expect(verdictOf(declared.receipt, `mutation/cli.js:${guard}`)).toBe("PASS");
+  expect(declared.receipt.status).toBe("PASS");
+  expect(declared.exit).toBe(0);
+
+  expect(git("add", "-A").exitCode).toBe(0);
+  expect(git("commit", "-q", "-m", "add the comment").exitCode).toBe(0);
+  writeConfig(dir, { probes: { mutation: { testCmd: "bun check.js", failMarker: "CHECK FAILED", base: "HEAD~1" } } });
+  const derived = sweepOnce();
+  expect(derived.receipt.rows.some((entry) => entry.id.startsWith("mutation/cli.js"))).toBe(false);
+  expect(derived.receipt.rows.some((entry) => entry.verdict === "FAIL")).toBe(false);
+  expect(derived.exit).toBe(0);
+}, 120000);
+
+test("a compiled-language deletion that cannot build is a non-candidate, not a kill", () => {
+  const dir = stage("clean");
+  // A Go source file with a build step that refuses the broken deletion, so the
+  // classification under test is the probe's own and never a toolchain's presence.
+  writeFileSync(join(dir, "guard.go"), "package guard\n\nfunc Guard(x int) bool {\n\tif x > 0 {\n\t\treturn true\n\t}\n\treturn false\n}\n");
+  writeFileSync(join(dir, "build.sh"), [
+    "#!/bin/sh",
+    "if ! grep -q 'func Guard(x int) bool {' guard.go; then",
+    "  echo 'BuildMessage: syntax error: unexpected newline, expecting function signature'",
+    "  exit 1",
+    "fi",
+    "echo 'CHECK OK'",
+    "",
+  ].join("\n"));
+  const signature = lineOf(dir, "guard.go", "func Guard(x int) bool {");
+  const guard = lineOf(dir, "guard.go", "return true");
+  writeConfig(dir, { probes: { mutation: { testCmd: "sh build.sh", failMarker: "CHECK FAILED", candidates: [{ file: "guard.go", line: signature }, { file: "guard.go", line: guard }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id === `mutation/guard.go:${signature}`)).toBe(false);
+  const skipped = receipt.rows.find((entry) => entry.id === "mutation/noncandidate/guard.go");
+  expect(skipped.verdict).toBe("SKIP");
+  expect(skipped.note).toContain("does not build");
+  expect(skipped.note).toContain(String(signature));
+  expect(skipped.class).toBeUndefined();
+  expect(receipt.rows.some((entry) => entry.verdict === "INVALID")).toBe(false);
+  // The buildable candidate is still a real mutation: the suite stayed green.
+  expect(verdictOf(receipt, `mutation/guard.go:${guard}`)).toBe("FAIL");
+  expect(receipt.status).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("the error scan skips a comment line and still reports a real wrap site", () => {
+  const dir = stage("clean");
+  const cli = join(dir, "cli.js");
+  writeFileSync(cli, `${readFileSync(cli, "utf8")}\n/*\nThe old handler used new Error(error.message) and lost the cause.\n*/\nfunction wrap(error) {\n  throw new Error(error.message);\n}\n`);
+  const comment = lineOf(dir, "cli.js", "lost the cause");
+  const site = lineOf(dir, "cli.js", "throw new Error(error.message)");
+  writeConfig(dir, { probes: { errors: { strict: true, lines: [{ file: "cli.js", line: comment }, { file: "cli.js", line: site }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  const rows = receipt.rows.filter((entry) => entry.id === "errors" || entry.id.startsWith("errors/"));
+  expect(rows.map((entry) => entry.id)).toEqual([`errors/rewrapped-message:cli.js:${site}`]);
+  expect(rows[0].verdict).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
 test("the error scan skips test files and prose", () => {
   const dir = stage("seeded");
   writeFileSync(join(dir, "checks.test.js"), "function wrap(e) {\n  return new Error(e.message);\n}\n");
@@ -1043,7 +1136,9 @@ test("killSession takes a child that moved into its own process group", async ()
 
 test("the mutation cap cannot be raised above twelve lines", () => {
   const dir = stage("clean");
-  const candidates = Array.from({ length: 13 }, (_, index) => ({ file: "cli.js", line: index + 1 }));
+  // Thirteen code lines: a blank, an import or a comment line is not a candidate,
+  // so a fixture that mixed them in would not prove the cap at all.
+  const candidates = [7, 8, 12, 13, 14, 15, 16, 22, 23, 24, 25, 30, 31].map((line) => ({ file: "cli.js", line }));
   writeConfig(dir, { probes: { mutation: { testCmd: "true", failMarker: "CHECK FAILED", max: 99, candidates } } });
   const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
   const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));

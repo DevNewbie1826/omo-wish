@@ -7,7 +7,7 @@
 import { cpSync, existsSync, lstatSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
-import { addedLines, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
+import { addedLines, extensionOf, mapPool, productionLines, row, runCommand, isMain, probeCli } from "./lib.mjs";
 
 export const name = "mutation";
 export const types = ["code"];
@@ -24,15 +24,30 @@ The suite must be green first. Each candidate line is then deleted in its own
 copy of the tree and the suite is re-run:
   PASS    the suite failed with a test-failure marker (the mutation was killed)
   FAIL    the suite stayed green (SURVIVED: nothing tests this line)
-  INVALID the mutation did not compile, or the run failed without a failure
-          marker; INVALID is never a kill.
+  INVALID the run failed without a failure marker, or the mutant did not parse in a
+          language whose loader this probe can check; INVALID is never a kill.
+          In a compiled language a deletion that cannot build is not a candidate at
+          all: it is reported once per file as mutation/noncandidate/<file> (SKIP)
+          naming every line, so no row asks for a kill no test could ever give.
 "candidates" replaces the diff-derived list (fixtures, or a diff already merged).
-Only added production source lines are candidates: prose and test files are never
-mutated, because a doc line would demand a test that pins prose and a test line
-would demand a test of its own fixtures. "testGlobs" and "codeExtensions"
-override that filter. At most 12 production lines are probed whatever "max"
-says (a lower "max" is honoured: tier S declares 3); the rest are reported as
-one WARN row so an unprobed line can never read as covered.`;
+Only added production source lines are candidates: prose, comment-only lines and
+test files are never mutated, because a doc or comment line would demand a test
+that pins prose and a test line would demand a test of its own fixtures.
+"testGlobs" and "codeExtensions" override that filter. At most 12 production lines
+are probed whatever "max" says (a lower "max" is honoured: tier S declares 3); the
+rest are reported as one WARN row so an unprobed line can never read as covered.`;
+
+// A language whose build refuses a broken deletion: removing a declaration, a
+// brace-owning statement or a used variable is a compile error, not a mutation a
+// test can observe. Reported as a non-candidate, never as a row to kill.
+const COMPILED_EXTENSIONS = new Set([
+  "go", "c", "h", "cc", "cpp", "cxx", "hpp", "hh", "rs", "java", "kt", "kts", "cs", "swift",
+  "scala", "ml", "mli", "hs", "zig", "nim", "dart", "ex", "exs", "erl", "sol",
+]);
+
+function isCompiled(file) {
+  return COMPILED_EXTENSIONS.has(extensionOf(file));
+}
 
 const SKIP_DIRS = new Set([".git", "node_modules", ".omo", "dist", "build", ".next", "target"]);
 
@@ -80,7 +95,7 @@ export async function run(config, ctx) {
   const raw = config.candidates?.length
     ? config.candidates
     : await addedLines({ root: ctx.root, base: config.base, paths: config.paths });
-  const production = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions });
+  const production = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions, root: ctx.root });
   const cap = Math.max(1, Math.min(Number(config.max) || 12, 12));
   const candidates = production.slice(0, cap);
   if (candidates.length === 0) {
@@ -102,6 +117,7 @@ export async function run(config, ctx) {
   const results = await mapPool(candidates, Math.min(8, ctx.parallel), async (candidate) => {
     const id = `mutation/${candidate.file}:${candidate.line}`;
     const observable = "removing this line makes the declared suite fail";
+    const nonCandidate = (reason) => ({ nonCandidate: { file: candidate.file, line: candidate.line, reason } });
     const scratch = mkdtempSync(join(tmpdir(), "wish-sweep-mutant-"));
     const tree = join(scratch, "tree");
     try {
@@ -115,37 +131,68 @@ export async function run(config, ctx) {
       });
       const target = resolve(tree, candidate.file);
       if (!target.startsWith(`${tree}${sep}`)) {
-        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate path escapes the throwaway copy; nothing was written" });
+        return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate path escapes the throwaway copy; nothing was written" }) };
       }
-      if (!existsSync(target)) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "file not found in the copy" });
+      if (!existsSync(target)) return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "file not found in the copy" }) };
       if (lstatSync(target).isSymbolicLink()) {
-        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate is a symlink, so writing it would edit its target outside the copy" });
+        return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate is a symlink, so writing it would edit its target outside the copy" }) };
       }
       if (!insideCopy(tree, target)) {
-        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate resolves outside the throwaway copy through a linked directory; nothing was written" });
+        return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "candidate resolves outside the throwaway copy through a linked directory; nothing was written" }) };
       }
       const lines = readFileSync(target, "utf8").split("\n");
       const index = candidate.line - 1;
-      if (lines[index] === undefined) return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "line no longer exists" });
+      if (lines[index] === undefined) return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "line no longer exists" }) };
       lines[index] = "";
       const mutated = lines.join("\n");
       if (!parses(mutated, candidate.file)) {
-        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not parse, so it is not counted as killed" });
+        // A mutant that does not parse cannot be killed by a test, so a compiled
+        // language reports it as a non-candidate; a script language keeps the
+        // INVALID row its loader check has always produced.
+        if (isCompiled(candidate.file)) return nonCandidate("does not parse");
+        return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not parse, so it is not counted as killed" }) };
       }
       writeFileSync(target, mutated);
       const result = await runCommand({ cmd: config.testCmd, cwd: tree, timeoutMs: config.timeoutMs ?? ctx.timeoutMs });
       const output = `${result.stdout}\n${result.stderr}`;
       if (compileError.test(output)) {
-        return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not compile; not counted as killed" });
+        if (isCompiled(candidate.file)) return nonCandidate("deleting it does not build");
+        return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not compile; not counted as killed" }) };
       }
-      if (result.code === 0) return row({ id, command: config.testCmd, observable, verdict: "FAIL", cls, note: "SURVIVED: the suite stayed green with this line removed" });
-      if (failMarker.test(output)) return row({ id, command: config.testCmd, observable, verdict: "PASS", cls, note: `killed (exit ${result.code})` });
-      return row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: `failed without a test-failure marker (exit ${result.code})` });
+      if (result.code === 0) return { row: row({ id, command: config.testCmd, observable, verdict: "FAIL", cls, note: "SURVIVED: the suite stayed green with this line removed" }) };
+      if (failMarker.test(output)) return { row: row({ id, command: config.testCmd, observable, verdict: "PASS", cls, note: `killed (exit ${result.code})` }) };
+      return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: `failed without a test-failure marker (exit ${result.code})` }) };
     } finally {
       ctx.cleanup(scratch);
     }
   });
-  return [...checks, ...results];
+  return [...checks, ...results.map((entry) => entry.row).filter(Boolean), ...nonCandidateRows(results)];
+}
+
+// One row per file, never one per line: a build that refuses a deletion is a
+// property of the line's shape, not a claim about a test, so the session reads
+// the lines once and looks at the candidates that could be probed.
+function nonCandidateRows(results) {
+  const byFile = new Map();
+  for (const entry of results) {
+    if (!entry.nonCandidate) continue;
+    const { file, line, reason } = entry.nonCandidate;
+    if (!byFile.has(file)) byFile.set(file, { reasons: new Set(), lines: [] });
+    const group = byFile.get(file);
+    group.reasons.add(reason);
+    group.lines.push(line);
+  }
+  return [...byFile.entries()].map(([file, group]) => {
+    const lines = group.lines.slice().sort((left, right) => left - right);
+    const listed = lines.join(",");
+    return row({
+      id: `mutation/noncandidate/${file}`,
+      command: "no command",
+      observable: "a line whose deletion cannot be observed by a test is not a candidate to kill",
+      verdict: "SKIP",
+      note: `${lines.length} line(s) ${[...group.reasons].join(" and ")}: ${listed}`,
+    });
+  });
 }
 
 if (isMain(import.meta.url)) await probeCli({ name, types, summary, usage, run });

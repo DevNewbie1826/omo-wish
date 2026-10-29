@@ -339,6 +339,91 @@ export function isCodeFile(file, extensions = DEFAULT_CODE_EXTENSIONS) {
   return dot !== -1 && extensions.includes(name.slice(dot + 1).toLowerCase());
 }
 
+// A candidate must be a line whose deletion a test can observe, so a line whose
+// whole text is comment is never one. A marker test cannot decide that: a block
+// comment's body lines carry no marker of their own, which is how a comment line
+// became a SURVIVED mutation the lane had to fail on. The table below names, per
+// extension, the line markers, the block delimiters and the quotes whose content
+// is code. An extension outside it has no comment opinion: the caller keeps the
+// line rather than guessing, because dropping a real statement would let a
+// surviving mutation escape.
+const C_LIKE = Object.freeze({ line: ["//"], block: [["/*", "*/"]], quotes: ['"', "'", "`"] });
+const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
+
+const COMMENT_SYNTAX = Object.freeze({
+  js: C_LIKE, mjs: C_LIKE, cjs: C_LIKE, jsx: C_LIKE, ts: C_LIKE, tsx: C_LIKE, mts: C_LIKE, cts: C_LIKE,
+  go: C_LIKE, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, hpp: C_LIKE, cs: C_LIKE, java: C_LIKE,
+  kt: C_LIKE, kts: C_LIKE, swift: C_LIKE, rs: C_LIKE, scala: C_LIKE, dart: C_LIKE, zig: C_LIKE,
+  php: C_LIKE, css: C_LIKE, scss: C_LIKE, less: C_LIKE, sol: C_LIKE, vue: C_LIKE, svelte: C_LIKE,
+  py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
+  pl: HASH_LINE, jl: HASH_LINE, rego: HASH_LINE, ex: HASH_LINE, exs: HASH_LINE,
+  tf: Object.freeze({ line: ["#"], block: [["/*", "*/"]], quotes: ['"'] }),
+  nim: Object.freeze({ line: ["#"], block: [["#[", "]#"]], quotes: ['"'] }),
+  erl: Object.freeze({ line: ["%"], block: [], quotes: ['"'] }),
+  hs: Object.freeze({ line: ["--"], block: [["{-", "-}"]], quotes: ['"'] }),
+  lua: Object.freeze({ line: ["--"], block: [["--[[", "]]"]], quotes: ['"', "'"] }),
+  sql: Object.freeze({ line: ["--"], block: [["/*", "*/"]], quotes: ["'", '"'] }),
+  ml: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'] }),
+  clj: Object.freeze({ line: [";"], block: [], quotes: ['"'] }),
+  html: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
+  astro: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
+});
+
+export function extensionOf(file) {
+  const name = String(file);
+  const dot = name.lastIndexOf(".");
+  return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
+}
+
+// The 1-based lines of a file that carry no code: blank lines and lines whose only
+// content is comment. A string literal counts as code, so a line is never dropped
+// for containing one. `null` means this module has no syntax for the extension.
+export function commentOnlyLines(source, file) {
+  const syntax = COMMENT_SYNTAX[extensionOf(file)];
+  if (!syntax) return null;
+  const only = new Set();
+  let block = null;
+  const lines = String(source ?? "").replace(/\r\n?/g, "\n").split("\n");
+  for (let index = 0; index < lines.length; index += 1) {
+    let rest = lines[index];
+    let code = false;
+    while (rest.length > 0) {
+      if (block !== null) {
+        const at = rest.indexOf(block);
+        if (at === -1) {
+          rest = "";
+          break;
+        }
+        rest = rest.slice(at + block.length);
+        block = null;
+        continue;
+      }
+      const pair = syntax.block.find(([open]) => rest.startsWith(open));
+      if (pair) {
+        block = pair[1];
+        rest = rest.slice(pair[0].length);
+        continue;
+      }
+      if (syntax.line.some((marker) => rest.startsWith(marker))) {
+        rest = "";
+        break;
+      }
+      const head = rest[0];
+      if (syntax.quotes.includes(head)) {
+        code = true;
+        let cursor = 1;
+        while (cursor < rest.length && rest[cursor] !== head) cursor += rest[cursor] === "\\" ? 2 : 1;
+        rest = rest.slice(cursor + 1);
+        continue;
+      }
+      if (!/\s/.test(head)) code = true;
+      rest = rest.slice(1);
+    }
+    if (!code) only.add(index + 1);
+  }
+  return only;
+}
+
 function isNoise(candidate, testGlobs) {
   if (testGlobs.some((glob) => glob.test(candidate.file))) return true;
   const text = candidate.text;
@@ -353,14 +438,43 @@ function isNoise(candidate, testGlobs) {
 
 // The candidate lines a mutation or an error scan may look at: added production
 // source lines, with declaration, comment, import and continuation noise dropped.
-export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS } = {}) {
+// With `root`, a candidate's own file answers the comment question, so a block
+// comment's body is dropped even when the diff carried no marker for it and a
+// declared candidate is judged by the same rule as a diff-derived one.
+export function productionLines(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, root = null } = {}) {
   const globs = testGlobs.map(globToRegExp);
-  return raw.filter((candidate) => isCodeFile(candidate.file, codeExtensions) && !isNoise(candidate, globs));
+  const sources = new Map();
+  const indexes = new Map();
+  const sourceOf = (file) => {
+    if (root === null) return null;
+    if (sources.has(file)) return sources.get(file);
+    const target = resolve(root, file);
+    let source = null;
+    if (target.startsWith(`${resolve(root)}${sep}`) && existsSync(target)) {
+      try {
+        source = readFileSync(target, "utf8");
+      } catch {
+        source = null;
+      }
+    }
+    sources.set(file, source);
+    return source;
+  };
+  const isCommentOnly = (candidate) => {
+    if (!indexes.has(candidate.file)) {
+      const source = sourceOf(candidate.file);
+      indexes.set(candidate.file, source === null ? null : commentOnlyLines(source, candidate.file));
+    }
+    return indexes.get(candidate.file)?.has(candidate.line) ?? false;
+  };
+  return raw.filter((candidate) => isCodeFile(candidate.file, codeExtensions)
+    && !isNoise(candidate, globs)
+    && !isCommentOnly(candidate));
 }
 
 // The probe's work list: production lines, capped at `max`.
-export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, max = 12 } = {}) {
-  return productionLines(raw, { testGlobs, codeExtensions }).slice(0, max);
+export function selectCandidates(raw, { testGlobs = DEFAULT_TEST_GLOBS, codeExtensions = DEFAULT_CODE_EXTENSIONS, max = 12, root = null } = {}) {
+  return productionLines(raw, { testGlobs, codeExtensions, root }).slice(0, max);
 }
 
 export function lineBody(ctx, entry) {

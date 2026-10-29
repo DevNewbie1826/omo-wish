@@ -20,9 +20,10 @@ export const usage = `config:
   } }
 
 Reads the added production source lines of "git diff <base>...HEAD" unless "lines"
-are declared ("base" must be a revision, never an option). Prose and test files are
-not scanned: a test file's own fixture text is not a production wrap, and no prose
-line may demand a test. "testGlobs" and "codeExtensions" override that filter.
+are declared ("base" must be a revision, never an option). Prose, comment-only
+lines and test files are not scanned: a test file's own fixture text is not a
+production wrap, a comment is not a wrap site, and no prose line may demand a
+test. "testGlobs" and "codeExtensions" override that filter.
 "strict": true makes a match FAIL; otherwise it is a WARN memo. The default
 patterns are: a formatter that re-wraps with %v or %s instead of %w, a constructor
 that re-wraps only the message, and an empty catch.`;
@@ -37,7 +38,7 @@ export async function run(config, ctx) {
   const cls = ctx.classFor("C");
   const patterns = (config.patterns ?? DEFAULT_PATTERNS).map((pattern) => ({ ...pattern, re: new RegExp(pattern.regex) }));
   const raw = config.lines?.length ? config.lines : await addedLines({ root: ctx.root, base: config.base, paths: config.paths });
-  const lines = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions });
+  const lines = productionLines(raw, { testGlobs: config.testGlobs, codeExtensions: config.codeExtensions, root: ctx.root });
   if (lines.length === 0) {
     return [row({ id: "errors", verdict: "SKIP", observable: "at least one added production line is inspected", cls, note: "no added production source line to inspect" })];
   }
