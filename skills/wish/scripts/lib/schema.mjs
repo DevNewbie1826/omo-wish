@@ -83,6 +83,19 @@ export const SWITCH_KINDS = Object.freeze([
 ]);
 export const ROUND_VERDICTS = Object.freeze(["APPROVED", "REVISE"]);
 
+// §9.4 rule 3: only a round that re-cites a class an earlier round's blocking rows
+// already carry is a repeat and owes a switch kind. A round with no blocking row of
+// its own answers null, and null keeps the obligation: a missing row never lifts it.
+export function switchRepeats(findings, round) {
+  const blocking = (findings ?? []).filter((row) => row && row.blocking === "1");
+  const own = blocking.filter((row) => Number(row.round) === Number(round));
+  if (own.length === 0) return null;
+  const earlier = new Set(blocking
+    .filter((row) => Number(row.round) < Number(round))
+    .map((row) => row.class));
+  return own.some((row) => earlier.has(row.class));
+}
+
 // A §C.1 verification lanes; `mixed` is the union of its two types.
 // `adversarial` is required only for a plan that flags a high-risk row (D §2.3).
 export const REQUIRED_RECEIPTS = Object.freeze({
@@ -337,6 +350,7 @@ const LEDGER_OPTIONAL = [
   "primary", "secondary", "facts", "progress", "gap_id", "gap_status", "kind", "premise",
   "new_approach", "rules_total", "lane", "task", "adversarial_classes",
   "sources", "elements", "report", "ideal", "gaps", "count", "gates", "recommended", "parked",
+  "prior_repeat",
 ];
 const LEDGER_KEYS = [...new Set([...Object.keys(LEDGER_COMMON_SPEC), ...LEDGER_OPTIONAL])];
 const ADVERSARIAL_SPEC = { name: T.str, applicable: T.bool, observable: T.str };
@@ -353,6 +367,8 @@ const LEDGER_OPTIONAL_SPEC = {
   new_approach: T.str, rules_total: T.int(0), lane: T.kebab, task: T.str,
   adversarial_classes: T.arr(T.obj(ADVERSARIAL_SPEC)),
   sources: T.int(0), elements: T.int(0), report: T.str, ideal: T.int(0), gaps: T.int(0),
+  // §9.4: the ledger's own repeat decision, never a caller's.
+  prior_repeat: T.bool,
   count: T.int(0), gates: T.arr(T.str), recommended: T.arr(T.str), parked: T.str,
   ended_at: T.iso,
   duration_s: (v, p, e) => { if (!(typeof v === "number" && v >= 0)) fail(e, p, "expected a number >= 0"); },
@@ -583,7 +599,11 @@ export function validateLedgerSequence(events) {
         const nextRound = after.findIndex((next) => next.unit === unit && next.event === "round");
         const window = nextRound === -1 ? after : after.slice(0, nextRound);
         const switched = window.some((next) => next.unit === unit && next.event === "switch" && next.round === event.round);
-        if (!switched) fail(errors, `unit ${unit} round ${event.round}`, "a third REVISE requires an approach switch before review continues");
+        // §9.4 rule 3: the repeat decision is stamped on the round that follows, so a
+        // replay never re-reads a findings table for a window that is already closed,
+        // and an absent or true stamp keeps today's demand.
+        const decided = nextRound === -1 ? undefined : after[nextRound].prior_repeat;
+        if (!switched && decided !== false) fail(errors, `unit ${unit} round ${event.round}`, "a third REVISE requires an approach switch before review continues");
       }
     });
     const kinds = [];

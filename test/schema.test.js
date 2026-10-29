@@ -25,6 +25,7 @@ import {
   parseVerdict,
   receiptFilename,
   requiredReceiptsFor,
+  switchRepeats,
   validateCsvHeader,
   validateDeviceRow,
   validateExamples,
@@ -197,6 +198,39 @@ test("the switch cycle never caps the round count", () => {
   const early = rounds(6);
   early.find((entry) => entry.event === "switch" && entry.round === 5).kind = "premise";
   expect(validateLedgerSequence(early).errors.some((error) => error.message.includes("repeats"))).toBe(true);
+});
+
+test("the repeat test reads blocking rows whatever their status", () => {
+  const row = (id, n, cls, blocking = "1", status = "open") => ({
+    id, round: String(n), source: "ultrabrain", class: cls, severity: "HIGH",
+    file_line: "src/a.mjs:4", blocking, repro_cmd: "exit 3", head_found: HEAD, status,
+    fixed_head: status === "fixed" ? OTHER : "-",
+  });
+  expect(switchRepeats([row("F1", 1, "C", "1", "fixed"), row("F2", 3, "C")], 3), "a fixed row still cites its class").toBe(true);
+  expect(switchRepeats([row("F1", 1, "C"), row("F2", 3, "DOC")], 3), "a class cited by no earlier round is new").toBe(false);
+  expect(switchRepeats([row("F1", 1, "DOC", "0"), row("F2", 3, "DOC")], 3), "a note never cites a class").toBe(false);
+  expect(switchRepeats([row("F1", 3, "DOC")], 3), "a first round has no earlier class").toBe(false);
+  expect(switchRepeats([row("F1", 1, "C")], 3), "a round with no blocking row of its own is a repeat").toBe(null);
+  expect(switchRepeats([], 3)).toBe(null);
+});
+
+test("only a prior_repeat stamp lifts the third-REVISE obligation", () => {
+  const base = event();
+  delete base.tier;
+  delete base.facts;
+  const round = (n, verdict = "REVISE", extra = {}) => ({ ...base, event: "round", stage: "round", round: n, verdict, head: HEAD, ...extra });
+  const switchAt3 = { ...base, event: "switch", stage: "switch", round: 3, kind: "premise", premise: "p", new_approach: "n", head: HEAD };
+
+  expect(validateLedgerSequence([round(1), round(2), round(3), round(4, "APPROVED", { prior_repeat: false })]).ok,
+    "a false stamp is the decided answer").toBe(true);
+  expect(codes(validateLedgerSequence([round(1), round(2), round(3), round(4, "APPROVED")])),
+    "an absent field keeps today's obligation").toContain("unit u1 round 3");
+  expect(codes(validateLedgerSequence([round(1), round(2), round(3), round(4, "APPROVED", { prior_repeat: true })])))
+    .toContain("unit u1 round 3");
+  expect(validateLedgerSequence([round(1), round(2), round(3), switchAt3, round(4, "APPROVED", { prior_repeat: true })]).ok,
+    "a repeat round with its switch still validates").toBe(true);
+  expect(codes(validateLedgerSequence([round(1), round(2), round(3), round(4, "APPROVED", { prior_repeat: "false" })])))
+    .toContain("events[3].prior_repeat");
 });
 
 test("a research freeze carries the artifact head and no git tree", () => {
