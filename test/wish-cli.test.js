@@ -2002,8 +2002,7 @@ describe("final review round 2 (second pass)", () => {
     upToBuild(state);
     reviewedFreeze(state);
     const frozen = state.repo.head;
-    const empty = git(state.repo.dir, ["commit", "--allow-empty", "-m", "land after the freeze"]);
-    expect(empty).not.toBe(frozen);
+    git(state.repo.dir, ["commit", "--allow-empty", "-m", "land after the freeze"]);
     const emptyHead = git(state.repo.dir, ["rev-parse", "HEAD"]);
     expect(emptyHead).not.toBe(frozen);
     const withoutHead = cli(["gate", "--round", "1", "--root", state.root]);
@@ -2016,6 +2015,11 @@ describe("final review round 2 (second pass)", () => {
     expect(withHead.code).toBe(3);
     expect(withHead.err).toContain(`the head moved after the freeze: frozen ${frozen.slice(0, 7)}, now ${emptyHead.slice(0, 7)}`);
     expect(withHead.err).not.toContain("runs the current worktree");
+    // A dry run must refuse before it prints a table, or a stale freeze would look dispatchable.
+    const dryRun = cli(["gate", "--round", "1", "--dry-run", "--root", state.root]);
+    expect(dryRun.code).toBe(3);
+    expect(dryRun.err).toContain("the head moved after the freeze");
+    expect(dryRun.out).not.toContain("dry run");
     const content = commitFile(state.repo, "later.txt", "later\n");
     const moved = cli(["gate", "--round", "1", "--root", state.root]);
     expect(moved.code).toBe(3);
