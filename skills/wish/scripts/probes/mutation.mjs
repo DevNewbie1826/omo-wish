@@ -146,10 +146,8 @@ export async function run(config, ctx) {
       lines[index] = "";
       const mutated = lines.join("\n");
       if (!parses(mutated, candidate.file)) {
-        // A mutant that does not parse cannot be killed by a test, so a compiled
-        // language reports it as a non-candidate; a script language keeps the
-        // INVALID row its loader check has always produced.
-        if (isCompiled(candidate.file)) return nonCandidate("does not parse");
+        // Only a language whose loader this probe can check reaches this branch, and
+        // none of them is compiled, so a parse failure is always the INVALID row.
         return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not parse, so it is not counted as killed" }) };
       }
       writeFileSync(target, mutated);
@@ -166,7 +164,22 @@ export async function run(config, ctx) {
       ctx.cleanup(scratch);
     }
   });
-  return [...checks, ...results.map((entry) => entry.row).filter(Boolean), ...nonCandidateRows(results)];
+  const probed = results.filter((entry) => entry.row);
+  const skipped = nonCandidateRows(results);
+  // A non-candidate makes no claim, so a run where every candidate was one has
+  // proved nothing: it must not read as PASS. WARN is the documented "unproven,
+  // belongs to the checklist pass" verdict, and it never blocks a stage.
+  if (probed.length === 0 && skipped.length > 0) {
+    checks.push(row({
+      id: "mutation/unprobed",
+      command: config.testCmd,
+      observable: "at least one candidate line can be probed",
+      verdict: "WARN",
+      cls,
+      note: "every candidate's deletion cannot be built, so no line was probed",
+    }));
+  }
+  return [...checks, ...probed.map((entry) => entry.row), ...skipped];
 }
 
 // One row per file, never one per line: a build that refuses a deletion is a

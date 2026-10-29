@@ -589,6 +589,28 @@ test("a compiled-language deletion that cannot build is a non-candidate, not a k
   expect(run.exit).toBe(1);
 }, 120000);
 
+test("a run where every candidate cannot build never reads as PASS", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "guard.go"), "package guard\n\nfunc Guard(x int) bool {\n\treturn x > 0\n}\n");
+  writeFileSync(join(dir, "build.sh"), [
+    "#!/bin/sh",
+    "if ! grep -q 'func Guard(x int) bool {' guard.go; then",
+    "  echo 'BuildMessage: syntax error: unexpected newline, expecting function signature'",
+    "  exit 1",
+    "fi",
+    "echo 'CHECK OK'",
+    "",
+  ].join("\n"));
+  const signature = lineOf(dir, "guard.go", "func Guard(x int) bool {");
+  writeConfig(dir, { probes: { mutation: { testCmd: "sh build.sh", failMarker: "CHECK FAILED", candidates: [{ file: "guard.go", line: signature }] } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(verdictOf(receipt, "mutation/noncandidate/guard.go")).toBe("SKIP");
+  expect(verdictOf(receipt, "mutation/unprobed")).toBe("WARN");
+  expect(receipt.status).toBe("WARN");
+  expect(run.exit).toBe(0);
+}, 120000);
+
 test("the error scan skips a comment line and still reports a real wrap site", () => {
   const dir = stage("clean");
   const cli = join(dir, "cli.js");
