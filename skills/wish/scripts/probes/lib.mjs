@@ -399,13 +399,6 @@ const COMMENT_SYNTAX = Object.freeze({
 });
 
 
-// Whether this module knows a comment syntax for the extension. Exported so a test can
-// hold the table and the compiled-extension set equal: a compiled extension outside the
-// table would fall back to the marker test and the block-comment symptom would return.
-export function hasCommentSyntax(extension) {
-  return Object.hasOwn(COMMENT_SYNTAX, String(extension).toLowerCase());
-}
-
 export function extensionOf(file) {
   const name = String(file);
   const dot = name.lastIndexOf(".");
