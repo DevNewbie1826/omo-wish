@@ -148,6 +148,12 @@ reminder. The gate applies to a type whose required lanes name `code-review`; a 
 carries that lane and is never gated on it. A verdict is valid only for the head it reviewed, so the two reviews
 are never dispatched in the same wave.
 
+The head is frozen for the whole round: a fix lands only after the verdict and opens the next round — `define`
+for the cited problem, `plan`, `plan_lint`, the fix, a fresh `freeze`, the gate and a new reviewer. A head that
+moves while a round is in flight is not the head the verdict covers, so a head change during a round is a
+re-review, never a carried verdict, and the gate holds the freeze to it: when the observed head is not the frozen
+head, `wish gate --round` refuses with exit 3 and `the head moved after the freeze`.
+
 On `VERDICT: REVISE` the flow returns to `define` for the cited problem — DEFINE again for that problem, then
 `plan` and `plan_lint` for it, then the fix lane and the same verify wave — and the fix commits are appended to
 the same PR, never opened as a second one.

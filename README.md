@@ -196,6 +196,10 @@ then the same verify wave — and the fix commits append to the same PR.
 frozen head**; `ultrabrain` is dispatched only after that refusal cannot fire. A verdict is valid only for the
 head it reviewed, so the two reviews never share a wave.
 
+The head is frozen for the whole round: a fix lands only after the verdict, as the next round's head. A head that
+moves while a round is in flight is not the head the verdict covers, so a head change during a round is a
+re-review, and `wish gate --round` refuses it with exit 3 and `the head moved after the freeze`.
+
 ## The finite contract — what may block
 
 The plan's `IS` and `COMPANION` rows are the request, `INVARIANT` is what must keep holding, `LIMIT` is what is

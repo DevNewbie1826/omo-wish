@@ -404,6 +404,12 @@ Both `ledger append --event round` and `gate --round` refuse with exit 3 and
 `out of stage order: code-review missing at <head7>`; the dispatch refusal happens before any reproduction
 runs. `resume-plan` directs the session to run code review at that frozen head.
 
+`gate --round` also refuses a stale freeze: when the observed worktree head is not the frozen head it exits 3 with
+`the head moved after the freeze: frozen <head7>, now <head7>`, before its `--head` argument check and before
+`--dry-run`, so the session is told the freeze moved rather than that its argument is wrong. The record gate
+(`ledger append --event round`) does not observe the worktree and still accepts such a round; `freeze --check`
+reports it afterwards as `the last round judged <head7>, not the frozen head <head7>`.
+
 After a `REVISE` in round n, `next` requires this unit's `define` event with `round: n`, then its `plan`
 event with `round: n`, then its `plan_lint` event with `round: n`, before checking lanes, blocking findings,
 the changed-head freeze and the third-round switch obligation. The fix stays in the same PR.
@@ -496,7 +502,7 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it | 0 ok; 1 schema failure; 2 usage; 3 out of stage order | U, D §2.8 |
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
 | `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <absolute path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing `before-<gap>-<tree7>` receipt is bound automatically or with the flag, which must name an absolute receipt path (a relative path is refused) | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
-| `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt or unknown gate | D §2.6, P |
+| `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
 | `reuse-check` | `<receipt> --head <sha>` | tree match → VALID; else intersect changed files and their reference holders with `scope` | 0 VALID; 1 STALE; 2 usage; 3 unparseable or another run's receipt | D §2.7 |
