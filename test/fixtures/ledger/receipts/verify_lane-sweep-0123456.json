@@ -23,7 +23,7 @@
     {
       "id": "docs-flags",
       "command": "comm -23 <(grep -o -- \"--[a-z-]*\" README.md | sort -u) <(./changed-entry --help | grep -o -- \"--[a-z-]*\" | sort -u)",
-      "observable": "every flag documented in ledger.md exists in --help",
+      "observable": "every flag documented in README.md exists in --help",
       "verdict": "WARN",
       "artifact": null,
       "class": "DOC",
