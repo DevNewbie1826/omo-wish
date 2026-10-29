@@ -148,7 +148,7 @@ export const EXIT_CODES = Object.freeze({ OK: 0, CHECK_FAILED: 1, USAGE: 2, STAT
 // D §3 + A §F (M1): every verb the one entry point exposes.
 export const CLI_VERBS = Object.freeze([
   "init", "status", "ledger", "findings", "gaps", "gate", "freeze", "pr-body",
-  "reuse-check", "switch", "metrics", "resume-plan",
+  "switch", "resume-plan",
 ]);
 
 // C44 verbatim (D §4 requires the identical pattern).

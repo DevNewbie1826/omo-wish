@@ -17,14 +17,15 @@ PROGRAM=p-<slug>     BASE=<the repository's integration branch for this request>
   the plan (`../SKILL.md`, the `intake` row); the run id is required and unique per
   unit). The unit-contract rule is in `../SKILL.md` and `../references/contract.md` §2.
 - A **mixed** unit is the one unit whose type is not concrete: it passes `--type mixed --primary <type>
-  --secondary <type>` to `wish init` and the same pair to every `sweep.mjs` call (`../SKILL.md`, the mixed row).
+  --secondary <type>` to `wish init` (`../SKILL.md`, the mixed row).
 - A **wave** holds the units whose write scopes do not overlap. Wave size is `min(host model slots,
   non-overlapping units)`; never more. Capacity is shared: at most two `mass-ulw` runs and one wish
   program per session, and at most five workers in one batch — so the six lanes a `design` unit requires
   run as two batches, and none of them is skipped. "Maximum parallelism" means up to the slots, never
   past them.
 - A unit whose scope overlaps a running unit waits for the next wave. After a wave merges, rebase the
-  next one and let `bun $WT/skills/wish/scripts/reuse-check.mjs <receipt> --head <H2> --base-impact <old>..<new>` prove which receipts survived.
+  next one and judge which receipts survived with the reuse rule (`../references/ledger.md` §2: tree match →
+  VALID; else changed files ∩ `scope`), re-running only the STALE lanes.
 
 ## The program steps
 
@@ -38,7 +39,7 @@ PROGRAM=p-<slug>     BASE=<the repository's integration branch for this request>
 - [ ] 8. PER-UNIT TAIL: `triage` → `fix` → `freeze` → `pr_open` → `round` (with its gate) → `merge` → `post_merge` run **independently per unit**; one unit's REVISE never blocks another unit's merge [omo: as the type playbook says] [receipt: `round`, `verdict`, `merge`, `post_merge` events per unit]
 - [ ] 9. SPLIT (only here): when a unit keeps failing on one component, the `split` switch makes that component its own unit and PR; the gap row stays `open` and moves to the new unit — this is a re-split, never a scope cut [omo: `architect` premise review + `wish switch record --kind split`] [receipt: `switch` event with `kind: split` and the new unit in the register]
 - [ ] 10. PROGRESS: print the machine line (`../SKILL.md`: cadence and suppression) — `wish status --progress` prints `PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<n> on <#pr|none> · switch <count> · waiting <what|none>`. Only the `waiting` field may differ [omo: `wish.mjs status --progress`; the host's relay consumes the line, the skill never names a channel] [receipt: `progress` events]
-- [ ] 11. CLOSE: the program is complete per `../SKILL.md`'s finish condition, unit by unit [omo: session + `metrics export`] [receipt: the last unit's `cleanup` event and the register's final state]
+- [ ] 11. CLOSE: the program is complete per `../SKILL.md`'s finish condition, unit by unit [omo: session] [receipt: the last unit's `cleanup` event and the register's final state]
 
 ## Rules that keep a program honest
 
@@ -46,6 +47,6 @@ PROGRAM=p-<slug>     BASE=<the repository's integration branch for this request>
   register row that moved to another unit is not "missing" from this PR.
 - Completeness lives in the register, quality lives in each unit's review. Do not trade one for the
   other.
-- The first program run is **diagnostic only** (`../references/metrics.md` §6): its rows are recorded,
-  never judged against the v2 targets, because it has no control group.
+- The first program run is **diagnostic only**: its rows are recorded, never judged against targets,
+  because it has no control group.
 - One wave at a time per repository unless the write scopes are provably disjoint.

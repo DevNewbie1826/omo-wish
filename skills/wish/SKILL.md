@@ -14,7 +14,7 @@ machine shapes.
 
 wish runs **on top of omo**. Every stage is executed by an omo feature — a category, a native agent, `mass-ulw`,
 `ulw-loop`, `ulw-plan`'s grammar, a monitor — never by a replacement for one. The scripts under `scripts/` are
-helpers those roles call: they lint a plan, run probes, check a verdict and derive state.
+helpers those roles call: they lint a plan, watch a pull request and derive state.
 
 Speed comes from moving work earlier, never from reviewing less: the same review, the same lanes, the same
 blocker definition. Review quality is a floor, not a variable.
@@ -43,17 +43,17 @@ repository on purpose: evidence never costs a commit and never moves a reviewed 
 | 7 | `decide` | session collects the decision batch | `decide` event + `<ER>/gates.md` entries with a recommended default |
 | 8 | `goal` | `ulw-loop` goals; ulw-execute Boulder state as format only | `goal` event with the goal id |
 | 9 | `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit; the commit node loads `git-master` | `build` events + `build-<node>.json` |
-| 10 | `verify_lane` | one `task` batch per head: `quick` tests and mutation, `omo-native-qa-executor`, `omo-native-code-reviewer`, `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
+| 10 | `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer`, `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
 | 11 | `triage` | session | `triage` event + `findings.tsv` rows |
-| 12 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; `reuse-check.mjs` re-runs stale lanes | `fix` + `reuse` events |
+| 12 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>`; the reuse rule re-runs only stale lanes | `fix` + `reuse` events |
 | 13 | `freeze` | `wish freeze`, then `wish pr-body` | `freeze` event: `head`, `tree`, `pr` |
 | 14 | `pr_open` | `gh pr create` with the generated body; `tool.monitor` on `pr-watch.mjs` | `pr_open` event |
-| 15 | `round` | `wish.mjs gate`, then `category: ultrabrain` (r1 full, r2+ delta), then `check-verdict.mjs` | `final-r<n>-<head7>.md` + `round`, `verdict` events |
+| 15 | `round` | `wish.mjs gate`, then `category: ultrabrain` (r1 full, r2+ delta), then the session reads the `VERDICT:` line and confirms it names the frozen head | `final-r<n>-<head7>.md` + `round`, `verdict` events |
 | — | `switch` | `architect` premise review, `deep-high` family switch, a `SWITCH:` plan row, or rediscover | `switch` event: `round`, `kind`, `premise`, `new_approach` |
 | 16 | `merge` | session merges; `wish status --json` reports it | `merge` event: `sha`, `merged_at`, `pr` |
 | 17 | `post_merge` | `omo-native-qa-executor`: smoke when the tree is identical, full otherwise | `post_merge` event + `post_merge-<tree7>.*` |
 | 18 | `checkpoint` | `ulw-loop` `agentToolkit.checkpoint`; `omo-native-gate-reviewer` reads the evidence record | `checkpoint` event, `checkpoint_op: complete` |
-| 19 | `cleanup` | session: `metrics export`, then `memory` for the classes it caught | `cleanup` event with at least one teardown receipt |
+| 19 | `cleanup` | session: `memory` for the classes it caught | `cleanup` event with at least one teardown receipt |
 
 `before` and `fix` are conditional: when one truly does not apply, its step stays in the todo with
 `skip: <reason>`, never silently dropped. While any unit runs, print the `PROGRESS:` line on every transition
@@ -137,7 +137,7 @@ every L unit, and below L only for a `HIGH-RISK` plan row.
 | `design` | `playbooks/design.md` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` |
 | `research` | `playbooks/research.md` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` |
 | `audit` | `playbooks/audit.md` | `lint`, `spot`, `register-schema` |
-| `mixed` | the primary type's playbook | the primary's and secondary's lanes united; `wish init` and `sweep.mjs` take `--type mixed --primary … --secondary …` |
+| `mixed` | the primary type's playbook | the primary's and secondary's lanes united; `wish init` takes `--type mixed --primary … --secondary …` |
 
 ## Reviews, in the one order that holds
 
@@ -169,7 +169,7 @@ Review has no round ceiling. `APPROVED` is the only end.
    `strategy`, `split` (program only), `rediscover` — meanings and the repeat test in `references/ledger.md`
    §9.4. A round whose blocking findings are all classes new to the unit is not a repeat and needs only the fix
    lane.
-3. After the switch: fix run, `reuse-check`, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain
+3. After the switch: fix run, the reuse rule, stale lanes only, `freeze`, the gate table, then a fresh ultrabrain
    reviewer on the delta and the prior findings.
 4. The requester is never asked whether to keep reviewing: the decision batch closed at `decide`, and a parked
    lane never stops another lane.
@@ -190,7 +190,7 @@ first.
 The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `collect.md`, `define.md`,
 `gates.md` and `resume.md`; a lane writes only its own receipt; a script authors nothing. A receipt is valid while
 its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its
-`patch_id` matches; `reuse-check` names the lanes a fix invalidated, and a `before` capture is never stale.
+`patch_id` matches; the reuse rule names the lanes a fix invalidated, and a `before` capture is never stale.
 Nothing commits after the freeze: a memo goes to `<ER>`, never the branch.
 
 `playbooks/revise.md` and `playbooks/resume.md` are the two paths that leave the linear stage list. Every reviewer
@@ -216,8 +216,7 @@ new reviewer for each re-review rather than the same child continued.
 | `references/plan-format.md` | the plan grammar, the required sentences, `DEVICE:` rows, the linter's rules |
 | `references/ledger.md` | every machine shape: receipts, events, findings, gaps, `wish status --json`, CLI |
 | `references/prompts.md` | every delegation prompt with its frame, TIMEBOX and FORBIDDEN |
-| `references/defect-classes.md` | the class dictionary, probes and review axes |
-| `references/metrics.md` | columns, `pr-watch`, targets and quality guards |
+| `references/defect-classes.md` | the class dictionary, the sweep checklist and review axes |
 
 ## Language
 

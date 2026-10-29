@@ -105,15 +105,9 @@ const VERB_USAGE = {
     "     Record head, tree and pr; --check proves nothing landed after the freeze.",
   ],
   "pr-body": ["pr-body [--pr <n>] [--out <path>]", "     Build the PR body from state, including the before/after table."],
-  "reuse-check": ["reuse-check <receipt> --head <sha>", "     Delegates to scripts/reuse-check.mjs (module M4)."],
   switch: [
     "switch record --round <n> --kind <premise|family|strategy|split|rediscover> --premise <text> --new-approach <text>",
     "     Record an approach switch. A cap is a switch, never an exit (§9.4).",
-  ],
-  metrics: [
-    "metrics export [--out <dir>] [--ledger <path>] | metrics post-merge --days <n> [--pr <n>]",
-    "     Delegates to scripts/metrics.mjs (module M7). export reads the run's own ledger",
-    "     (--root, else WISH_EVIDENCE_ROOT) unless --ledger names one.",
   ],
   "resume-plan": ["resume-plan", "     Print the first invalid stage and the actions that clear it."],
 };
@@ -1151,71 +1145,6 @@ function verbResumePlan(parsed, root) {
   return null;
 }
 
-// The flags `metrics.mjs export` accepts, and which of them take a value. The wish CLI
-// needs this table for one reason: an option's operand is that option's value, so a token
-// spelled `--root` or `--ledger` in that position is data, never a wish flag. Without it,
-// `--arm --ledger` read as an explicit ledger and `--arm --root` threw on a missing value.
-const METRICS_EXPORT_VALUE_FLAGS = Object.freeze([
-  "--ledger", "--findings", "--gaps", "--out", "--unit", "--repo", "--arm",
-  "--type", "--program-id", "--extra",
-]);
-
-// `metrics export` is the one documented form that names no ledger: the run's ledger is
-// this CLI's own state (`rootPaths(root).ledger`), so the CLI resolves the same root every
-// other verb uses and supplies it. An explicit `--ledger` still wins and needs no root at
-// all, and every option metrics.mjs accepts reaches it unchanged, operands included. A
-// subcommand other than export keeps today's verbatim argv.
-function metricsArgv(argv) {
-  if (argv[0] !== "export") return argv;
-  const kept = [];
-  let root;
-  let ledgerNamed = false;
-  const rest = argv.slice(1);
-  for (let index = 0; index < rest.length; index += 1) {
-    const arg = rest[index];
-    const eq = arg.startsWith("--") ? arg.indexOf("=") : -1;
-    const name = eq === -1 ? arg : arg.slice(0, eq);
-    if (name === "--root") {
-      if (root !== undefined) throw usage("--root given twice");
-      if (eq !== -1) {
-        root = arg.slice(eq + 1);
-        continue;
-      }
-      const value = rest[index + 1];
-      if (value === undefined) throw usage("--root needs a value");
-      root = value;
-      index += 1;
-      continue;
-    }
-    if (name === "--ledger") ledgerNamed = true;
-    kept.push(arg);
-    // Take the operand with its flag, so the next iteration cannot read it as a flag.
-    if (eq === -1 && METRICS_EXPORT_VALUE_FLAGS.includes(arg)) {
-      const value = rest[index + 1];
-      if (value === undefined) throw usage(`${arg} needs a value`);
-      kept.push(value);
-      index += 1;
-    }
-  }
-  if (ledgerNamed) return ["export", ...kept];
-  return ["export", ...kept, "--ledger", rootPaths(resolveRootValue(root)).ledger];
-}
-
-// `reuse-check` (M4) and `metrics` (M7) are other modules' scripts. M1 owns the
-// entry point only: it hands argv over unchanged, with no shell, and returns the
-// child's exit code so a caller never has to parse text.
-function delegate(verb, argv) {
-  const target = join(HERE, `${verb}.mjs`);
-  if (!existsSync(target)) {
-    throw stateMismatch(`${verb} is owned by another module: ${target} is not installed`);
-  }
-  const result = spawnSync(process.execPath, [target, ...argv], { stdio: "inherit" });
-  if (result.error) throw checkFailed(`${verb} failed to start: ${result.error.code ?? "error"}`);
-  if (result.signal) throw checkFailed(`${verb} was killed by ${result.signal}`);
-  if (typeof result.status !== "number") throw checkFailed(`${verb} returned no exit code`);
-  return { exit: result.status };
-}
-
 // ---------------------------------------------------------------- dispatch
 
 const SPECS = {
@@ -1267,7 +1196,6 @@ const SPECS = {
   },
   freeze: { ...COMMENT_FLAGS, "--head": { kind: "value" }, "--pr": { kind: "value" }, "--check": { kind: "bool" } },
   "pr-body": { ...COMMENT_FLAGS, "--pr": { kind: "value" }, "--out": { kind: "value" } },
-  "reuse-check": { ...COMMENT_FLAGS, "--head": { kind: "value" } },
   switch: {
     ...COMMENT_FLAGS,
     "--round": { kind: "value" },
@@ -1275,7 +1203,6 @@ const SPECS = {
     "--premise": { kind: "value" },
     "--new-approach": { kind: "value" },
   },
-  metrics: { ...COMMENT_FLAGS, "--out": { kind: "value" }, "--days": { kind: "value" }, "--pr": { kind: "value" } },
   "resume-plan": { ...COMMENT_FLAGS },
 };
 
@@ -1303,12 +1230,6 @@ export function run(argv) {
     if (rest.includes("--help") || rest.includes("-h")) {
       printVerbUsage(verb);
       return 0;
-    }
-    if (verb === "reuse-check") {
-      return delegate(verb, rest).exit;
-    }
-    if (verb === "metrics") {
-      return delegate(verb, metricsArgv(rest)).exit;
     }
     const handler = HANDLERS[verb];
     if (!handler) throw usage(`unknown verb ${verb}`);

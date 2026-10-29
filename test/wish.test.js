@@ -211,8 +211,7 @@ test("verify.mjs discovers every shipped script and gives each one a usage line"
   const expected = mjsFiles(join(repo, "skills/wish/scripts")).sort();
   expect(scripts).toEqual(expected);
   const names = expected.map((file) => relative(join(repo, "skills/wish/scripts"), file).split(sep).join("/"));
-  for (const tool of ["wish.mjs", "check-plan.mjs", "sweep.mjs", "check-verdict.mjs",
-    "patch-id.mjs", "reuse-check.mjs", "pr-watch.mjs", "metrics.mjs"]) {
+  for (const tool of ["wish.mjs", "check-plan.mjs", "pr-watch.mjs"]) {
     expect(names).toContain(tool);
   }
   for (const file of scripts) {

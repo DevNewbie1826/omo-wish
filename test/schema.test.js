@@ -472,6 +472,15 @@ test("CSV headers accept the C43 base and the v2 suffix but never a reorder", ()
 });
 
 test("the CLI contract exposes every verb and the four exit codes", () => {
-  expect(CLI_VERBS).toEqual(["init", "status", "ledger", "findings", "gaps", "gate", "freeze", "pr-body", "reuse-check", "switch", "metrics", "resume-plan"]);
+  expect(CLI_VERBS).toEqual(["init", "status", "ledger", "findings", "gaps", "gate", "freeze", "pr-body", "switch", "resume-plan"]);
   expect(EXIT_CODES).toEqual({ OK: 0, CHECK_FAILED: 1, USAGE: 2, STATE_MISMATCH: 3 });
+});
+
+test("the dictionary's code table is exactly the contract's code class set", () => {
+  const doc = readFileSync(new URL("../skills/wish/references/defect-classes.md", import.meta.url), "utf8");
+  const section = doc.split("## 3. Code classes")[1].split("## 4.")[0];
+  const tokens = [...section.matchAll(/^\| `([A-Za-z0-9_]+)` /gm)].map((match) => match[1]);
+  expect(tokens.length).toBe(findingsClassesFor("code").length);
+  for (const token of tokens) expect(classValid("code", token)).toBe(true);
+  expect(new Set(tokens)).toEqual(new Set(findingsClassesFor("code")));
 });

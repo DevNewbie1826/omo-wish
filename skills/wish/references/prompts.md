@@ -8,8 +8,8 @@ Read with `references/ledger.md` beside this file. That document is the interfac
 stage names, receipt shapes, findings columns, class sets, `VERDICT:`/`PROGRESS:` patterns, switch kinds.
 This file does not invent a value: where a literal matters it says "from `ledger.md` §N" and copies the
 exact string so a prompt can be pasted without opening the contract. A change to any copied literal is a
-contract change: it edits `scripts/lib/schema.mjs`, `references/ledger.md`, the probe dictionary, this file
-and the test in the same change (`ledger.md` §5.1).
+contract change: it edits `scripts/lib/schema.mjs`, `references/ledger.md`, the defect-class dictionary,
+this file and the test in the same change (`ledger.md` §5.1).
 
 Prompts are English. The final report to the requester is in the requester's language; nothing else in a
 child's prompt is.
@@ -491,31 +491,36 @@ A mutation counts as killed only when its guard test passes unmutated and fails 
 survivor means a regression would pass unnoticed: strengthen that row's guard test until the mutation dies,
 or record a `no-test` reason in the plan.
 
-### 3.2 `sweep-lane` — scripted defect-class probes
+### 3.2 `sweep-lane` — the defect-class checklist
 
 **TEMPLATE:** `sweep-lane`
 
 ```
-Purpose: <the request>. Probe the run type's defect classes before any reviewer sees the work.
+Purpose: <the request>. Check the run type's defect classes before any reviewer sees the work.
 Scope: read <worktree>; write only `<ER>/receipts/verify_lane-sweep-<head7>.json` and its captures.
 
-TASK: run the scripted probes for type <type> with `bun <SKILL>/scripts/sweep.mjs --probe <name>` for every
-  probe the type's dictionary lists, plus `--probe mutation` when the plan has guard rows.
-DELIVERABLE: `LANE: sweep`, the receipt with one row per probe (id, literal command, the one binary
-  observable, verdict, artifact) and the probe log.
-SCOPE: <worktree> read-only; scratch files under <ER>. OUT OF SCOPE: fixing anything, adding a probe the
-  plan's axes do not cover, editing the probe scripts.
-VERIFY: every probe command exits with the documented code and its row's observable decides PASS/FAIL/WARN.
-STOP WHEN: every applicable probe has a row; a crashing probe is recorded `INVALID` with its output.
+TASK: walk the type's defect-class dictionary (references/defect-classes.md) over the changed files — one
+  row per class the dictionary names for the type, each with the literal command you ran (or `no command`
+  for a read-through row) and the one binary observable that decided it. Apply one hand-applied mutation
+  per guard row when the plan has guard rows: remove the guard line in a throwaway copy of the changed
+  file and require the declared suite to fail there.
+DELIVERABLE: `LANE: sweep`, the receipt with one row per check (id, literal command, the one binary
+  observable, verdict, artifact) and the check log.
+SCOPE: <worktree> read-only except the throwaway mutation copies; scratch files under <ER>. OUT OF SCOPE:
+  fixing anything, adding a check the plan's axes do not cover, editing any skill script.
+VERIFY: each row's observable decides PASS/FAIL/WARN from the capture alone; a mutated guard row's suite
+  run fails in the copy and passes unmutated in the worktree.
+STOP WHEN: every applicable class has a row; a check that could not decide is recorded `INVALID` with its
+  output.
 TIMEBOX: 10 minutes for the whole lane.
-FORBIDDEN: turning a probe `FAIL` into a blocking finding (the session reproduces it first); treating `WARN`
+FORBIDDEN: turning a `FAIL` row into a blocking finding (the session reproduces it first); treating `WARN`
   as blocking; treating `INVALID` as `PASS`; editing production code.
-REPORT: `<probe> | command | observable | verdict | artifact` per row, then the counts and any `INVALID`
-  row with the reason. The receipt's `status` is `FAIL` only when a probe row failed inside the contract,
-  `WARN` when only memos were produced.
+REPORT: `<class> | command | observable | verdict | artifact` per row, then the counts and any `INVALID`
+  row with the reason. The receipt's `status` is `FAIL` only when a row failed inside the contract, `WARN`
+  when only memos were produced.
 ```
 
-A probe receipt is a claim to verify, not an exemption: the session reproduces a `FAIL` at the head before
+A sweep receipt is a claim to verify, not an exemption: the session reproduces a `FAIL` at the head before
 it files a blocking finding.
 
 ### 3.3 `qa-lane` — real-surface QA
