@@ -34,8 +34,14 @@ claim about a test is made. Two rules produce one:
   block-comment body, a template, a regex literal, a backslash-continued string, a JSX attribute, a Python
   f-string, a shell heredoc, a Rust raw string). The probe therefore asks the language's own front-end where one
   is installed: it replaces the line with a code-free line (the empty line, or a lone block delimiter) and drops
-  the line only when the program comes out identical. Go is decided by a scanner instead, because its grammar is
-  closed: `//` and `/* */` are its only comment forms and a backtick string its only multi-line literal.
+  the line only when the program comes out identical. Two shapes need more than a blank line. A line that is a
+  lone block delimiter keeps its partner, so blanking it leaves a stray token and the file stops compiling; the
+  probe therefore also proposes the whole comment region as code-free, and still drops the line only when the
+  program is identical. A blank line is proven only by removing it, because blanking a blank line is a no-op and
+  a blank line inside a template literal is part of that string. A proposal that leaves the source untouched is
+  skipped, and a line no proposal can decide stays a candidate. Go is decided by a scanner instead, because its
+  grammar is closed: `//` and `/* */` are its only comment forms and a backtick string its only multi-line
+  literal.
 - A language with no front-end here falls back to the comment heuristic, and **every exclusion it makes is
   disclosed**: one `mutation/unverified/<file>` row (and `errors/unverified/<file>`) with verdict `WARN` names
   the lines and the missing front-end. A lane that dropped an unproven line therefore reads `WARN`, never

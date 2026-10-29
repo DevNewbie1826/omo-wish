@@ -889,9 +889,8 @@ test("a line that opens a block comment and carries code after it is still code"
 }, 120000);
 
 test("the front-end oracle drops a comment body and keeps code in every language it decides", () => {
-  // Each case names the comment lines and the code lines. A lone block delimiter is only
-  // decidable through the proposal ladder, so it is asserted explicitly: without the ladder
-  // every "/*" and "*/" reads as undecided and stays a candidate.
+  // Each case names the comment lines and the code lines, including the lone block
+  // delimiters, which the region proposal decides.
   const cases = [
     ["a.js", ["const a = 1;", "/* note", "body", "*/", "const b = 2;", ""], [2, 3, 4], [1, 5]],
     ["a.js", ["/**", " * doc", " */", "export const a = 1;", ""], [1, 2, 3], [4]],
@@ -923,6 +922,14 @@ test("a preserved legal comment is still a comment, and Go does not interpolate"
   const only = [...commentOnlyLines(go, "a.go")];
   expect(only).not.toContain(5);
   expect(only).toContain(7);
+}, 30000);
+
+test("a blank line inside a template literal is code", () => {
+  const source = "const t = `a\n\nb`;\nconsole.log(t.length);\n";
+  const judge = carriesNoCode(source, "a.js");
+  // Removing this line shortens the string, so it carries code and must stay a candidate.
+  expect(judge(2)).toBe(false);
+  judge.dispose?.();
 }, 30000);
 
 test("the C adapter keeps a preprocessor body and passes an include through", () => {

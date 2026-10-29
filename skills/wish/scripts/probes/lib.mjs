@@ -632,16 +632,13 @@ function bunCompiled(source, file) {
     return null;
   }
   // The transpiler keeps "/*!" and "//!" legal comments in its output, so deleting one would
-  // otherwise read as a change to the program. They are comments by definition, so they are
-  // removed here, together with the blank lines their removal leaves behind: the comparison
-  // must be about the code the program contains, not about preserved comment text or the
-  // blank line that stood where a comment used to be.
+  // otherwise read as a change to the program. They are comments by definition, so each is
+  // removed with its own trailing newline: the line disappears instead of leaving a blank one.
+  // Blank lines are never stripped in general, because a blank line inside a template literal
+  // is part of that string and therefore code.
   return emitted
-    .replace(/\/\*![\s\S]*?\*\//g, "")
-    .replace(/^[ \t]*\/\/!.*$/gm, "")
-    .split("\n")
-    .filter((line) => line.trim() !== "")
-    .join("\n");
+    .replace(/\/\*![\s\S]*?\*\/[ \t]*\n?/g, "")
+    .replace(/^[ \t]*\/\/!.*\n?/gm, "");
 }
 
 function pythonCompiled(source, dir) {
@@ -679,10 +676,49 @@ export function hasOracle(file) {
   return C_FAMILY.has(extension) || extension === "py" || BUN_LOADERS[extension] !== undefined;
 }
 
+// A proposal is one way to make the line carry no code, and a proposal only has to be
+// code-free to be sound: if the program still comes out identical, the line carried nothing.
+// Removing the line is the first proposal, because blanking a blank line is a no-op and a
+// blank line inside a template literal is part of that string.
+const BLOCK_SYNTAX = Object.freeze({
+  js: ["/*", "*/"], mjs: ["/*", "*/"], cjs: ["/*", "*/"], jsx: ["/*", "*/"], ts: ["/*", "*/"],
+  tsx: ["/*", "*/"], mts: ["/*", "*/"], cts: ["/*", "*/"],
+  c: ["/*", "*/"], h: ["/*", "*/"], cc: ["/*", "*/"], cpp: ["/*", "*/"], cxx: ["/*", "*/"],
+  hpp: ["/*", "*/"], hh: ["/*", "*/"],
+});
+
 function proposalsFor(file) {
   const extension = extensionOf(file);
-  const ladder = ["", "*/", "/*"];
+  const ladder = [null, "", "*/", "/*"];
   return ["jsx", "tsx"].includes(extension) ? [...ladder, "*/}"] : ladder;
+}
+
+// A delimiter line cannot be decided by blanking it alone: replacing "/*" leaves the closing
+// "*/" of its block behind, and the file stops compiling. The whole comment region is
+// therefore proposed as code-free, which is still a proposal — it only drops the line when
+// the program comes out identical.
+function regionProposal(lines, line, file) {
+  const syntax = BLOCK_SYNTAX[extensionOf(file)];
+  if (!syntax) return null;
+  const [open, close] = syntax;
+  const text = lines[line - 1] ?? "";
+  const trimmed = text.trim();
+  if (trimmed.startsWith(open)) {
+    for (let index = line - 1; index < lines.length; index += 1) {
+      if (index > line - 1 && (lines[index] ?? "").includes(close)) {
+        return lines.filter((_, at) => at < line - 1 || at > index);
+      }
+    }
+    return null;
+  }
+  if (trimmed.endsWith(close)) {
+    for (let index = line - 1; index >= 0; index -= 1) {
+      if (index < line - 1 && (lines[index] ?? "").includes(open)) {
+        return lines.filter((_, at) => at < index || at > line - 1);
+      }
+    }
+  }
+  return null;
 }
 
 export function carriesNoCode(source, file) {
@@ -704,28 +740,43 @@ export function carriesNoCode(source, file) {
   const judge = (line) => {
     if (cache.has(line)) return cache.get(line);
     let verdict = null;
+    // A blank line is not assumed inert: inside a template literal it is part of the string,
+    // and deleting it changes the program. Only the front-end decides.
     if (original !== null && line >= 1 && line <= lines.length) {
-      if (!lines[line - 1].trim()) verdict = true;
-      else {
-        // One rung that leaves the program identical is proof, and no later rung can overturn
-        // it: the rungs are alternatives, so a rung that differs is not evidence the line
-        // carries code. Reading "any rung differs" as decisive made every C comment opener
-        // read as code, because replacing "/* note" with "" leaves a stray "*/" token.
-        let decided = false;
-        let equal = false;
-        for (const proposal of proposals) {
-          const copy = [...lines];
-          copy[line - 1] = proposal;
-          const mutated = compile(copy.join("\n"));
-          if (mutated === null) continue;
-          decided = true;
-          if (mutated === original) {
-            equal = true;
-            break;
+      // One rung that leaves the program identical is proof, and no later rung can overturn
+      // it: the rungs are alternatives, so a rung that differs is not evidence the line
+      // carries code. Reading "any rung differs" as decisive made every C comment opener
+      // read as code, because replacing "/* note" with "" leaves a stray "*/" token.
+      let decided = false;
+      let equal = false;
+      for (const proposal of proposals) {
+        const copy = proposal === null
+          ? lines.filter((_, index) => index !== line - 1)
+          : lines.map((entry, index) => (index === line - 1 ? proposal : entry));
+        const candidate = copy.join("\n");
+        // A proposal that leaves the source untouched proves nothing. For a blank line the empty
+        // proposal is exactly that no-op, so this is what stops a blank line inside a template
+        // literal from reading as inert.
+        if (candidate === text) continue;
+        const mutated = compile(candidate);
+        if (mutated === null) continue;
+        decided = true;
+        if (mutated === original) {
+          equal = true;
+          break;
+        }
+      }
+      if (!equal) {
+        const region = regionProposal(lines, line, file);
+        if (region !== null) {
+          const mutated = compile(region.join("\n"));
+          if (mutated !== null) {
+            decided = true;
+            equal = mutated === original;
           }
         }
-        verdict = equal ? true : (decided ? false : null);
       }
+      verdict = equal ? true : (decided ? false : null);
     }
     cache.set(line, verdict);
     return verdict;
