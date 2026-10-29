@@ -352,11 +352,13 @@ const C_LIKE = Object.freeze({ line: ["//"], block: [["/*", "*/"]], quotes: ['"'
 // the outer comment, so the scanner counts depth for them only. In C and JavaScript a
 // nested opener is plain text and the first close ends the comment.
 const C_NESTED = Object.freeze({ ...C_LIKE, nested: true });
+// A Go raw string is a backtick literal where a backslash is data, not an escape.
+const C_RAW = Object.freeze({ ...C_LIKE, rawTemplate: true });
 const HASH_LINE = Object.freeze({ line: ["#"], block: [], quotes: ['"', "'"] });
 
 const COMMENT_SYNTAX = Object.freeze({
   js: C_LIKE, mjs: C_LIKE, cjs: C_LIKE, jsx: C_LIKE, ts: C_LIKE, tsx: C_LIKE, mts: C_LIKE, cts: C_LIKE,
-  go: C_LIKE, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, cxx: C_LIKE, hpp: C_LIKE, hh: C_LIKE, cs: C_LIKE, java: C_LIKE,
+  go: C_RAW, c: C_LIKE, h: C_LIKE, cc: C_LIKE, cpp: C_LIKE, cxx: C_LIKE, hpp: C_LIKE, hh: C_LIKE, cs: C_LIKE, java: C_LIKE,
   kt: C_NESTED, kts: C_NESTED, swift: C_NESTED, rs: C_NESTED, scala: C_NESTED, dart: C_NESTED, zig: C_LIKE,
   php: C_LIKE, css: C_LIKE, scss: C_LIKE, less: C_LIKE, sol: C_LIKE, vue: C_LIKE, svelte: C_LIKE,
   py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
@@ -387,118 +389,208 @@ export function extensionOf(file) {
   return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
 }
 
-// The 1-based lines of a file that carry no code: blank lines and lines whose only
-// content is comment. The decision errs one way on purpose: when this scanner is unsure
-// it keeps the line, because a dropped line lets a surviving mutation escape the lane.
-// Four rules carry that:
-//   - a string literal is code, and a template or raw string that spans lines keeps its
-//     state across them, so a /* inside a string never opens a comment;
-//   - a block comment carries to the next line only when its opener is the line's first
-//     non-space token, so a /* that appears inside a regular expression or after code
-//     cannot swallow the lines below it;
-//   - a language whose block comments nest (Rust, Swift, Scala, Kotlin, Dart) counts
-//     depth, so an inner close does not end the outer comment;
-//   - a line-start block comment that never closes is read as code from its body on: an
-//     unterminated opener is more often a string or a regular expression than a comment.
-// `null` means this module has no syntax for the extension.
+// The 1-based lines of a file that carry no code. This is a character scanner, not a
+// parser, and every rule below exists because its absence produced a wrong verdict: a
+// string that spans lines (a template, or a quote continued by a backslash) must not let
+// a /* open a comment; an expression inside a template is code again; a block comment
+// opened after a non-space character stays on its line, so a /* inside a regular
+// expression cannot swallow the lines below it; nested block comments count depth in the
+// languages that nest them; an opener that never closes is read as code; and lines are
+// counted on newline only, like git, so a stray CR cannot shift the numbering. When
+// unsure it keeps the line, because a dropped candidate lets a surviving mutation escape
+// the lane. `null` means this module has no syntax for the extension.
+function endsAValue(prefix) {
+  const trimmed = prefix.replace(/\s+$/, "");
+  return /[A-Za-z0-9_)\]}"'\`;,]$/.test(trimmed);
+}
+
 export function commentOnlyLines(source, file) {
   const syntax = COMMENT_SYNTAX[extensionOf(file)];
   if (!syntax) return null;
   const [openDelim, closeDelim] = syntax.block[0] ?? [null, null];
   const template = syntax.template ?? null;
-  const only = new Set();
-  const lines = String(source ?? "").replace(/\r\n?/g, "\n").split("\n");
-  let inBlock = false;
-  let depth = 0;
-  let openedAt = -1;
-  let inString = false;
-  for (let index = 0; index < lines.length; index += 1) {
-    let rest = lines[index];
-    let code = false;
-    let atLineStart = true;
-    while (rest.length > 0) {
-      if (inString) {
-        code = true;
-        let cursor = 0;
-        let closed = false;
-        while (cursor < rest.length) {
-          if (rest[cursor] === "\\") { cursor += 2; continue; }
-          if (rest[cursor] === template) { closed = true; cursor += 1; break; }
-          cursor += 1;
-        }
-        rest = closed ? rest.slice(cursor) : "";
-        if (closed) inString = false;
-        continue;
+  const text = String(source ?? "");
+  const lineCount = text.split("\n").length;
+  const isCode = new Array(lineCount + 2).fill(false);
+  let mode = "code";
+  let line = 1;
+  let atLineStart = true;
+  let blockDepth = 0;
+  let blockOpenedAt = 0;
+  let blockCarries = true;
+  let exprDepth = 0;
+  let templateOpenedAt = 0;
+
+  const newline = () => {
+    line += 1;
+    atLineStart = true;
+  };
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+
+    if (mode === "line-comment") {
+      if (ch === "\n") {
+        mode = "code";
+        newline();
       }
-      if (inBlock) {
-        const closeAt = rest.indexOf(closeDelim);
-        const openAt = syntax.nested ? rest.indexOf(openDelim) : -1;
-        if (closeAt === -1 && openAt === -1) {
-          rest = "";
-          break;
-        }
-        if (openAt !== -1 && (closeAt === -1 || openAt < closeAt)) {
-          depth += 1;
-          rest = rest.slice(openAt + openDelim.length);
-          continue;
-        }
-        depth -= 1;
-        rest = rest.slice(closeAt + closeDelim.length);
-        if (depth === 0) {
-          inBlock = false;
-          openedAt = -1;
-        }
-        continue;
-      }
-      if (openDelim !== null && rest.startsWith(openDelim)) {
-        if (atLineStart) {
-          inBlock = true;
-          depth = 1;
-          openedAt = index;
-          rest = rest.slice(openDelim.length);
-          continue;
-        }
-        // Mid-line opener: it belongs to this line only. If it never closes here, the
-        // rest is treated as code and no state escapes to the lines below.
-        const closeAt = rest.indexOf(closeDelim);
-        if (closeAt === -1) {
-          code = true;
-          rest = "";
-          break;
-        }
-        rest = rest.slice(closeAt + closeDelim.length);
-        continue;
-      }
-      if (syntax.line.some((marker) => rest.startsWith(marker))) {
-        rest = "";
-        break;
-      }
-      const head = rest[0];
-      if (syntax.quotes.includes(head)) {
-        code = true;
-        let cursor = 1;
-        while (cursor < rest.length && rest[cursor] !== head) cursor += rest[cursor] === "\\" ? 2 : 1;
-        if (cursor >= rest.length) {
-          // Unterminated on this line: only a template or raw string may span lines.
-          if (head === template) inString = true;
-          rest = "";
-          continue;
-        }
-        rest = rest.slice(cursor + 1);
-        continue;
-      }
-      if (!/\s/.test(head)) {
-        code = true;
-        atLineStart = false;
-      }
-      rest = rest.slice(1);
+      continue;
     }
-    if (!code) only.add(index + 1);
+
+    if (mode === "block") {
+      if (syntax.nested && openDelim !== null && text.startsWith(openDelim, i)) {
+        blockDepth += 1;
+        i += openDelim.length - 1;
+        continue;
+      }
+      if (closeDelim !== null && text.startsWith(closeDelim, i)) {
+        blockDepth -= 1;
+        i += closeDelim.length - 1;
+        if (blockDepth === 0) mode = "code";
+        continue;
+      }
+      if (ch === "\n") {
+        if (!blockCarries) {
+          mode = "code";
+          blockDepth = 0;
+          blockOpenedAt = 0;
+        }
+        newline();
+      }
+      continue;
+    }
+
+    if (mode === "template") {
+      isCode[line] = true;
+      if (ch === "\\" && syntax.rawTemplate !== true) {
+        if (text[i + 1] === "\n") newline();
+        i += 1;
+        continue;
+      }
+      if (ch === template) {
+        mode = "code";
+        continue;
+      }
+      if (ch === "$" && text[i + 1] === "{") {
+        mode = "code";
+        exprDepth = 1;
+        atLineStart = false;
+        i += 1;
+        continue;
+      }
+      if (ch === "\n") newline();
+      continue;
+    }
+
+    if (ch === "\n") {
+      newline();
+      continue;
+    }
+    if (exprDepth > 0) {
+      if (ch === "{") exprDepth += 1;
+      if (ch === "}") {
+        exprDepth -= 1;
+        if (exprDepth === 0) {
+          mode = "template";
+          continue;
+        }
+      }
+    }
+    const marker = syntax.line.find((candidate) => text.startsWith(candidate, i));
+    if (marker !== undefined) {
+      mode = "line-comment";
+      i += marker.length - 1;
+      continue;
+    }
+    if (openDelim !== null && text.startsWith(openDelim, i)) {
+      blockDepth = 1;
+      blockOpenedAt = line;
+      blockCarries = atLineStart || endsAValue(text.slice(0, i));
+      mode = "block";
+      i += openDelim.length - 1;
+      continue;
+    }
+    // A slash where a value is expected opens a regular expression, not a division: its
+    // content is code and must not be read as a comment or as a template.
+    if (ch === "/" && text[i + 1] !== "/" && text[i + 1] !== "*" && !endsAValue(text.slice(0, i))) {
+      isCode[line] = true;
+      atLineStart = false;
+      let cursor = i + 1;
+      let inClass = false;
+      let closed = false;
+      while (cursor < text.length) {
+        const inner = text[cursor];
+        if (inner === "\\") {
+          cursor += 2;
+          continue;
+        }
+        if (inner === "\n") break;
+        if (inner === "[") inClass = true;
+        else if (inner === "]") inClass = false;
+        else if (inner === "/" && !inClass) {
+          closed = true;
+          break;
+        }
+        cursor += 1;
+      }
+      if (closed) {
+        i = cursor;
+        continue;
+      }
+    }
+    if (syntax.quotes.includes(ch)) {
+      isCode[line] = true;
+      atLineStart = false;
+      if (ch === template) {
+        mode = "template";
+        templateOpenedAt = line;
+        continue;
+      }
+      let cursor = i + 1;
+      let closed = false;
+      while (cursor < text.length) {
+        const inner = text[cursor];
+        if (inner === "\\") {
+          if (text[cursor + 1] === "\n") {
+            newline();
+            cursor += 2;
+            continue;
+          }
+          cursor += 2;
+          continue;
+        }
+        if (inner === ch) {
+          closed = true;
+          break;
+        }
+        if (inner === "\n") break;
+        cursor += 1;
+      }
+      if (closed) {
+        i = cursor;
+        continue;
+      }
+      i = cursor - 1;
+      continue;
+    }
+    if (!/\s/.test(ch)) {
+      isCode[line] = true;
+      atLineStart = false;
+    }
   }
-  // A line-start block that never closes is not a comment: its body is code.
-  if (inBlock && openedAt !== -1) {
-    for (const line of [...only]) if (line > openedAt) only.delete(line);
+
+  if (mode === "block" && blockOpenedAt > 0) {
+    for (let index = blockOpenedAt + 1; index <= lineCount; index += 1) isCode[index] = true;
   }
+  // A template that never closes is a backtick that was never a template: a Go raw string
+  // whose close the scanner skipped, or a backtick inside a regular expression. Its body is
+  // code, so nothing below it can be lost.
+  if (mode === "template" && templateOpenedAt > 0) {
+    for (let index = templateOpenedAt; index <= lineCount; index += 1) isCode[index] = true;
+  }
+
+  const only = new Set();
+  for (let index = 1; index <= lineCount; index += 1) if (!isCode[index]) only.add(index);
   return only;
 }
 

@@ -5,7 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PROBES } from "../skills/wish/scripts/probes/index.mjs";
 import {
-  clampMs, ctxFor, hasCommentSyntax, killSession, q, runCommand, sessionMembers, sweepBudget,
+  clampMs, commentOnlyLines, ctxFor, hasCommentSyntax, killSession, q, runCommand, sessionMembers, sweepBudget,
 } from "../skills/wish/scripts/probes/lib.mjs";
 import { COMPILED_EXTENSIONS } from "../skills/wish/scripts/probes/mutation.mjs";
 import {
@@ -708,6 +708,201 @@ test("a string or regular expression that looks like a comment never hides real 
   expect(verdictOf(receipt, `mutation/app.js:${victimLine}`)).toBe("FAIL");
   expect(receipt.status).toBe("FAIL");
   expect(run.exit).toBe(1);
+}, 120000);
+
+test("a string that spans lines keeps a comment marker inside the string", () => {
+  const dir = stage("clean");
+  // Both C and JavaScript accept a backslash-newline inside a quoted literal. The second
+  // physical line begins with /* inside that string, so a scanner without carried string
+  // state would open a comment and drop the surviving statement below it.
+  writeFileSync(join(dir, "app.c"), [
+    'const char *note = "one \\',
+    '/* two";',
+    "int survivor(int x) {",
+    "  return x > 0;",
+    "}",
+    'const char *tail = "end */ here";',
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "app.js"), [
+    'export const note = "one \\',
+    '/* two";',
+    "export function survivor(x) {",
+    "  return x > 0;",
+    "}",
+    'export const tail = "end */ here";',
+    "",
+  ].join("\n"));
+  // The suite reads the string but never calls survivor, so removing that statement leaves
+  // the run green: a real survivor the scanner must not have swallowed.
+  writeFileSync(join(dir, "check.js"), [
+    'import { note } from "./app.js";',
+    'if (!note.includes("two")) { console.log("CHECK FAILED"); process.exit(1); }',
+    "",
+  ].join("\n"));
+  const cLine = lineOf(dir, "app.c", "return x > 0");
+  const jsLine = lineOf(dir, "app.js", "return x > 0");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED",
+    candidates: [{ file: "app.c", line: cLine }, { file: "app.js", line: jsLine }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  // The suite reads neither line's value behaviour, so removing the JS survivor leaves it
+  // green: that line must reach the probe and FAIL, not vanish from the candidate list.
+  expect(verdictOf(receipt, `mutation/app.js:${jsLine}`)).toBe("FAIL");
+  expect(receipt.status).toBe("FAIL");
+  expect(run.exit).toBe(1);
+}, 120000);
+
+test("a backtick inside a regular expression is not a template opener", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "app.js"), [
+    "export const tick = /`/;",
+    "/* a real comment",
+    "with a body line",
+    "*/",
+    "export const value = 1;",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    'import { tick, value } from "./app.js";',
+    "let failures = 0;",
+    'if (!tick.test("`")) failures += 1;',
+    "if (value !== 1) failures += 1;",
+    'if (failures > 0) { console.log("CHECK FAILED"); process.exit(1); }',
+    "",
+  ].join("\n"));
+  const body = lineOf(dir, "app.js", "with a body line");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED",
+    candidates: [{ file: "app.js", line: body }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id === `mutation/app.js:${body}`)).toBe(false);
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a backslash before a Go raw-string close does not escape it", () => {
+  const source = [
+    "package app",
+    "",
+    "var raw = `a\\`",
+    "",
+    "/* a real comment",
+    "with a body line",
+    "*/",
+    "var value = 1",
+    "",
+  ].join("\n");
+  const only = [...commentOnlyLines(source, "app.go")];
+  expect(only).toContain(6);
+  expect(only).not.toContain(8);
+}, 30000);
+
+test("a real block comment after code keeps its body out of the candidates", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "app.js"), [
+    "export const first = 1; /* a comment that runs",
+    "across a line with no marker at all",
+    "*/",
+    "export const second = 2;",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    'import { first, second } from "./app.js";',
+    "let failures = 0;",
+    "if (first !== 1) failures += 1;",
+    "if (second !== 2) failures += 1;",
+    'if (failures > 0) { console.log("CHECK FAILED"); process.exit(1); }',
+    "",
+  ].join("\n"));
+  const body = lineOf(dir, "app.js", "across a line with no marker");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED",
+    candidates: [{ file: "app.js", line: body }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id === `mutation/app.js:${body}`)).toBe(false);
+  expect(receipt.rows.some((entry) => entry.verdict === "FAIL")).toBe(false);
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a comment inside a template expression is a comment", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "app.js"), [
+    "export const value = 2;",
+    "export const label = `x${",
+    "  /* a comment inside the interpolation */",
+    "  value",
+    "}y`;",
+    "",
+  ].join("\n"));
+  writeFileSync(join(dir, "check.js"), [
+    'import { label } from "./app.js";',
+    'if (label !== "x2y") { console.log("CHECK FAILED"); process.exit(1); }',
+    "",
+  ].join("\n"));
+  const comment = lineOf(dir, "app.js", "a comment inside the interpolation");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED",
+    candidates: [{ file: "app.js", line: comment }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id === `mutation/app.js:${comment}`)).toBe(false);
+  expect(run.exit).toBe(0);
+}, 120000);
+
+test("a stray CR inside a string does not shift the scanner's line numbers", () => {
+  const dir = stage("clean");
+  // git counts lines on \n only, so the scanner must too: a raw CR before the comment
+  // would otherwise move every later line by one and drop a code line as comment-only.
+  writeFileSync(join(dir, "app.js"), `export const raw = \`a\rb\`;\n/*\nbody\n*/\nexport const kept = 3;\n`);
+  writeFileSync(join(dir, "check.js"), [
+    'import { raw, kept } from "./app.js";',
+    "let failures = 0;",
+    "if (raw.length !== 3) failures += 1;",
+    "if (kept !== 3) failures += 1;",
+    'if (failures > 0) { console.log("CHECK FAILED"); process.exit(1); }',
+    "",
+  ].join("\n"));
+  const kept = lineOf(dir, "app.js", "export const kept");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "bun check.js", failMarker: "CHECK FAILED",
+    candidates: [{ file: "app.js", line: kept }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(receipt.rows.some((entry) => entry.id === `mutation/app.js:${kept}`)).toBe(true);
+}, 120000);
+
+test("a failure-summary line that says error: does not demote a real kill", () => {
+  const dir = stage("clean");
+  writeFileSync(join(dir, "app.go"), "package app\n\nfunc Guard(x int) bool {\n\treturn x > 0\n}\n");
+  writeFileSync(join(dir, "run.sh"), [
+    "#!/bin/sh",
+    "if ! grep -q 'return x > 0' app.go; then",
+    "  echo 'CHECK FAILED'",
+    "  echo 'error: test failed, to rerun pass --lib'",
+    "  exit 1",
+    "fi",
+    "echo ok",
+    "",
+  ].join("\n"));
+  const guard = lineOf(dir, "app.go", "return x > 0");
+  writeConfig(dir, { probes: { mutation: {
+    testCmd: "sh run.sh", failMarker: "CHECK FAILED",
+    candidates: [{ file: "app.go", line: guard }],
+  } } });
+  const run = invoke(dir, ["--root", dir, "--config", ".wish-sweep.json", "--receipt", receiptFile(dir), "--unit", "u-m3", "--head", HEAD, "--tree", TREE]);
+  const receipt = JSON.parse(readFileSync(receiptFile(dir), "utf8"));
+  expect(verdictOf(receipt, `mutation/app.go:${guard}`)).toBe("PASS");
+  expect(receipt.rows.some((entry) => entry.id.startsWith("mutation/noncandidate/"))).toBe(false);
+  expect(receipt.status).toBe("PASS");
+  expect(run.exit).toBe(0);
 }, 120000);
 
 test("a line that opens a block comment and carries code after it is still code", () => {

@@ -165,11 +165,14 @@ export async function run(config, ctx) {
       // build-error heuristic is consulted only after the exit code, so a test log that
       // prints "syntax error" cannot turn a survivor into a non-candidate.
       if (result.code === 0) return { row: row({ id, command: config.testCmd, observable, verdict: "FAIL", cls, note: "SURVIVED: the suite stayed green with this line removed" }) };
+      // A test-failure marker outranks the build-error heuristic: a suite that reports its
+      // own failure line killed the mutant, even when its log also carries a line such as
+      // "error: test failed, to rerun pass" (cargo prints exactly that after a failure).
+      if (failMarker.test(output)) return { row: row({ id, command: config.testCmd, observable, verdict: "PASS", cls, note: `killed (exit ${result.code})` }) };
       if (compileError.test(output)) {
         if (isCompiled(candidate.file)) return nonCandidate("deleting it does not build");
         return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: "mutation did not compile; not counted as killed" }) };
       }
-      if (failMarker.test(output)) return { row: row({ id, command: config.testCmd, observable, verdict: "PASS", cls, note: `killed (exit ${result.code})` }) };
       return { row: row({ id, command: config.testCmd, observable, verdict: "INVALID", cls, note: `failed without a test-failure marker (exit ${result.code})` }) };
     } finally {
       ctx.cleanup(scratch);
