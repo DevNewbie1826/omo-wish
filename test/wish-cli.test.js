@@ -1317,12 +1317,48 @@ describe("metrics delegation", () => {
     expect(measurementRow(out).pr).toBe("77");
   });
 
-  test("the environment root alone is enough for the documented form", () => {
-    const state = runNamingPr(64);
-    const out = join(state.box.dir, "metrics");
-    const result = cli(["metrics", "export", "--out", out], { env: { WISH_EVIDENCE_ROOT: state.root } });
+  test("an explicit ledger needs no evidence root at all", () => {
+    const named = runNamingPr(77);
+    const out = join(named.box.dir, "metrics");
+    // No --root and no environment root: the named ledger is the whole input.
+    const result = cli([
+      "metrics", "export", "--ledger", join(named.root, "ledger.jsonl"), "--out", out,
+    ], { env: { WISH_EVIDENCE_ROOT: "" } });
     expect(result.code).toBe(0);
-    expect(measurementRow(out).pr).toBe("64");
+    expect(measurementRow(out).pr).toBe("77");
+  });
+
+  test("the environment root alone writes the run's default metrics directory", () => {
+    const state = runNamingPr(64);
+    // The shipped CLEANUP step is the bare form: no --root, no --out.
+    const result = cli(["metrics", "export"], { env: { WISH_EVIDENCE_ROOT: state.root } });
+    expect(result.code).toBe(0);
+    expect(existsSync(join(state.root, "metrics", "measurements.csv"))).toBe(true);
+    expect(existsSync(join(state.root, "metrics", "rounds.csv"))).toBe(true);
+    expect(measurementRow(join(state.root, "metrics")).pr).toBe("64");
+  });
+
+  test("export options pass through to metrics.mjs unchanged", () => {
+    const state = runNamingPr(51);
+    const register = join(state.box.dir, "register.tsv");
+    writeFileSync(register, [
+      GAPS_COLUMNS.join("\t"),
+      ["G1", "cli", "wish metrics export", "skill:wish:metrics-export", "today", "after",
+        "-", "HIGH", "defect", "C", "code", "u1", "open", "-", "-"].join("\t"),
+    ].join("\n"));
+    expect(cli(["gaps", "add", "--tsv", register, "--root", state.root]).code).toBe(0);
+    const out = join(state.box.dir, "metrics");
+    const result = cli([
+      "metrics", "export", "--root", state.root, "--gaps", join(state.root, "gaps.tsv"),
+      "--out", out, "--json",
+    ]);
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out.trim()).ok).toBe(true);
+    expect(measurementRow(out).gaps_total).toBe("1");
+    // Only --root is the CLI's: a flag metrics.mjs never accepted is still refused.
+    const unaccepted = cli(["metrics", "export", "--root", state.root, "--plan", state.plan, "--out", out]);
+    expect(unaccepted.code).toBe(2);
+    expect(unaccepted.err).toContain("unknown option for export: --plan");
   });
 
   test("the other metrics subcommands keep their verbatim delegation", () => {
@@ -1336,13 +1372,16 @@ describe("metrics delegation", () => {
     const shared = cli(["metrics", "validate", "--root", state.root, "--file", join(out, "measurements.csv")]);
     expect(shared.code).toBe(2);
     expect(shared.err).toContain("unknown option for validate: --root");
+    const merge = cli(["metrics", "post-merge", "--days", "7", "--root", state.root]);
+    expect(merge.code).toBe(2);
+    expect(merge.err).toContain("unknown option for post-merge: --root");
   });
 
   test("no evidence root is a usage error for the documented form", () => {
     const out = join(sandbox().dir, "metrics");
     const result = cli(["metrics", "export", "--out", out], { env: { WISH_EVIDENCE_ROOT: "" } });
     expect(result.code).toBe(2);
-    expect(result.err).toContain("no evidence root");
+    expect(result.err).toContain("no evidence root: pass --root <ER> or set WISH_EVIDENCE_ROOT");
     expect(existsSync(out)).toBe(false);
   });
 });

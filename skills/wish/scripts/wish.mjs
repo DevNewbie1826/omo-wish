@@ -1151,10 +1151,10 @@ function verbResumePlan(parsed, root) {
   return null;
 }
 
-// The shared flags are the wish CLI's, not a module script's. Only `metrics export`
-// consumes them (see metricsArgv); every other delegated call still hands them over
+// `--root` is the wish CLI's own flag, not metrics.mjs's. Only `metrics export`
+// consumes it (see metricsArgv); every other delegated call still hands its argv over
 // unchanged, so a module script keeps rejecting what it never accepted.
-const SHARED_FLAGS = Object.freeze(["--root", "--plan", "--session"]);
+const SHARED_FLAGS = Object.freeze(["--root"]);
 
 function splitSharedFlags(argv) {
   const kept = [];
@@ -1182,8 +1182,9 @@ function splitSharedFlags(argv) {
 
 // `metrics export` is the one documented form that names no ledger: the run's ledger is
 // this CLI's own state (`rootPaths(root).ledger`), so the CLI resolves the same root every
-// other verb uses and supplies it. An explicit `--ledger` still wins, and a subcommand
-// other than export keeps today's verbatim argv.
+// other verb uses and supplies it. An explicit `--ledger` still wins and needs no root at
+// all, and every option metrics.mjs accepts reaches it unchanged. A subcommand other than
+// export keeps today's verbatim argv.
 function metricsArgv(argv) {
   if (argv[0] !== "export") return argv;
   const { kept, shared } = splitSharedFlags(argv.slice(1));
