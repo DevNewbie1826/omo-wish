@@ -124,7 +124,7 @@ Body fields (D §2.8 + A §C.4):
 | `rows` | array of `{id, command, observable, verdict, artifact, class?, note?}` | one row per check; `verdict` adds `INVALID` for a probe row that could not decide | D §2.8, O `exp/x1` sweep summary |
 | `artifacts` | array of paths | captures under `<ER>` | D §2.8 |
 | `cleanup` | array of strings | teardown receipts for resources the lane started | D §2.8 |
-| `gap`, `name`, `pass`, `env_sha` | per kind / optional | `before`/`after` name their gap; `lint` names the lint; a `vqa-*` receipt sets `pass` to its own suffix (`passA`, `passB`, `capture`); `env_sha` is the 64-hex surface/build artifact hash — a changed value makes the receipt STALE (M4) | A §B3/§C.4, D §2.7, A §F M4 |
+| `gap`, `name`, `pass`, `env_sha` | per kind / optional | `before`/`after` name their gap; `lint` names the lint; a `vqa-*` receipt sets `pass` to its own suffix (`passA`, `passB`, `capture`); `env_sha` is the 64-hex surface/build artifact hash — a changed value makes the receipt STALE | A §B3/§C.4, D §2.7, A §F M4 |
 
 Every row's `command` is the literal command (or `no command` for a read-through row), `observable` is the
 one binary observation that decided it, and `artifact` is a path or `null`.
@@ -167,7 +167,7 @@ Eleven columns in this order, a header first, TSV with no quoting: a field never
 | `id` | `[A-Za-z0-9][A-Za-z0-9._-]*` | stable id, never reused | D §2.8 |
 | `round` | integer ≥ 0 | `0` before the unit's first `round` event, otherwise the number of the latest `round` event when the row is filed, which is the round a REVISE loop is in | D §2.8 |
 | `source` | `code-review` \| `qa` \| `sweep` \| `ultrabrain` \| `architect` \| `adversarial` | the reporting lane; `qa` covers real-surface and visual-qa lanes, `sweep` covers scripted probe and lint lanes (M0) | D §2.8 |
-| `class` | the run type's §5.1 set | the defect class; identical string in M3's dictionary and M5's axes | D §2.8, A §C.1 |
+| `class` | the run type's §5.1 set | the defect class; identical string in the defect-class dictionary and the review axes | D §2.8, A §C.1 |
 | `severity` | `CRITICAL` \| `HIGH` \| `MEDIUM` \| `LOW` | reviewer severity, not the blocking decision | v1 step 7 |
 | `file_line` | `<path>:<line>` or `-` | where it was observed | D §2.8 |
 | `blocking` | `0` \| `1` | `1` blocks; a `note` or `owner` row is always `0` | D §2.6/§2.8 |
@@ -182,7 +182,7 @@ before the next gate. `note` is a memo; `owner` is parked in `gates.md`.
 
 ### 5.1 Class value sets, per work type
 
-One alphabet per type; M3's dictionary key, M5's axis name and this column are the same string
+One alphabet per type; the defect-class dictionary's key, the review axis name and this column are the same string
 (A §C.1 last row, A §B10). A class outside the run type's set is rejected.
 
 | Type | Values | Source |
@@ -263,8 +263,8 @@ Every IS/GAP row carries ≥1 `DEVICE:` row, and the form is fixed by the work t
 | `research` | `DEVICE: claim C<n> gate(primary, domains>=<n>, counter-search)` |
 | `audit` | `DEVICE: lint <command> exit 0` or `DEVICE: spot <n> rows reproduce` |
 
-M2's `check-plan.mjs` lints the pairing (IS↔DEVICE, DEVICE form↔type, IS↔gap id when a register exists); M0
-owns the grammar only.
+`check-plan.mjs` lints the pairing (IS↔DEVICE, DEVICE form↔type, IS↔gap id when a register exists); this
+contract owns the grammar only.
 
 ## 9. `ledger.jsonl`
 
@@ -516,7 +516,7 @@ questions and defaults; only the affected lane parks while other lanes continue.
 
 ## 14. CLI — `$SKILL/scripts/wish.mjs`
 
-M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
+The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, arguments and exit codes.
 
 | Verb | Arguments | Effect | Exit codes | Source |
 | --- | --- | --- | --- | --- |
@@ -529,7 +529,6 @@ M1 implements one entry point. M0 fixes the verbs, arguments and exit codes.
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
 | `switch` | `record --round <n> --kind <kind> --premise <text> --new-approach <text>` | record the approach switch (§9.4) | 0 ok; 1 schema failure; 2 usage; 3 no REVISE at that round | A §C.6 |
-| `metrics` | `export [--out <dir>] [--ledger <path>]`; `post-merge --days <n> [--pr <n>]` | write §10 rows; count post-merge refixes. `export` supplies the run's own ledger (`rootPaths(root).ledger`, from `--root` or `WISH_EVIDENCE_ROOT`) unless the caller names one with `--ledger`; every other form still forwards its argv unchanged | 0 ok; 1 a row or query fails; 2 usage; 3 freeze/merge data missing | C43, D §2.10 |
 | `resume-plan` | — | print the first invalid stage and the resume actions | 0 ok; 2 usage; 3 ledger missing | D §2.9 |
 
 Exit codes are fixed by D §4: **0** ok, **1** check failed, **2** usage, **3** state mismatch. A usage
