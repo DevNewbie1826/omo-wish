@@ -108,9 +108,23 @@ describe("carried passages", () => {
 
   test("prompts carries (a), (b) and (c) in the plan-review step", () => {
     expect(promptsPlanSentences()).toEqual([PASSAGES.a, PASSAGES.b, PASSAGES.c]);
-    expect(copiesOf(PROMPTS, PASSAGES.a)).toHaveLength(1);
-    expect(copiesOf(PROMPTS, PASSAGES.b)).toHaveLength(1);
+    // (a) and (b) appear twice: once in the plan-review step and once as the
+    // build-node RE-EMPHASIS the owner asked for at the implementation step.
+    expect(copiesOf(PROMPTS, PASSAGES.a)).toHaveLength(2);
+    expect(copiesOf(PROMPTS, PASSAGES.b)).toHaveLength(2);
     expect(copiesOf(PROMPTS, PASSAGES.c)).toHaveLength(1);
+  });
+
+  test("the build-node prompt re-emphasizes (a) and (b) verbatim", () => {
+    const lines = linesOf(PROMPTS);
+    const start = lines.findIndex((line) => line.startsWith("### 2.1 "));
+    const end = lines.findIndex((line) => line.startsWith("### 2.2 "));
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    const section = lines.slice(start, end);
+    expect(section.filter((line) => sentenceOf(line) === PASSAGES.a)).toHaveLength(1);
+    expect(section.filter((line) => sentenceOf(line) === PASSAGES.b)).toHaveLength(1);
+    expect(section.some((line) => line.includes("RE-EMPHASIS (owner)"))).toBe(true);
   });
 
   test("the design playbook carries (c) in PLAN, its owning step", () => {

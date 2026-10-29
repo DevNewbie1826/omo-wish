@@ -184,6 +184,9 @@ Scope: implement node <node-id> of plan <plan path>; nothing outside it.
 Contract: <IS/COMPANION/INVARIANT/LIMIT rows verbatim>.
 
 TASK: implement node <node-id> in <worktree> so its plan rows hold, and prove each guard row can fail.
+  RE-EMPHASIS (owner), verbatim from the plan step — this node implements, so it owns both sentences:
+    (a) Implement it, and also include, strictly, a device that confirms the implementation was done.
+    (b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
 DELIVERABLE: the changed files for <node-id>; for every guard row the node owns, the evidence set of the
   injection check (the injection diff, the failing output, the passing output after restore); a build
   artifact `<ER>/build/<node-id>-<head7>.json` with one row per guard row (a build node is not a verify
