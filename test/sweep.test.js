@@ -801,6 +801,23 @@ test("a backslash before a Go raw-string close does not escape it", () => {
   expect(only).not.toContain(8);
 }, 30000);
 
+test("every language whose block comments nest counts depth", () => {
+  const cases = [
+    ["a.ml", "(* outer", "(* inner *)", "body", "*)", "let x = 1"],
+    ["a.hs", "{- outer", "{- inner -}", "body", "-}", "x = 1"],
+    ["a.nim", "#[ outer", "#[ inner ]#", "body", "]#", "var x = 1"],
+    ["a.rs", "/* outer", "/* inner */", "body", "*/", "let x = 1;"],
+  ];
+  for (const [file, ...lines] of cases) {
+    const source = lines.join("\n") + "\n";
+    const only = [...commentOnlyLines(source, file)];
+    expect(only).toContain(3);
+    expect(only).not.toContain(5);
+  }
+  const flat = "/* outer\n/* inner */\nint x;\n*/\nint y;\n";
+  expect([...commentOnlyLines(flat, "a.c")]).not.toContain(3);
+}, 30000);
+
 test("a real block comment after code keeps its body out of the candidates", () => {
   const dir = stage("clean");
   writeFileSync(join(dir, "app.js"), [

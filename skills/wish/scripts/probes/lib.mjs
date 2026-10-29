@@ -364,13 +364,13 @@ const COMMENT_SYNTAX = Object.freeze({
   py: HASH_LINE, rb: HASH_LINE, sh: HASH_LINE, bash: HASH_LINE, zsh: HASH_LINE, r: HASH_LINE,
   pl: HASH_LINE, jl: HASH_LINE, rego: HASH_LINE, ex: HASH_LINE, exs: HASH_LINE,
   tf: Object.freeze({ line: ["#"], block: [["/*", "*/"]], quotes: ['"'] }),
-  nim: Object.freeze({ line: ["#"], block: [["#[", "]#"]], quotes: ['"'] }),
+  nim: Object.freeze({ line: ["#"], block: [["#[", "]#"]], quotes: ['"'], nested: true }),
   erl: Object.freeze({ line: ["%"], block: [], quotes: ['"'] }),
-  hs: Object.freeze({ line: ["--"], block: [["{-", "-}"]], quotes: ['"'] }),
+  hs: Object.freeze({ line: ["--"], block: [["{-", "-}"]], quotes: ['"'], nested: true }),
   lua: Object.freeze({ line: ["--"], block: [["--[[", "]]"]], quotes: ['"', "'"] }),
   sql: Object.freeze({ line: ["--"], block: [["/*", "*/"]], quotes: ["'", '"'] }),
-  ml: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'] }),
-  mli: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'] }),
+  ml: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'], nested: true }),
+  mli: Object.freeze({ line: [], block: [["(*", "*)"]], quotes: ['"'], nested: true }),
   clj: Object.freeze({ line: [";"], block: [], quotes: ['"'] }),
   html: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
   astro: Object.freeze({ line: [], block: [["<!--", "-->"]], quotes: [] }),
@@ -496,12 +496,6 @@ export function commentOnlyLines(source, file) {
         }
       }
     }
-    const marker = syntax.line.find((candidate) => text.startsWith(candidate, i));
-    if (marker !== undefined) {
-      mode = "line-comment";
-      i += marker.length - 1;
-      continue;
-    }
     if (openDelim !== null && text.startsWith(openDelim, i)) {
       blockDepth = 1;
       blockOpenedAt = line;
@@ -537,6 +531,14 @@ export function commentOnlyLines(source, file) {
         i = cursor;
         continue;
       }
+    }
+    // A block opener is tested before a line marker, because a language may spell its
+    // block opener with the same first character ("#[" in Nim, "{-" is not "#" but "#[" is).
+    const marker = syntax.line.find((candidate) => text.startsWith(candidate, i));
+    if (marker !== undefined) {
+      mode = "line-comment";
+      i += marker.length - 1;
+      continue;
     }
     if (syntax.quotes.includes(ch)) {
       isCode[line] = true;
