@@ -62,7 +62,7 @@ DELIVERABLE: <the concrete artifact: files changed, report shape, evidence produ
 SCOPE: <paths it may read, paths it may write, stated as a hard boundary; name what is OUT of scope>
 VERIFY: <the literal command it runs on its own work, and the expected result>
 STOP WHEN: <the single observable condition that ends its run>
-TIMEBOX: <minutes; at expiry report the partial result and list every unexamined item>
+TIMEBOX: <minutes; at expiry write the partial deliverable and list every unexamined item>
 FORBIDDEN: <hard invariants this role must not cross>
 REPORT: <the exact report shape: table columns, evidence paths, last line>
 ```
@@ -76,7 +76,7 @@ Rules that make a frame obeyed:
   own work.
 - **Positive framing.** Say what to do. Reserve `NEVER`/`ONLY` for true invariants.
 - **No decoration.** No emoji, banners or divider art: workers read decoration as flavor and skip it.
-- **TIMEBOX expiry is not approval.** A worker that expires reports the result it holds plus every
+- **TIMEBOX expiry is not approval.** A worker that expires writes the partial deliverable it holds plus every
   unexamined item by name. An unexamined area is never a PASS.
 - **FORBIDDEN always names**: edits outside `SCOPE`; `git commit --amend`, `rebase`, `push --force`, or
   `--no-verify`; deleting, skipping or `.only`-ing a test; adding a dependency the plan does not list;
