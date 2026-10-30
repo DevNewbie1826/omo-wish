@@ -2237,3 +2237,24 @@ test("an unsearchable evidence directory refuses the write instead of skipping i
     expect(result.err).toContain("not a writable path");
   });
 });
+
+describe("flags before the verb", () => {
+  test("recorded flags-before-verb call", () => {
+    const box = sandbox();
+    const init = ["--run-id", "w-qa1-20261031-0000", "--type", "code", "--tier", "S", "--plan", box.plan, "--fact", "qa"];
+    const scratch = box.root;
+    const rows = [
+      [["--root", scratch, "--session", "senpi:qa", "init", ...init], 0, ""],
+      [["--root", "A", "--root", "B", "init", ...init], 2, "--root given twice"],
+      [["--root"], 2, "unknown verb --root"], [["--root", "A"], 2, "unknown verb --root"],
+      [["init", "--root"], 2, "--root needs a value"], [["--help"], 0, ""],
+      [["--root", scratch, "--session", "init", "status"], 0, ""], [["--type", "code", "init"], 2, "unknown verb --type"],
+      [["--root", scratch, "status"], 0, ""], [["--", "init"], 2, "unknown verb --"],
+      [["--root=" + scratch, "status"], 0, ""],
+    ];
+    for (const [argv, code, fragment] of rows) {
+      const got = spawnSync("node", [CLI, ...argv], { encoding: "utf8", cwd: HERE });
+      expect([got.status, fragment && (got.stderr ?? "").split("\n")[0]]).toEqual([code, fragment && `wish: ${fragment}`]);
+    }
+  });
+});

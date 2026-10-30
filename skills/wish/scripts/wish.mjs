@@ -191,6 +191,7 @@ const COMMENT_FLAGS = {
   "--session": { kind: "value" },
   "--json": { kind: "bool" },
 };
+const SHARED_VALUE_FLAGS = new Set(Object.keys(COMMENT_FLAGS).filter((name) => COMMENT_FLAGS[name].kind === "value"));
 
 function expectPositional(parsed, allowed, label) {
   const [command, ...rest] = parsed.positionals;
@@ -1221,7 +1222,17 @@ const HANDLERS = {
 
 export function run(argv) {
   try {
-    const [verb, ...rest] = argv;
+    const peeled = [];
+    let i = 0;
+    while (i < argv.length && SHARED_VALUE_FLAGS.has(argv[i].split("=")[0])) {
+      const one = argv[i].includes("=");
+      if (!one && argv[i + 1] === undefined) break;
+      const take = one ? 1 : 2;
+      peeled.push(...argv.slice(i, i + take));
+      i += take;
+    }
+    const [verb, ...rest] = argv.slice(i);
+    if (verb === undefined && peeled.length) throw usage(`unknown verb ${peeled[0].split("=")[0]}`);
     if (verb === undefined || verb === "help" || verb === "-h" || verb === "--help") {
       printUsage();
       return 0;
@@ -1233,7 +1244,7 @@ export function run(argv) {
     }
     const handler = HANDLERS[verb];
     if (!handler) throw usage(`unknown verb ${verb}`);
-    const parsed = parseArgs(rest, SPECS[verb]);
+    const parsed = parseArgs([...peeled, ...rest], SPECS[verb]);
     if (parsed.has("--help")) {
       printVerbUsage(verb);
       return 0;
