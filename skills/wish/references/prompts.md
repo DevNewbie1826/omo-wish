@@ -16,7 +16,7 @@ child's prompt is.
 
 ## Contents
 
-1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
+1. Blocks every prompt carries — the reviewer rule, the frame, the six shared fields, evidence locators,
    lane vocabulary.
 2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
    `define-report`, `decide-batch`, `execution`.
@@ -54,7 +54,7 @@ does not support. The blocker boundary never widens: the plan's rows and listed 
 
 ### 1.2 The frame
 
-Every template below carries these eight fields, in this order, after the five shared fields of §1.3:
+Every template below carries these eight fields, in this order, after the six shared fields of §1.3:
 
 ```
 TASK: <one imperative sentence naming the deliverable>
@@ -83,7 +83,7 @@ Rules that make a frame obeyed:
   writing another lane's receipt; writing a file the session alone writes, each named in the prompt from
   `ledger.md` §1 (rule 1); asking the requester a question.
 
-### 1.3 The five shared fields
+### 1.3 The six shared fields
 
 Every child prompt opens with these, before the frame:
 
