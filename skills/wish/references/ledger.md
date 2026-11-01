@@ -19,8 +19,8 @@ Sources cited per field:
   and the repeated-failure stop rule.
 - **L** = omo `ulw-loop` `SKILL.md:64` — evidence is bound to a tree hash and a matching tree is reused.
 - **P** = poteto-mode `scripts/orch/store.ts:597-668` — the `gates.md` renderer and reader.
-- **C44** = PR #44 — the `VERDICT:` line pattern, parser semantics, and reason strings, carried verbatim
-  in `scripts/lib/schema.mjs` (the standalone parser script was removed with the v3 cleanup).
+- **C44** = PR #44 — the `VERDICT:` line pattern, reading semantics, and reason strings;
+  the only normative copy is `ledger.md` §12 (the parser was removed by PR #79).
 - **C43** = PR #43's shared experiment columns, quoted in D §2.10 and preserved in
   `docs/experiments/{measurements,rounds}.csv`.
 - **O/** = `<omo-skills-root>`, the host's omo skills root.
@@ -476,22 +476,27 @@ The separator is `·` with one space either side; a run without a register print
 printed on every transition that changes a number, and while any unit runs at least every
 `report.interval` minutes (default 30, `wish.yaml`, A §B7). A repeat with no change is suppressed.
 
-## 12. `VERDICT:` line — identical to PR #44
+## 12. `VERDICT:` line
 
-The final review's last non-empty line is the verdict and must cover the frozen head (C44):
+The final review's last non-empty line is the verdict and must name the frozen head exactly. The pattern
+accepts the complete head of the run's type: 40 hex for code/design/audit and 64 hex for research (§2).
+The session reads the line against this pattern; no shipped script parses the line after PR #79 removed
+the parser. The structured coverage in `wish.mjs` and `store.mjs` compares the recorded round head with
+the frozen and observed heads by exact string equality.
 
 ```
-^VERDICT: (APPROVED|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$
+^VERDICT: (APPROVED|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40}|[0-9a-fA-F]{64})$
 ```
 
-Parser semantics, verbatim from C44: CRLF-normalized, the last line whose `trim()` is non-empty is the
-candidate, trailing whitespace is trimmed, the pattern is matched, and the head is lowercased. An empty
-body fails with `body is empty`; a mismatch fails with
-`last non-empty line is not a verdict line: <line>`. `round` is a positive integer with no leading zero and
-no upper bound; a seven-character head is rejected. Coverage fails with
-`verdict head <a> does not cover current head <b>`, and a REVISE verdict never counts as an approval —
-`verdict is REVISE, not APPROVED`. The session reads the line against this pattern, and `wish gate` refuses
-a round whose verdict head does not cover the frozen head.
+Reading rule (the C44 semantics kept as the session's rule): CRLF-normalized, the last line whose
+`trim()` is non-empty is the candidate, trailing whitespace is trimmed, the pattern is matched, and the
+head is lowercased. An empty body fails with `body is empty`; a mismatch fails with
+`last non-empty line is not a verdict line: <line>`. `round` is a positive integer with no leading zero
+and no upper bound; a seven-character head is rejected. Coverage compares the complete values and fails
+with `verdict:round <n> head does not cover <head7>`; the display is seven characters, the comparison is
+full. A REVISE verdict never counts as an approval — `verdict is REVISE, not APPROVED`. `freeze --check`
+and `status` report the coverage failure; `wish gate --round` is a pre-dispatch gate and
+does not read the reviewer report.
 
 ## 13. `gates.md` — owner questions
 
