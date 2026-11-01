@@ -26,9 +26,9 @@ These nodes run inside the one COLLECT `mass-ulw` run, `wish-<run>-collect`, def
 the handoff between nodes (never pasted text):
 
 - [ ] 1. SLICE (harvest): split the corpus into disjoint, readable slices and record the split — a slice is a chapter, a section range or a page range, never "the whole thing" [omo: session] [receipt: the slice list under `<ER>/collect/`]
-- [ ] 2. HARVEST (harvest): one `quick` or `deep-low` node per slice with the `lens-harvest` prompt (`../references/prompts.md` §5.1); each returns candidate rules with a source anchor, never a summary [omo: `mass-ulw` nodes] [receipt: one harvest output per slice]
-- [ ] 3. EXTRACT (extract): one node per cluster with `lens-extract` (§5.2) — tag each candidate `universal` or `platform`, tie it to the persona and journey it serves, and drop what is a platform's own taste [omo: `mass-ulw` nodes] [receipt: one extract output per cluster]
-- [ ] 4. REDUCE (extract): one `lens-reduce` node (§5.3) returns the rule rows — `L<n> | rule | source anchor | universal|platform | persona/journey served | surface kinds it applies to` — and reports how many candidates were dropped and why; the session writes them into `<ER>/collect.md` (one writer: `../SKILL.md`, evidence rules) [omo: `mass-ulw` reduce node] [receipt: the rule section of `<ER>/collect.md`; its rule count feeds the `elements` field of the `collect` event body the type playbook prescribes]
+- [ ] 2. HARVEST (harvest): one `quick` or `deep-low` node per slice with the `collect-harvest` prompt (`../references/prompts.md` §5.1); each returns candidate rules with a source anchor, never a summary [omo: `mass-ulw` nodes] [receipt: one harvest output per slice]
+- [ ] 3. EXTRACT (extract): one node per cluster with `collect-extract` (`../references/prompts.md` §5.2) — tag each candidate `universal` or `platform`, tie it to the persona and journey it serves, and drop what is a platform's own taste [omo: `mass-ulw` nodes] [receipt: one extract output per cluster]
+- [ ] 4. REDUCE (extract): one `collect-reduce` node (`../references/prompts.md` §5.3) returns the rule rows — `L<n> | rule | source anchor | universal|platform | persona/journey served | surface kinds it applies to` — and reports how many candidates were dropped and why; the session writes them into `<ER>/collect.md` (one writer: `../SKILL.md`, evidence rules) [omo: `mass-ulw` reduce node] [receipt: the rule section of `<ER>/collect.md`; its rule count feeds the `elements` field of the `collect` event body the type playbook prescribes]
 - [ ] 5. SCOPE (extract): `platform` rules never become a register row on a different platform; a `universal` rule with no surface that can instantiate it is dropped [omo: session] [receipt: the rule rows the register cites — `rule: L<n>`]
 
 A corpus large enough to exceed `max_nodes_per_run` stays inside the same run: more harvest nodes, the same
@@ -37,7 +37,7 @@ happens; the reducer always sees files, never a transcript.
 
 ## What the rules feed
 
-- the COLLECT `explore` lane prompts (the `lens-explore` template, §5.4) carry the rule list as questions.
+- the COLLECT `explore` lane prompts (the `collect-explore` template, `../references/prompts.md` §5.4) carry the rule list as questions.
 - `define.md` names, per surface, the rules it must instantiate.
 - each `gaps.tsv` row cites `rule: L<n>` or `skill:<skill>:<code>`, so a reviewer can check the basis.
 - each review axis line names the rules it examined.
