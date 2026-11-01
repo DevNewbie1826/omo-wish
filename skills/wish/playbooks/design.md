@@ -53,7 +53,7 @@ light/dark, plus the scroll end and each interaction frame. `wish init` writes t
 - The `before`/`after` pair per defect row is `../SKILL.md`'s.
 - Every visual-QA condition the plan carries is verified by a pass; none is omitted, and an unchecked condition is a finding.
 - A capture older than the last edit is not evidence; a re-review after a fix is a **fresh** double oracle (`../SKILL.md`, review rule).
-- `taste` never blocks; a reviewer that treats taste as a defect is wrong, and the finding is filed as `note` (`../references/defect-classes.md` §5).
+- `taste` never blocks; a reviewer that treats taste as a defect is wrong, and the finding is filed as `note` (`../references/defect-classes.md` §4).
 - A TUI is captured through a real terminal renderer; a pane dump is not visual evidence.
 
 ## Forbidden

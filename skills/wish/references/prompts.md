@@ -371,12 +371,12 @@ DELIVERABLE: `<ER>/define.md` with three parts: the end user and how they use th
   `<difference> | <reason> | <affected party>`. The same difference rows go to `<ER>/gaps.tsv` in the
   register shape of `ledger.md` §6.
 SCOPE: read <ER>/collect.md, <ER>/lens/, <ER>/receipts/collect-*, <worktree>; write only `<ER>/define.md` and `<ER>/gaps.tsv`.
-  OUT OF SCOPE: a plan, a unit split, a test plan, any repository file.
+  OUT OF SCOPE: a plan, a unit split, any repository file.
 VERIFY: every difference row in `define.md` has a matching row in `gaps.tsv`, and each row passes the
   boundary of `contract.md` §3.
 STOP WHEN: both files exist and every difference row carries a reason and an affected party.
 TIMEBOX: <minutes; default 20>. At expiry report the rows written and every unexamined collect element.
-FORBIDDEN: writing a plan, a unit split or a test plan; a row outside the boundary of `contract.md` §3;
+FORBIDDEN: writing a plan or a unit split; a row outside the boundary of `contract.md` §3;
   asking the requester anything.
 REPORT: the counts of ideal rows and difference rows, then both file paths.
 ```
@@ -1484,7 +1484,7 @@ Deliver <the requested outcome> in <worktree> on branch <branch> as one unit. Su
 scenario and expected evidence>, <IS row 2, ...>, and <COMPANION rows by name>; the contract keeps
 <INVARIANT rows> and accepts <LIMIT rows>. Tier <S|M|L>, type <type> (for a mixed unit also its primary type).
 Evidence lives under <ER>. A unit ends when its own contract rows hold at <head> and the final review returns
-APPROVED, followed by MERGE for code and design or DELIVER for research and audit and the CLOSE checkpoint;
+APPROVED, followed by `merge`, `post_merge` and the `checkpoint`;
 rows assigned to another unit are never part of this unit's end. The end state is <the primary type's end: for
 code and design, a merged PR whose post-merge verification passes at <tree>; for audit, every rule x surface
 judged PASS, FAIL or N/A with no unjudged cell, the spot-reproduction rate recorded, and the schema-valid
@@ -1499,7 +1499,7 @@ ONE paragraph with no newlines. In program mode each unit is its own paragraph i
 goal per unit; its criteria are that unit's gap rows (`scenario` = the before device, `expectedEvidence` =
 the after artifact).
 
-The whole request is not the unit. An audit-only request ends at its single audit unit's `DELIVER` + `CLOSE`
+The whole request is not the unit. An audit-only request ends at its single audit unit's `merge` + `checkpoint`
 with the defect rows it opened handed to a later repair program. The request's own completion rule — every
 `defect` row `fixed`, `accepted-limit` with a plan `LIMIT` row, or `out-of-scope` — is evaluated at program
 close and lives in the program driver objective, never in a unit's goal: writing it into a unit makes an audit

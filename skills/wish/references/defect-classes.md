@@ -23,7 +23,7 @@ lane.
 
 The mutation check is applied by hand: for each guard row of the plan, remove the guard line in a
 throwaway copy of the changed file and require the declared suite to fail there (`references/plan-format.md`
-§3). A survivor means a regression would pass unnoticed; the E7-shaped rule the owner set still holds — a
+§5.3). A survivor means a regression would pass unnoticed; the E7-shaped rule the owner set still holds — a
 test finding blocks only with a reproduction.
 
 ## 2. The measured table
