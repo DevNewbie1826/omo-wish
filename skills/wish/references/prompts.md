@@ -16,7 +16,7 @@ child's prompt is.
 
 ## Contents
 
-1. Blocks every prompt carries — the reviewer rule, the frame, the five shared fields, evidence locators,
+1. Blocks every prompt carries — the reviewer rule, the frame, the six shared fields, evidence locators,
    lane vocabulary.
 2. Build prompts — `build-node`, `commit-node`, `fix-node`, `switch-fix`; the stage prompts `collect-run`,
    `define-report`, `decide-batch`, `execution`.
@@ -54,7 +54,7 @@ does not support. The blocker boundary never widens: the plan's rows and listed 
 
 ### 1.2 The frame
 
-Every template below carries these eight fields, in this order, after the five shared fields of §1.3:
+Every template below carries these eight fields, in this order, after the six shared fields of §1.3:
 
 ```
 TASK: <one imperative sentence naming the deliverable>
@@ -80,10 +80,10 @@ Rules that make a frame obeyed:
   unexamined item by name. An unexamined area is never a PASS.
 - **FORBIDDEN always names**: edits outside `SCOPE`; `git commit --amend`, `rebase`, `push --force`, or
   `--no-verify`; deleting, skipping or `.only`-ing a test; adding a dependency the plan does not list;
-  writing another lane's receipt; writing `<ER>/ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `gates.md`,
-  `collect.md`, `define.md` or the plan (the session alone writes those); asking the requester a question.
+  writing another lane's receipt; writing a file the session alone writes, each named in the prompt from
+  `ledger.md` §1 (rule 1); asking the requester a question.
 
-### 1.3 The five shared fields
+### 1.3 The six shared fields
 
 Every child prompt opens with these, before the frame:
 
@@ -804,22 +804,6 @@ dispatched until every required lane has a valid receipt.
 - `audit` — one line per audited rule id in the corpus, plus coverage (`rules × surfaces` rows judged) and
   the spot-check sample.
 - `mixed` — the union of the primary type's list and the secondary type's list.
-
-### 4.3.3 `round1_families: 2` — the two-family round-1 variant (off by default)
-
-When the run's configuration sets `final_review.round1_families: 2`, round 1 dispatches the same
-`ultrabrain-r1` prompt twice, at the same frozen head: one `category: ultrabrain`, one category or explicit
-model the host routes to a different family. Neither reviewer sees the other's report.
-
-- Take the union: a defect only one reviewer reports is valid and enters the findings table with its own
-  `source`; a defect both report becomes one row citing both.
-- `APPROVED` in round 1 requires both to approve. One `REVISE` makes the round `REVISE`.
-- Record the head before dispatch. If a commit lands while the two run, both reports become history and
-  round 1 runs again at the new head.
-- Later rounds stay single-reviewer: the second family exists to widen round 1's search, not to double
-  every round's cost.
-
-With the default `round1_families: 1`, one reviewer carries round 1 and this subsection does not apply.
 
 ### 4.4 `ultrabrain-r2` — every later round: delta, regression, gate table
 
@@ -1542,8 +1526,7 @@ the requester's private data. Use `<ER>`, `<worktree>` and repository-relative p
   `unverified` because a platform or credential cannot be reached (a limit, not a defect).
 - It never widens the contract. A finding outside the plan's rows and invariants is a note or a follow-up,
   and a follow-up is recorded in `<ER>/follow-ups.md`, never fixed in the task.
-- It never lets a lane write the session's state. Lanes write their own receipts; the session writes the
-  ledger, findings, gaps, gates, lens, ideal and the plan.
+- It never lets a lane write the session's state; every file's one writer is named in `ledger.md` §1 (rule 1).
 - It never replaces an omo role. Categories, native agents, `mass-ulw`, `ulw-loop` evidence and checkpoint,
   goals, monitors, `visual-qa`, `frontend`, `remove-ai-slops` and `ulw-research` stay the machinery; these
   prompts only give each one its brief.

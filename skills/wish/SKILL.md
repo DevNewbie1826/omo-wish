@@ -57,7 +57,7 @@ repository on purpose: evidence never costs a commit and never moves a reviewed 
 
 `before` and `fix` are conditional: when one truly does not apply, its step stays in the todo with
 `skip: <reason>`, never silently dropped. While any unit runs, print the `PROGRESS:` line on every transition
-that changes a number and at least every 30 minutes (`report.interval`); a repeat with no change is suppressed.
+that changes a number and at least every 30 minutes; a repeat with no change is suppressed.
 
 ### The two plan branches
 
@@ -186,9 +186,8 @@ first.
 
 ## Evidence, state, and what scripts may not do
 
-The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `collect.md`, `define.md`,
-`gates.md` and `resume.md`; a lane writes only its own receipt; a script authors nothing. A receipt is valid while
-its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict only while its
+Every run file has one writer, named in `references/ledger.md` §1 (rule 1). A receipt is valid while its `tree`
+matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict only while its
 round's `head` equals the frozen head and the observed head; the reuse rule names the lanes a fix invalidated,
 and a `before` capture is never stale.
 Nothing commits after the freeze: a memo goes to `<ER>`, never the branch.
