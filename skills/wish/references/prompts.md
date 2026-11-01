@@ -640,8 +640,7 @@ REPORT: the gate table, then each `not fixed` row's failing output. A single `no
   final-review dispatch and is a strike for its component; it is never a reason to end review.
 ```
 
-A rebase-only head move with an equal patch-id needs no gate; the verdict stands. Any other head move
-generates every accumulated row again at the new head.
+Every head move, a rebase included, generates every accumulated row again at the new head.
 
 ---
 
@@ -861,8 +860,8 @@ The prompt carries the round-1 inputs plus:
    reports the row's state at <head> itself.
 3. One line per axis, requiring a counterexample rather than an opinion: a finding stands only with the
    input, state, or sequence that reproduces it at the current head and the command that shows it.
-4. For a rebase-only head move with an equal patch-id, the verdict still holds and there is no new round;
-   when the patch changed, this is the delta review and the round number increments.
+4. Every head move after the previous verdict, a rebase included, makes this the delta review, and the
+   round number increments.
 
 ### 4.5 `gate-checkpoint` — the loop's quality-gate record
 

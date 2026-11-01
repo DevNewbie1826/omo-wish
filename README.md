@@ -233,14 +233,15 @@ a memo goes to `<ER>`.
 
 Write authority is fixed: only the session writes the plan, ledger, findings, gaps, collect, define, gates and
 resume; a lane writes only its own receipt; scripts author nothing. A receipt is valid while its `tree` matches (a
-research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its `patch_id` matches.
+research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict only while its round's `head`
+equals the frozen head and the observed head.
 `before` captures are deliberately old and are exempt from the reuse check.
 
 ## Scripts
 
 All of them are helper commands an agent calls. None decides a stage or dispatches a review. Exit codes are
-shared: **0** ok, **1** check failed, **2** usage error, **3** state mismatch. The verdict line, patch-id
-equality and receipt reuse are plain rules the session applies from the skill text; `wish gate` enforces
+shared: **0** ok, **1** check failed, **2** usage error, **3** state mismatch. The verdict line and receipt
+reuse are plain rules the session applies from the skill text; `wish gate` enforces
 the head coverage a verdict needs.
 
 | Script | Role |

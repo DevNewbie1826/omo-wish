@@ -74,7 +74,8 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | `artifact_sha256` | sha256 of the frozen research artifact; equals `head` for a research unit | 64 lowercase hex | A §C.1, O `ulw-research` |
 
 A receipt is valid while its `tree` (or, for research, its `artifact_sha256` in `head`) matches; a verdict
-is valid while its `patch_id` matches. A seven-character SHA is never accepted as a `head`
+is valid only while its round's `head` equals the frozen head and the observed head (§12). A seven-character
+SHA is never accepted as a `head`
 (`headErrors`). `research` never carries a git tree; its receipts set `tree: null`. A `mixed` run takes its
 `primary` type's identity form (A §C.2).
 
