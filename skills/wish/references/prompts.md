@@ -686,7 +686,6 @@ Proceed with ulw-plan, and make the plan include the following: fix this; also i
 ```
 
 The third sentence applies to a plan with a rendered surface or a visual QA scenario.
-A plan forces no test code, because the confirmation device fills that role (`plan-format.md` §3).
 
 If the host lists no `architect` category, use the highest-capability category it does list and record it.
 

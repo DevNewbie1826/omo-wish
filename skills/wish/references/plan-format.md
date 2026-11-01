@@ -364,13 +364,7 @@ without (a) or (b) does not pass that review.
 
 ### 9.1 The no-test path
 
-A plan forces no test code. The confirmation device takes that role, in one of three forms:
-
-- a behaviour the repository already tests gets those tests;
-- a guard row gets its mutation (§5.3);
-- a behaviour this repository cannot test gets a `qa` device plus a `no-test` row naming it.
-
-Those last two rows read:
+A behaviour this repository cannot test still gets its confirmation device - the third form of §5.2 - as a `qa` device plus a `no-test` row:
 
 ```
 - IS-<n> DEVICE: qa <command> => <one binary observation>

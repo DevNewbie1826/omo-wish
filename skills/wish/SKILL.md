@@ -90,12 +90,10 @@ everything else is out of scope — recorded in `<ER>/follow-ups.md` and named i
 here. DEFINE writes no plan, no unit split and no test plan.
 
 **PLAN** starts by reading the related skills and their references — `remove-ai-slops`, `frontend`,
-`programming`, and the work type's own skill — and the plan-writing step then carries the required sentences and
-the no-test path of `references/plan-format.md` §3, quoted there verbatim: the confirmation device for the
+`programming`, and the work type's own skill — and the plan-writing step then carries
+the required sentences of `references/plan-format.md` §9, quoted there verbatim: the confirmation device for the
 implementation, the confirmation device for the fix, and the visual-QA verification sentence for any plan with a
-rendered surface or a visual QA scenario. Do not force test code. The confirmation device takes that role: a
-repository that keeps tests for the behaviour runs them, a guard row gets its mutation, and a behaviour this
-repository cannot test carries a `qa` device and a `no-test` row that names it.
+rendered surface or a visual QA scenario. Each device is chosen by the device-choice criteria of `references/plan-format.md` §5.2, the binding statement, in one of three forms: a repository that keeps tests for the behaviour runs them, a guard row gets its mutation, and a behaviour this repository cannot test carries a `qa` device and a `no-test` row that names it.
 
 **DECIDE** gathers every decision the requester owns into one batch in `<ER>/gates.md`, each with a recommended
 default and one line of reasoning, and asks once. A decision that appears mid-run parks only the lane that needs
