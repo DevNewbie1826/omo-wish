@@ -87,13 +87,14 @@ today and after; the ideal state as rows, each with its reason; every difference
 each with its reason and its affected party. Those differences are the register, so the plan closes each one.
 Apply the boundary exactly (`references/contract.md` §3): the request's `IS` and `COMPANION` rows are in scope,
 everything else is out of scope — recorded in `<ER>/follow-ups.md` and named in the final report, never fixed
-here. DEFINE writes no plan, no unit split and no test plan.
+here. DEFINE writes no plan and no unit split.
 
 **PLAN** starts by reading the related skills and their references — `remove-ai-slops`, `frontend`,
 `programming`, and the work type's own skill — and the plan-writing step then carries
 the required sentences of `references/plan-format.md` §9, quoted there verbatim: the confirmation device for the
 implementation, the confirmation device for the fix, and the visual-QA verification sentence for any plan with a
-rendered surface or a visual QA scenario. Each device is chosen by the device-choice criteria of `references/plan-format.md` §5.2, the binding statement, in one of three forms: a repository that keeps tests for the behaviour runs them, a guard row gets its mutation, and a behaviour this repository cannot test carries a `qa` device and a `no-test` row that names it.
+rendered surface or a visual QA scenario. Each device is chosen by the device-choice criteria of
+`references/plan-format.md` §5.2, the binding statement.
 
 **DECIDE** gathers every decision the requester owns into one batch in `<ER>/gates.md`, each with a recommended
 default and one line of reasoning, and asks once. A decision that appears mid-run parks only the lane that needs
