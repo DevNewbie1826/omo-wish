@@ -54,7 +54,7 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 
 - **S, M, L:** the tier table in `../SKILL.md` decides what shrinks; nothing here relaxes a lane or the ultrabrain round.
 - **Patch:** a single-file correction still writes the injection check, because a fix without a failing reproduction is a guess.
-- **Refactor:** when the repository keeps tests for the area, the first BUILD node writes a characterization test that passes on the unchanged code, and only then moves the structure. Not a RED-first mandate; nothing else changes.
+- **Refactor:** when the repository keeps tests for the area, the first BUILD node writes a characterization test that passes on the unchanged code, and only then moves the structure.
 - **High-risk row:** record `adversarial_classes` on the build or plan event, because `status` reads the event, never the plan body; eligibility is `../SKILL.md`'s tier table.
 
 ## What `status` enforces, and what it never does
