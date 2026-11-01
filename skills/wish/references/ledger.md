@@ -50,9 +50,9 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | `<ER>/metrics/{measurements,rounds}.csv` | session (experiment rows, §10) | shared experiment rows, §10 | C43, D §2.10 |
 | `.omo/ulw-loop/<session>/` | ulw-loop SDK only | loop state | U |
 
-1. **One writer per file.** The session alone writes boulder, plan, ledger, findings, gaps, lens, ideal,
-   gates and resume; a lane writes only its own receipt; scripts validate and compute and never author
-   state (P `orchestrate.md:23`, D §2.8, A §C.4).
+1. **One writer per file.** The session alone writes boulder, plan, ledger, findings, gaps, collect, define,
+   lens, ideal, gates, resume and the metrics rows; a lane writes only its own receipt; scripts validate and
+   compute and never author state (P `orchestrate.md:23`, D §2.8, A §C.4).
 2. **omo stays authoritative.** Nothing here adds an orchestrator, category list, or agent list, and no
    omo role is replaced. Categories, native agents, `mass-ulw`, `ulw-execute` Boulder/ledger, `ulw-loop`
    evidence/checkpoint, goals, monitors, `visual-qa`, `frontend`, `remove-ai-slops` and `ulw-research`

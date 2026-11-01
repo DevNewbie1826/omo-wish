@@ -80,8 +80,8 @@ Rules that make a frame obeyed:
   unexamined item by name. An unexamined area is never a PASS.
 - **FORBIDDEN always names**: edits outside `SCOPE`; `git commit --amend`, `rebase`, `push --force`, or
   `--no-verify`; deleting, skipping or `.only`-ing a test; adding a dependency the plan does not list;
-  writing another lane's receipt; writing `<ER>/ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `gates.md`,
-  `collect.md`, `define.md` or the plan (the session alone writes those); asking the requester a question.
+  writing another lane's receipt; writing a file the session alone writes, each named in the prompt from
+  `ledger.md` §1 (rule 1); asking the requester a question.
 
 ### 1.3 The five shared fields
 
@@ -1526,8 +1526,7 @@ the requester's private data. Use `<ER>`, `<worktree>` and repository-relative p
   `unverified` because a platform or credential cannot be reached (a limit, not a defect).
 - It never widens the contract. A finding outside the plan's rows and invariants is a note or a follow-up,
   and a follow-up is recorded in `<ER>/follow-ups.md`, never fixed in the task.
-- It never lets a lane write the session's state. Lanes write their own receipts; the session writes the
-  ledger, findings, gaps, gates, lens, ideal and the plan.
+- It never lets a lane write the session's state; every file's one writer is named in `ledger.md` §1 (rule 1).
 - It never replaces an omo role. Categories, native agents, `mass-ulw`, `ulw-loop` evidence and checkpoint,
   goals, monitors, `visual-qa`, `frontend`, `remove-ai-slops` and `ulw-research` stay the machinery; these
   prompts only give each one its brief.
