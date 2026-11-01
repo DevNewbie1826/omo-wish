@@ -188,8 +188,9 @@ first.
 
 The session alone writes the plan, `ledger.jsonl`, `findings.tsv`, `gaps.tsv`, `collect.md`, `define.md`,
 `gates.md` and `resume.md`; a lane writes only its own receipt; a script authors nothing. A receipt is valid while
-its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict while its
-`patch_id` matches; the reuse rule names the lanes a fix invalidated, and a `before` capture is never stale.
+its `tree` matches (a research unit's 64-hex sha256 is its `head` and its `tree` is `null`), a verdict only while its
+round's `head` equals the frozen head and the observed head; the reuse rule names the lanes a fix invalidated,
+and a `before` capture is never stale.
 Nothing commits after the freeze: a memo goes to `<ER>`, never the branch.
 
 `playbooks/revise.md` and `playbooks/resume.md` are the two paths that leave the linear stage list. Every reviewer
