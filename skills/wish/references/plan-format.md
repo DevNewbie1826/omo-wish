@@ -179,6 +179,14 @@ a number — never "looks right". `evidence` is where the capture lands (normall
 
 ### 5.2 DEVICE rows — one paired verification device per contract row
 
+Choosing the device is choosing the proof, and the choice is strict: every IS row carries a confirmation
+device that confirms the behaviour directly. Prefer no new test over a bad test. A bad test is one that
+mostly tests mocks, encodes current implementation details, depends on timing or unrelated global state,
+needs expensive infrastructure for a small fix, or would be deleted immediately after proving the fix. The
+device therefore takes one of three forms: a behaviour the repository already tests gets those tests; a
+guard row gets its mutation (§5.3); a behaviour this repository cannot test gets a `qa` device plus a
+`no-test` row naming it (§9.1).
+
 ```
 - <IS-<n>|G<n>> DEVICE: <the device body>
 ```
