@@ -57,7 +57,7 @@ repository on purpose: evidence never costs a commit and never moves a reviewed 
 
 `before` and `fix` are conditional: when one truly does not apply, its step stays in the todo with
 `skip: <reason>`, never silently dropped. While any unit runs, print the `PROGRESS:` line on every transition
-that changes a number and at least every 30 minutes (`report.interval`); a repeat with no change is suppressed.
+that changes a number and at least every 30 minutes; a repeat with no change is suppressed.
 
 ### The two plan branches
 

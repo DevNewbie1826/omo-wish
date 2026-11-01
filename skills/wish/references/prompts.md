@@ -805,22 +805,6 @@ dispatched until every required lane has a valid receipt.
   the spot-check sample.
 - `mixed` — the union of the primary type's list and the secondary type's list.
 
-### 4.3.3 `round1_families: 2` — the two-family round-1 variant (off by default)
-
-When the run's configuration sets `final_review.round1_families: 2`, round 1 dispatches the same
-`ultrabrain-r1` prompt twice, at the same frozen head: one `category: ultrabrain`, one category or explicit
-model the host routes to a different family. Neither reviewer sees the other's report.
-
-- Take the union: a defect only one reviewer reports is valid and enters the findings table with its own
-  `source`; a defect both report becomes one row citing both.
-- `APPROVED` in round 1 requires both to approve. One `REVISE` makes the round `REVISE`.
-- Record the head before dispatch. If a commit lands while the two run, both reports become history and
-  round 1 runs again at the new head.
-- Later rounds stay single-reviewer: the second family exists to widen round 1's search, not to double
-  every round's cost.
-
-With the default `round1_families: 1`, one reviewer carries round 1 and this subsection does not apply.
-
 ### 4.4 `ultrabrain-r2` — every later round: delta, regression, gate table
 
 **TEMPLATE:** `ultrabrain-r2`

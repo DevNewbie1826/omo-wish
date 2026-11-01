@@ -474,8 +474,8 @@ before_receipts`; `rounds` gains `type, unit, program_id, switch_count, switch_k
 `PROGRESS: run <id> · units <done>/<total> · gaps <fixed>/<total defect> · prs <merged> merged <open> open · wave <k>/<n> · round r<round> on <#pr|none> · switch <count> · waiting <what|none>`
 
 The separator is `·` with one space either side; a run without a register prints `gaps n/a`; the line is
-printed on every transition that changes a number, and while any unit runs at least every
-`report.interval` minutes (default 30, `wish.yaml`, A §B7). A repeat with no change is suppressed.
+printed on every transition that changes a number, and while any unit runs at least every 30 minutes (A §B7).
+A repeat with no change is suppressed.
 
 ## 12. `VERDICT:` line
 
