@@ -24,7 +24,7 @@ PROGRAM=p-<slug>     BASE=<the repository's integration branch for this request>
   run as two batches, and none of them is skipped. "Maximum parallelism" means up to the slots, never
   past them.
 - A unit whose scope overlaps a running unit waits for the next wave. After a wave merges, rebase the
-  next one and judge which receipts survived with the reuse rule (`../references/ledger.md` §2: tree match →
+  next one and judge which receipts survived with the reuse rule (`../references/ledger.md` §2 and §4: tree match →
   VALID; else changed files ∩ `scope`), re-running only the STALE lanes.
 
 ## The program steps

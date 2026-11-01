@@ -87,7 +87,7 @@ dictionary entries (A §C.2). Every event and receipt carries `type`, `unit` and
 `unit` = one run of the stage machine (one worktree, branch, PR); `program_id` = the multi-unit program
 id, or `null` for a single unit (A §B5/§C.4).
 
-A type must produce these lane receipts before `status.next` may leave VERIFY-WAVE
+A type must produce these lane receipts before `status.next` may leave `verify_lane`
 (`requiredReceiptsFor`):
 
 | Type | Required lanes | Source |
@@ -251,7 +251,7 @@ The plan's YAML front matter parses to this object (`validatePlanFrontMatter`):
 | `frozen_head` | §2 head or `null` | the reviewed head | D §2.6/§2.8 |
 | `round` | integer ≥ 0 | rounds completed | D §2.8 |
 
-### 8.2 `DEVICE:` rows — one paired verification device per plan row
+### 8.2 `DEVICE:` rows — one paired confirmation device per plan row
 
 Every IS/GAP row carries ≥1 `DEVICE:` row, and the form is fixed by the work type
 (`validateDeviceRow`, A §B4):

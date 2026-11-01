@@ -760,8 +760,8 @@ The prompt also carries, pasted in full:
 
 > TIMEBOX: reach a verdict on the plan's finite contract within 45 minutes of dispatch, judged from the evidence provided (the diff, the test and QA captures, the mutation records). Do not expand the scope by re-deriving the whole PR: build no new probe and run no repository check beyond the plan's axes. At expiry, return the verdict held so far, APPROVED or REVISE, and list every open item it leaves unexamined as an explicit note in that same verdict; the obligation to report every CODE defect the evidence shows in one verdict does not change.
 
-§12's verdict pattern accepts a 40-hex head, and coverage compares it with the head the session passes. A
-`research`-primary unit's `head` is the 64-hex artifact sha256 (§2), which that pattern cannot carry: the
+`ledger.md` §12's verdict pattern accepts a 40-hex head, and coverage compares it with the head the session passes. A
+`research`-primary unit's `head` is the 64-hex artifact sha256 (`ledger.md` §2), which that pattern cannot carry: the
 session records the full sha256 in the receipt and treats the resulting coverage failure as a contract gap to
 raise with the M0 owner. It never shortens the sha, substitutes a commit, or reports the round as approved.
 
