@@ -163,7 +163,7 @@ A plan requires its type's rows: `design` at least one `SCREEN`; `research` at l
 `CLAIM`; `audit` at least one `RULE`; `code` none. A type row of another type's kind on a concrete-type plan is
 a complaint: the contract would name a lane that type never runs. A `mixed` plan may use any of the four kinds.
 
-## 5. QA scenarios and verification devices
+## 5. QA scenarios and confirmation devices
 
 ### 5.1 QA scenario rows — the real-surface proof
 
@@ -177,11 +177,10 @@ breaking the row. `pass when` is one observation that decides PASS or FAIL — a
 a number — never "looks right". `evidence` is where the capture lands (normally under the evidence root,
 `ledger.md` §1). A scenario that runs a command is a re-runnable script kept with its evidence.
 
-### 5.2 DEVICE rows — one paired verification device per contract row
+### 5.2 DEVICE rows — one paired confirmation device per contract row
 
-Choosing the device is choosing the proof, and the choice is strict: every IS row carries a confirmation
-device that confirms the behaviour directly. Prefer no new test over a bad test. A bad test is one that mostly tests mocks, encodes current implementation details, depends on timing or unrelated global state, needs expensive infrastructure for a small fix, or would be deleted immediately after proving the fix. The
-device therefore takes one of three forms: a behaviour the repository already tests gets those tests; a
+Choosing the device is choosing the proof, and the choice is strict: every IS row carries a device that confirms the behaviour directly. Prefer no new test over a bad test. A bad test is one that mostly tests mocks, encodes current implementation details, depends on timing or unrelated global state, needs expensive infrastructure for a small fix, or would be deleted immediately after proving the fix.
+The device therefore takes one of three forms: a behaviour the repository already tests gets those tests; a
 guard row gets its mutation (§5.3); a behaviour this repository cannot test gets the device body the table
 below gives its plan's type (`qa` on a `code` plan, `vqa` on a `design` plan) plus a `no-test` row naming it
 (§9.1).
@@ -363,7 +362,7 @@ without (a) or (b) does not pass that review.
 
 ### 9.1 The no-test path
 
-A behaviour this repository cannot test still gets its confirmation device - the third form of §5.2 - plus a `no-test` row:
+A behaviour this repository cannot test still gets its confirmation device — the third form of §5.2 — plus a `no-test` row:
 
 ```
 - IS-<n> DEVICE: qa <command> => <one binary observation>
@@ -389,5 +388,4 @@ ulw-execute's prose names `## TODOs` and `## Final Verification Wave` in a later
 exact `## Todos` and `## Final verification wave`. Selection does not depend on heading case, but these two
 checkbox sections in this exact spelling are what both readers agree on, so the plan keeps them.
 
-Each task row may carry a nested `Recommended task executor category: <category>` line, which ulw-execute honours;
-the linter does not check it (§3).
+Each task row may carry a nested `Recommended task executor category: <category>` line, which ulw-execute honours (§3).
