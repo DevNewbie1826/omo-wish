@@ -44,6 +44,5 @@ happens; the reducer always sees files, never a transcript.
 
 ## Forbidden
 
-Inventing a rule the corpus does not state; keeping a platform's local taste as a universal rule;
-node writes: `../SKILL.md`, evidence rules; citing a
-rule id that is not in the file.
+Inventing a rule the corpus does not state; keeping a platform's local taste as a universal rule; a node
+writing anything but its own handoff file (`../SKILL.md`, evidence rules); citing a rule id that is not in the file.
