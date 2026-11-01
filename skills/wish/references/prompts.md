@@ -729,7 +729,7 @@ TASK: report every defect inside the contract at the frozen head in one verdict 
 DELIVERABLE: a findings table in the findings.tsv column order (`id, round, source, class, severity,
   file_line, blocking, repro_cmd, head_found, status, fixed_head`) with `round = <n>`, `source = ultrabrain`,
   `head_found = <head>`; one line per axis; notes and correction memos; and as the last
-  non-empty line exactly `VERDICT: <APPROVED|REVISE> round <n> head <head40>`.
+  non-empty line exactly `VERDICT: <APPROVED|REVISE> round <n> head <the complete head>`.
 SCOPE: read the diff `<base>...<head>`, the plan's contract rows, and the receipts under <ER>/receipts.
   OUT OF SCOPE: re-deriving the whole PR, building new probes, running repository checks beyond the plan's
   axes, editing anything, asking the requester anything.
@@ -749,7 +749,7 @@ type whose required lanes name `code-review`.
 
 The prompt also carries, pasted in full:
 
-1. The frozen head (40 hex) and base commit; state that a moved head voids the verdict.
+1. The frozen head (the complete head: 40 hex for code/design/audit, the 64-hex artifact sha256 for research) and base commit; state that a moved head voids the verdict.
 2. The finite contract — `IS`, `COMPANION`, `INVARIANT`, `LIMIT` rows verbatim.
 3. The receipts summary table: `lane | status | rows PASS/FAIL | artifact path`. Say explicitly that a
    receipt is a claim to verify, not an exemption.
@@ -760,10 +760,11 @@ The prompt also carries, pasted in full:
 
 > TIMEBOX: reach a verdict on the plan's finite contract within 45 minutes of dispatch, judged from the evidence provided (the diff, the test and QA captures, the mutation records). Do not expand the scope by re-deriving the whole PR: build no new probe and run no repository check beyond the plan's axes. At expiry, return the verdict held so far, APPROVED or REVISE, and list every open item it leaves unexamined as an explicit note in that same verdict; the obligation to report every CODE defect the evidence shows in one verdict does not change.
 
-`ledger.md` §12's verdict pattern accepts a 40-hex head, and coverage compares it with the head the session passes. A
-`research`-primary unit's `head` is the 64-hex artifact sha256 (`ledger.md` §2), which that pattern cannot carry: the
-session records the full sha256 in the receipt and treats the resulting coverage failure as a contract gap to
-raise with the M0 owner. It never shortens the sha, substitutes a commit, or reports the round as approved.
+`ledger.md` §12's verdict pattern accepts the complete head of the run's type: 40 hex for
+code/design/audit and 64 hex for research. Coverage compares the complete recorded value with the frozen
+head by exact string equality; the session records the full value and never shortens it. `status` reports
+a mismatch as `verdict:round <n> head does not cover <head7>` (the display is seven characters; the
+comparison is full). It never substitutes a commit or reports the round as approved.
 
 ### 4.3.1 Extra inputs per work type
 
@@ -1513,12 +1514,13 @@ program or unit statement, never a list. When the devices change after the plan,
 
 ## 7. Machine literals
 
-A prompt that carries one of these strings must copy it exactly; `scripts/lib/schema.mjs` is the source of
-truth and `test/schema.test.js` guards it.
+A prompt that carries one of these strings must copy it exactly. `scripts/lib/schema.mjs` is the source of truth
+for every row except the verdict line, whose only normative copy is `ledger.md` §12, and `test/schema.test.js`
+guards the rest.
 
 | Literal | Exact value | Source |
 | --- | --- | --- |
-| Verdict line | `VERDICT: <APPROVED\|REVISE> round <n> head <40 hex>` as the last non-empty line; pattern `^VERDICT: (APPROVED\|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40})$` | `ledger.md` §12 |
+| Verdict line | `VERDICT: <APPROVED\|REVISE> round <n> head <the complete head>` as the last non-empty line; pattern `^VERDICT: (APPROVED\|REVISE) round ([1-9][0-9]*) head ([0-9a-fA-F]{40}\|[0-9a-fA-F]{64})$` | `ledger.md` §12 |
 | Findings columns | `id, round, source, class, severity, file_line, blocking, repro_cmd, head_found, status, fixed_head` | `ledger.md` §5 |
 | Findings sources | `code-review, qa, sweep, ultrabrain, architect, adversarial` | `ledger.md` §5 |
 | Findings statuses | `open, fixed, not-fixed, no-command, note, owner` | `ledger.md` §5 |
