@@ -246,7 +246,7 @@ the head coverage a verdict needs.
 
 | Script | Role |
 | --- | --- |
-| `scripts/wish.mjs` | state and CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate` (reproduction table, `add`, `resolve`), `freeze [--check]`, `pr-body`, `switch record`, `resume-plan` |
+| `scripts/wish.mjs` | state and CLI: `init`, `status [--json\|--progress]`, `ledger append`, `findings add\|set`, `gaps add\|set\|list`, `gate` (reproduction table, `gate add`, `remove`, `resolve`; a `gates.md` block is written only by `gate add`, `gate remove` and `gate resolve`, while `gate --round` writes the ledger dispatch gate), `freeze [--check]`, `pr-body`, `switch record`, `resume-plan` |
 | `scripts/check-plan.mjs` | plan lint: IS↔QA pairing, `DEVICE:` rows, guard and no-test rows, `HIGH-RISK`, front matter, and gap citation with `--register` |
 | `scripts/pr-watch.mjs` | PR state machine as NDJSON (`READY`/`WAITING`/`BLOCKED`/`MERGED`/`CLOSED`) that `tool.monitor` subscribes to |
 | `scripts/lib/schema.mjs`, `scripts/lib/store.mjs` | schema validation, atomic writes, pid locking, ledger replay (internal modules) |

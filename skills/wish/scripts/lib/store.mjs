@@ -1056,6 +1056,18 @@ export function resolveGate(root, { id, answer }) {
   }, (text) => gatesFromText(text).some((entry) => entry.id === id && entry.status === "resolved"));
   return { id, status: "resolved", answer: resolved };
 }
+export function removeGate(root, { id }) {
+  const paths = rootPaths(root);
+  const removed = gateField(id, "--id");
+  mutateText(paths.gates, (current) => {
+    const gates = gatesFromText(current);
+    const gate = gates.find((entry) => entry.id === removed);
+    if (gate === undefined) throw stateMismatch(`unknown gate ${removed}`);
+    if (gate.status !== "open") throw checkFailed(`gate ${removed} is ${gate.status}; only an open gate can be removed`);
+    return renderGates(gates.filter((entry) => entry.id !== removed));
+  }, (text) => !gatesFromText(text).some((entry) => entry.id === removed));
+  return { id: removed, status: "removed" };
+}
 // ------------------------------------------------------ receipts and validity
 
 // §4.2. A `.json` receipt is validated in full; a `.md` receipt contributes its
@@ -1381,7 +1393,9 @@ export function blockingFor(context) {
   const open = blockingFindings(findings);
   if (open.length > 0) reasons.push("findings:".concat(String(open.length), " open"));
   // Two sources, one meaning: an owner question parked in gates.md, and a lane
-  // gate (the dispatch table) whose last event is open. The later event wins.
+  // gate (the dispatch table) whose last event is open. Both are fail-closed: an
+  // open id from either source blocks, and a resolved gate.md block does not clear an open block
+  // with the same id.
   const openGates = new Set(gates.filter((entry) => entry.status === "open").map((entry) => entry.id));
   const latestByGate = new Map();
   for (const event of events) {
@@ -1519,7 +1533,7 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
     (verdict.valid ? valid : stale).push(receipt.name);
   }
 
-  const progress = computeProgress({ events, gaps, gates, units, contexts, unitStates, current });
+  const progress = computeProgress({ events, gaps, units, contexts, unitStates, current });
   const status = {
     run_id: plan.wish.run_id,
     stage: currentState.stage,
@@ -1543,7 +1557,7 @@ export function computeStatus({ root, planPath, head = null, tree = null }) {
   return { status, plan, events, receipts, findings, gaps, gates, contexts, unitStates };
 }
 
-function computeProgress({ events, gaps, gates, units, contexts, unitStates, current }) {
+function computeProgress({ events, gaps, units, contexts, unitStates, current }) {
   const done = unitStates.filter((entry) => entry.stage === "done").length;
   const defects = defectGaps(gaps);
   const merged = units.filter((unit) => events.some((event) => event.event === "merge" && event.unit === unit)).length;
@@ -1551,12 +1565,14 @@ function computeProgress({ events, gaps, gates, units, contexts, unitStates, cur
     && !events.some((event) => event.event === "merge" && event.unit === unit)).length;
   const lastRound = unitStates.reduce((max, entry) => Math.max(max, entry.round), 0);
   const switching = events.filter((event) => event.event === "switch").length;
-  const openGate = gates.find((gate) => gate.status === "open");
+  const openGate = unitStates
+    .find((entry) => entry.id === current.unit)?.blocking
+    .find((reason) => reason.startsWith("gate:"));
   const pr = unitStates.find((entry) => entry.pr !== null)?.pr ?? null;
   const awaitingVerdict = unitStates.some((entry) => entry.next === "round" || entry.next === "switch");
   const awaitingMerge = unitStates.some((entry) => entry.next === "merge");
   let waiting = "none";
-  if (openGate) waiting = "gate ".concat(openGate.id);
+  if (openGate) waiting = "gate ".concat(openGate.slice("gate:".length).replace(/ open$/, ""));
   else if (awaitingVerdict) waiting = "verdict on ".concat(pr === null ? "the frozen head" : "#".concat(String(pr)));
   else if (awaitingMerge) waiting = "merge go on #".concat(String(pr));
   return {
@@ -1613,7 +1629,17 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
     } else if (reason.startsWith("findings:")) {
       actions.push("fix the blocking findings, then findings set --status fixed --fixed-head <sha>");
     } else if (reason.startsWith("gate:")) {
-      actions.push("answer ".concat(reason.slice(4).replace(/ open$/, ""), " with gate resolve"));
+      const id = reason.slice("gate:".length).replace(/ open$/, "");
+      const fileGate = context?.gates?.some((gate) => gate.id === id && gate.status === "open") ?? false;
+      // One id can be open in both sources at once. Each source needs its own
+      // clearing action, so answering the file gate must not hide the ledger one.
+      const lastLedger = [...(context?.events ?? [])].reverse()
+        .find((event) => event.event === "gate" && event.unit === context.unit && event.gate_id === id);
+      const ledgerOpen = lastLedger?.gate_status === "open";
+      if (fileGate) actions.push("answer ".concat(id, " with gate resolve"));
+      if (ledgerOpen && id === "dispatch") actions.push("re-run gate --round at the frozen head");
+      else if (ledgerOpen) actions.push("append a resolved gate event for ".concat(id, " to the ledger"));
+      if (!fileGate && !ledgerOpen) actions.push("answer ".concat(id, " with gate resolve"));
     } else if (reason === "order:freeze missing before round") {
       actions.push("freeze the head, then run the code-review lane at the frozen head");
     } else if (reason.startsWith("order:")) {

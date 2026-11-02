@@ -41,6 +41,7 @@ import {
   readGates,
   readLedger,
   readPlan,
+  removeGate,
   requireCodeReview,
   resolveGate,
   resolvePlanPath,
@@ -95,6 +96,7 @@ const VERB_USAGE = {
   ],
   gate: [
     "gate add --id <id> --question <text> --options <a|b> --default <a>",
+    "gate remove --id <id>",
     "gate resolve --id <id> --answer <text>",
     "gate --round <n> [--head <sha>] [--timeout <seconds>] [--dry-run]",
     "     Park/resolve an owner question, or run the dispatch reproduction table.",
@@ -170,8 +172,8 @@ function parseArgs(argv, spec) {
       if (eq !== -1) value = arg.slice(eq + 1);
       else {
         value = argv[index + 1];
+        if (value === undefined || value.startsWith("--")) throw usage(`${name} needs a value`);
         index += 1;
-        if (value === undefined) throw usage(`${name} needs a value`);
       }
       if (entry.repeat) values.set(name, [...(values.get(name) ?? []), value]);
       else {
@@ -551,6 +553,13 @@ function verbGaps(parsed, root) {
 
 function verbGate(parsed, root) {
   const command = parsed.positionals[0];
+  if (command === "add" || command === "remove" || command === "resolve") {
+    const allowed = command === "add" ? ["--id", "--question", "--options", "--default"]
+      : command === "resolve" ? ["--id", "--answer"] : ["--id"];
+    for (const flag of ["--round", "--id", "--question", "--options", "--default", "--answer", "--head", "--timeout", "--dry-run"]) {
+      if (!allowed.includes(flag) && parsed.has(flag)) throw usage(`gate ${command}: unexpected flag ${flag}`);
+    }
+  }
   if (command === "add") {
     if (parsed.positionals.length > 1) throw usage(`gate add: unexpected argument ${parsed.positionals[1]}`);
     planFor(root, parsed);
@@ -570,7 +579,14 @@ function verbGate(parsed, root) {
     process.stdout.write(`${JSON.stringify(gate)}\n`);
     return null;
   }
-  if (command !== undefined) throw usage(`gate: unknown subcommand ${command} (add, resolve)`);
+  if (command === "remove") {
+    if (parsed.positionals.length > 1) throw usage(`gate remove: unexpected argument ${parsed.positionals[1]}`);
+    planFor(root, parsed);
+    const gate = withLock(root, () => removeGate(root, { id: parsed.get("--id") }));
+    process.stdout.write(`${JSON.stringify(gate)}\n`);
+    return null;
+  }
+  if (command !== undefined) throw usage(`gate: unknown subcommand ${command} (add, remove, resolve)`);
   return runDispatchGate(parsed, root);
 }
 

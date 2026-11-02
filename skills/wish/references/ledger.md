@@ -516,6 +516,22 @@ poteto-mode's rendered shape (P `store.ts:597-668`), adopted by D §2.8:
 A gate is parked only for an owner decision (D §2.2, A §C.6.4). Every gate open longer than 15 minutes is
 recorded so `status` can report the wait (D §5.1).
 
+A gate block is written only by `wish gate add`, `wish gate remove` and `wish gate resolve`; `wish gate --round`
+writes the ledger `dispatch` gate, and `ledger append --event gate` can write any id. Hand editing `gates.md` is
+not detected and no shipped check compares the file against the ledger. A hand edit therefore stays outside the
+contract, and it changes only the file source: deleting a block or forging its `Status: resolved` removes the
+file's contribution, and the id stops blocking only when no independently open ledger source remains; a forged
+`Status: open` blocks. `gate remove` refuses a resolved gate (exit 1) and an unknown id (exit 3), so the
+correction path for a wrongly registered open gate is the CLI, not an editor.
+
+The blocking union is fail-closed: an id open in `gates.md` or open in a ledger `gate` event blocks, and a
+resolved `gates.md` block never clears an open ledger gate with the same id. `resume-plan` names the recovery
+that matches the source: `gate resolve` for an open `gates.md` block, `gate --round` for the ledger `dispatch`
+gate, and `ledger append --event gate` with `gate_status: resolved` for any other ledger-only id.
+
+`status.next` does not read gates and no shipped check refuses a stage because of one, so the gate is advisory
+to the CLI: the session must read `status` and stop on its blocking list.
+
 `decide.count` records the batch size (including 0); `gates` lists its gate ids, `recommended` lists the
 recommended choices, and `parked` names the lane awaiting an answer. The `gates.md` blocks hold the actual
 questions and defaults; only the affected lane parks while other lanes continue.
@@ -531,7 +547,7 @@ The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, ar
 | `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it | 0 ok; 1 schema failure; 2 usage; 3 out of stage order | U, D §2.8 |
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
 | `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <absolute path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing §4.2 gap receipt is bound automatically or with the flag, which must name an absolute receipt path (a relative path is refused) | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
-| `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
+| `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `remove --id <id>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or add, remove, or resolve a question | 0 ok; 1 a prior blocker still reproduces, or the gate is not open; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
 | `switch` | `record --round <n> --kind <kind> --premise <text> --new-approach <text>` | record the approach switch (§9.4) | 0 ok; 1 schema failure; 2 usage; 3 no REVISE at that round | A §C.6 |
