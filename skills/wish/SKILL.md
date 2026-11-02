@@ -31,6 +31,10 @@ repository on purpose: evidence never costs a commit and never moves a reviewed 
 `.omo/plans/wish-<slug>.md` in ulw-plan's checkbox grammar, because that is the location and the shape
 `ulw-execute` selects as its plan; a plan in another place or another shape is a defect, not a preference.
 
+The gate is advisory to the CLI: `status.next` does not read gates and no shipped check refuses a stage because
+one is open, so the session reads `status` and stops on its blocking list. Gates are written only by `wish gate
+add`, `wish gate remove` and `wish gate resolve`; hand editing `gates.md` is not detected.
+
 | # | stage | omo feature that runs it | receipt `status` requires |
 | --- | --- | --- | --- |
 | 0 | `intake` | ultrawork tier triage; `todo` carries the playbook steps | `intake` event (`wish.mjs init`, which creates the plan: never pre-create it) |
