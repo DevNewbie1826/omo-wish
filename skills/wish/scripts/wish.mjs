@@ -553,6 +553,13 @@ function verbGaps(parsed, root) {
 
 function verbGate(parsed, root) {
   const command = parsed.positionals[0];
+  if (command === "add" || command === "remove" || command === "resolve") {
+    const allowed = command === "add" ? ["--id", "--question", "--options", "--default"]
+      : command === "resolve" ? ["--id", "--answer"] : ["--id"];
+    for (const flag of ["--round", "--id", "--question", "--options", "--default", "--answer", "--head", "--timeout", "--dry-run"]) {
+      if (!allowed.includes(flag) && parsed.has(flag)) throw usage(`gate ${command}: unexpected flag ${flag}`);
+    }
+  }
   if (command === "add") {
     if (parsed.positionals.length > 1) throw usage(`gate add: unexpected argument ${parsed.positionals[1]}`);
     planFor(root, parsed);
