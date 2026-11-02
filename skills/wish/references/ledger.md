@@ -44,7 +44,7 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | `<ER>/gaps.tsv` | session (`wish.mjs gaps`) | the completeness register, §6 | A §B2/§C.4 |
 | `<ER>/collect.md`, `<ER>/define.md` | session | collection and definition reports; definition writes the register | v3 stage map |
 | `<ER>/lens.md`, `<ER>/ideal.md` | session | optional supporting judgment rules and ideal-state prose, §7 | A §B1/§B2/§C.4 |
-| `<ER>/receipts/*` | the lane that produced it | one lane's evidence, §4 | D §2.8, A §C.4 |
+| `<ER>/receipts/*` | the lane that produced it | one lane's evidence or a build node's artifact, §4 | D §2.8, A §C.4 |
 | `<ER>/gates.md` | session | owner questions parked with a default, §13 | P, D §2.8 |
 | `<ER>/resume.md` | session | one line per stage transition: intent, current stage, valid receipts, next action | D §2.9 |
 | `<ER>/metrics/{measurements,rounds}.csv` | session (experiment rows, §10) | shared experiment rows, §10 | C43, D §2.10 |
@@ -149,7 +149,7 @@ A `FAIL` receipt is a claim, not a verdict: the session reproduces it before `bl
 | Kind | Filename | Source |
 | --- | --- | --- |
 | `lane` | `<stage>-<lane>-<head7>.json` (or `.md` for a prose report) | D §4 |
-| `before`, `after` | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` | A §B3/§B6/§C.4 |
+| `before`, `after` | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` (research: `before-<gap>-<head7>.<ext>`, `after-<gap>-<head7>.<ext>`) | A §B3/§B6/§C.4 |
 | `vqa-*` | `vqa-passA-<head7>.<ext>`, `vqa-passB-<head7>.<ext>`, `vqa-capture-<head7>.<ext>` | A §C.4 |
 | `claim-gate` | `claim-gate-<sha7>.json`, where `sha7` prefixes the research `head` | A §C.4 |
 | `lint` | `lint-<name>-<tree7>.json` | A §C.4 |
@@ -157,8 +157,10 @@ A `FAIL` receipt is a claim, not a verdict: the session reproduces it before `bl
 Extensions: lane receipts accept `.json` and `.md`; `before`/`after` accept `.json`, `.md`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.txt`; `vqa-*` accept `.json`, `.md`, `.png`, `.jpg`, `.jpeg`, `.webp`; `claim-gate` and `lint` accept `.json` only.
 
 `<stage>` is a §9 event, `<lane>` is kebab-case, `<gap>` is `G<n>`, `<head7>`/`<tree7>`/`<sha7>` are the
-first seven hex of the receipt's own head/tree. A receipt whose filename anchor disagrees with its body is
-rejected. An `.md` receipt is the same object in YAML front matter with `rows: []` and the report below it.
+first seven hex of the receipt's own head/tree. A research receipt has no git tree, so its `before`/`after`
+anchor is the artifact's `<head7>`; every other receipt kind keeps `<tree7>`. A receipt whose filename anchor
+disagrees with its body is rejected. An `.md` receipt is the same object in YAML front matter with `rows: []`
+and the report below it.
 
 ## 5. `findings.tsv`
 
