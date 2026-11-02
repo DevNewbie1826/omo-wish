@@ -1631,9 +1631,15 @@ export function resumePlan({ status, contexts, unitStates, unit }) {
     } else if (reason.startsWith("gate:")) {
       const id = reason.slice("gate:".length).replace(/ open$/, "");
       const fileGate = context?.gates?.some((gate) => gate.id === id && gate.status === "open") ?? false;
+      // One id can be open in both sources at once. Each source needs its own
+      // clearing action, so answering the file gate must not hide the ledger one.
+      const lastLedger = [...(context?.events ?? [])].reverse()
+        .find((event) => event.event === "gate" && event.unit === context.unit && event.gate_id === id);
+      const ledgerOpen = lastLedger?.gate_status === "open";
       if (fileGate) actions.push("answer ".concat(id, " with gate resolve"));
-      else if (id === "dispatch") actions.push("re-run gate --round at the frozen head");
-      else actions.push("append a resolved gate event for ".concat(id, " to the ledger"));
+      if (ledgerOpen && id === "dispatch") actions.push("re-run gate --round at the frozen head");
+      else if (ledgerOpen) actions.push("append a resolved gate event for ".concat(id, " to the ledger"));
+      if (!fileGate && !ledgerOpen) actions.push("answer ".concat(id, " with gate resolve"));
     } else if (reason === "order:freeze missing before round") {
       actions.push("freeze the head, then run the code-review lane at the frozen head");
     } else if (reason.startsWith("order:")) {
