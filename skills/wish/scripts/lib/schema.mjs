@@ -476,8 +476,15 @@ export function validateReceiptAgainstFilename(receipt, name) {
     fail(errors, "receipt.head", `filename sha7 ${parsed.sha7} does not prefix the receipt head`);
   }
   if (parsed.pass && receipt.pass !== parsed.pass) fail(errors, "receipt.pass", `filename says ${parsed.pass}`);
-  if (parsed.tree7 && !(isStr(receipt.tree) && receipt.tree.startsWith(parsed.tree7))) {
-    fail(errors, "receipt.tree", `filename tree7 ${parsed.tree7} does not prefix the receipt tree`);
+  const identity = receipt.type === "mixed" ? receipt.primary : receipt.type;
+  const headAnchored = (parsed.kind === "before" || parsed.kind === "after") && identity === "research";
+  if (parsed.tree7) {
+    const anchor = headAnchored ? receipt.head : receipt.tree;
+    const label = headAnchored ? "head7" : "tree7";
+    if (!(isStr(anchor) && anchor.startsWith(parsed.tree7))) {
+      fail(errors, headAnchored ? "receipt.head" : "receipt.tree",
+        `filename ${label} ${parsed.tree7} does not prefix the receipt ${headAnchored ? "head" : "tree"}`);
+    }
   }
   if (parsed.gap && receipt.gap !== parsed.gap) fail(errors, "receipt.gap", `filename says ${parsed.gap}`);
   if (parsed.stage && receipt.stage !== parsed.stage) fail(errors, "receipt.stage", `filename says ${parsed.stage}`);
