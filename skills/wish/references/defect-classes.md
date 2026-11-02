@@ -15,7 +15,7 @@ in the same change.
 
 The `sweep` lane a `code` run requires is a checklist lane, not a scripted one: a `quick` node walks the
 class dictionary below over the changed files, runs the check each class names, and writes the same
-`verify_lane-sweep-<head7>.json` receipt any other lane writes — one row per check with the literal
+`verify_lane-sweep-<head7>.json` receipt any other lane writes (`ledger.md` §4.2) — one row per check with the literal
 command (or `no command` for a read-through row), the one binary observable that decided it, and the
 verdict. Receipt status semantics are `references/ledger.md` §4.1: a `FAIL` row is a claim the session
 reproduces before it files a blocking finding; `WARN` never blocks; `SKIP` never satisfies a required

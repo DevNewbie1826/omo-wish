@@ -105,14 +105,14 @@ recommended default; a decision that appears mid-run parks only its own lane and
 | `intake` | ultrawork tier triage + `todo` (the playbook steps copied in) | the `intake` event `wish init` writes (it also creates the plan) |
 | `collect` | one `mass-ulw` run `wish-<run>-collect`: harvest, extract, explore | `collect` event + `<ER>/collect.md` |
 | `define` | session, seeded by the collect report | `define` event + `<ER>/define.md` + the difference rows in `<ER>/gaps.tsv` |
-| `before` | session (a read-only lane may drive the capture) | `before` event + one `before-<gap>-<tree7>` before the first edit |
+| `before` | session (a read-only lane may drive the capture) | `before` event + the gap capture named by `ledger.md` §4.2, before the first edit |
 | `plan` | session (ulw-plan's checkbox grammar) | `plan` event (the plan) |
 | `plan_lint` | `scripts/check-plan.mjs` (session or a `quick` node) | `plan_lint` event, exit 0 |
 | `plan_review` | `category: architect` once | `plan_review-architect-<head7>.md` (`OKAY`, or blockers each with a fix) |
 | `decide` | session collects the decision batch | `decide` event + `<ER>/gates.md` entries with a recommended default |
 | `goal` | `ulw-loop` goals + ulw-execute Boulder (format only) | `goal` event (the goal id) |
 | `build` | `mass-ulw` run `wish-<run>-build`, one PR per unit (the commit node loads `git-master`) | `build` events + `build-<node>.json` |
-| `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer` (with `remove-ai-slops` and `programming`), `deep-high` adversarial | `verify_lane-<lane>-<head7>.json` per required lane |
+| `verify_lane` | one `task` batch per head: `quick` tests (suite plus one hand-applied mutation per guard row), `omo-native-qa-executor`, `omo-native-code-reviewer` (with `remove-ai-slops` and `programming`), `deep-high` adversarial | the lane receipt (`ledger.md` §4.2) per required lane |
 | `triage` | session (bugbot trichotomy: fix, dismiss, owner) | `triage` event + `findings.tsv` rows |
 | `fix` | `mass-ulw` run `wish-<run>-fix-r<n>` + the reuse rule | `fix` + `reuse` events |
 | `freeze` | `wish freeze`, `wish pr-body` | `freeze` event (`head`, `tree`, `pr`) |
@@ -224,7 +224,7 @@ a memo goes to `<ER>`.
 | `<ER>/collect.md` | what collection read, the important elements, and the project-viewpoint exploration |
 | `<ER>/define.md` | the end user, journey, ideal state and every difference, with reasons |
 | `<ER>/ledger.jsonl` | stage, lane, head, tree, verdict and round events |
-| `<ER>/receipts/` | per-lane receipts `<stage>-<lane>-<head7>.json` (status `PASS`/`FAIL`/`WARN`/`SKIP`) |
+| `<ER>/receipts/` | per-lane receipts named by `ledger.md` §4.2 (status `PASS`/`FAIL`/`WARN`/`SKIP`) |
 | `<ER>/findings.tsv` | review, QA, sweep-checklist and final-review findings with their fix status |
 | `<ER>/gaps.tsv` | the completeness register (`kind: defect|taste`) |
 | `<ER>/gates.md` | the decision batch: options, recommended default, answer |
