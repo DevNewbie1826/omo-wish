@@ -189,7 +189,7 @@ TASK: implement node <node-id> in <worktree> so its plan rows hold, and prove ea
     (b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
 DELIVERABLE: the changed files for <node-id>; for every guard row the node owns, the evidence set of the
   injection check (the injection diff, the failing output, the passing output after restore); a build
-  artifact `<ER>/build/<node-id>-<head7>.json` with one row per guard row (a build node is not a verify
+  artifact `<ER>/receipts/build-<node>.json` with one row per guard row (a build node is not a verify
   lane, so it writes no `kind: lane` receipt); the result of the literal VERIFY below.
 SCOPE: read <worktree> and <ER>; write only <paths this node owns>. OUT OF SCOPE: <paths other nodes own>,
   the plan, <ER>/ledger.jsonl, findings.tsv, gaps.tsv, gates.md, collect.md, define.md. Never edit a file another
@@ -1105,7 +1105,7 @@ Scope: the fixed case list; capture only.
 TASK: capture `<case>-<state>-<width>-<theme>-<before|after>.png` for every case in the matrix, compose the
   pairs, and run the machine check.
 DELIVERABLE: the captures, the pair images (before left, after right, same scale, one-line caption), the
-  `image-diff` / `tui-check` JSON, the lane receipt `verify_lane-capture-<head7>.json` (one row per case, with
+  `image-diff` / `tui-check` JSON, the typed capture receipt `vqa-capture-<head7>.json` (one row per case, with
   the artifact path), the per-gap receipts named by `ledger.md` §4.2, and a cleanup
   receipt for every browser context, viewport session and temporary file it started.
 SCOPE: the surface and the evidence root. OUT OF SCOPE: any product edit; changing a case mid-run.
