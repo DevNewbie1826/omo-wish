@@ -172,8 +172,8 @@ function parseArgs(argv, spec) {
       if (eq !== -1) value = arg.slice(eq + 1);
       else {
         value = argv[index + 1];
+        if (value === undefined || value.startsWith("--")) throw usage(`${name} needs a value`);
         index += 1;
-        if (value === undefined) throw usage(`${name} needs a value`);
       }
       if (entry.repeat) values.set(name, [...(values.get(name) ?? []), value]);
       else {
