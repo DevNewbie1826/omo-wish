@@ -111,7 +111,7 @@ artifact sha256 for `research`; a `mixed` unit takes its `primary` type's form. 
 accepted. `<tree>` is the git tree, and it is `null` for a research unit. A `freeze` binds the git tree, or
 `null` with the sha256 as `head` for a research-primary unit.
 
-A lane receipt is `<stage>-<lane>-<head7>.json` with `head7 = head.slice(0, 7)`. Its body carries `kind`,
+A lane receipt is the name `ledger.md` §4.2 defines, with `head7 = head.slice(0, 7)`. Its body carries `kind`,
 `type`, `unit`, `program_id`, `lane`, `stage`, `head`, `tree`, `scope`, `started_at`, `ended_at`, `status`,
 `rows`, `artifacts`, `cleanup` (`ledger.md` §4). Each row is `{id, command, observable, verdict, artifact}`;
 `verdict` is one of `PASS`, `FAIL`, `WARN`, `SKIP` (or `INVALID` for a probe row that could not decide).
@@ -1106,7 +1106,7 @@ TASK: capture `<case>-<state>-<width>-<theme>-<before|after>.png` for every case
   pairs, and run the machine check.
 DELIVERABLE: the captures, the pair images (before left, after right, same scale, one-line caption), the
   `image-diff` / `tui-check` JSON, the lane receipt `verify_lane-capture-<head7>.json` (one row per case, with
-  the artifact path), the per-gap receipts `before-<gap>-<tree7>` and `after-<gap>-<tree7>`, and a cleanup
+  the artifact path), the per-gap receipts named by `ledger.md` §4.2, and a cleanup
   receipt for every browser context, viewport session and temporary file it started.
 SCOPE: the surface and the evidence root. OUT OF SCOPE: any product edit; changing a case mid-run.
 VERIFY: every image opens, its signature matches its extension, no partial compositing, and the after
@@ -1508,8 +1508,8 @@ guards the rest.
 | Findings sources | `code-review, qa, sweep, ultrabrain, architect, adversarial` | `ledger.md` §5 |
 | Findings statuses | `open, fixed, not-fixed, no-command, note, owner` | `ledger.md` §5 |
 | Receipt statuses | `PASS, FAIL, WARN, SKIP`; rows add `INVALID` | `ledger.md` §4.1 |
-| Lane receipt name | `<stage>-<lane>-<head7>.json` | `ledger.md` §4.2 |
-| Gap receipt names | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` | `ledger.md` §4.2 |
+| Lane receipt name | the §4.2 grammar | `ledger.md` §4.2 |
+| Gap receipt names | the §4.2 grammar | `ledger.md` §4.2 |
 | Lane names | the `REQUIRED_RECEIPTS` table of §1.5 | `schema.mjs` |
 | Stage names | the 26 of §1.5 | `ledger.md` §9.1 |
 | Switch kinds | `premise, family, strategy, split, rediscover` | `ledger.md` §9.4 |

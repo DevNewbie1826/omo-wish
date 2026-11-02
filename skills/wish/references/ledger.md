@@ -68,7 +68,7 @@ commit and never moves a reviewed head (D §2.6/§2.8).
 | Value | Definition | Format | Source |
 | --- | --- | --- | --- |
 | `head` | `git rev-parse HEAD`; for the `research` type, the frozen artifact's sha256 | 40 lowercase hex; `research` uses 64 lowercase hex | D §2.8, A §C.1 (the design's freeze head), O `ulw-research` `artifact_sha256` |
-| `head7` | `head.slice(0, 7)`, derived, never stored | 7 lowercase hex | D §4 filename rule |
+| `head7` | `head.slice(0, 7)`, derived, never stored | 7 lowercase hex | §4.2 |
 | `tree` | `git rev-parse HEAD^{tree}`, always full | 40 or 64 lowercase hex; `research` has none (`null`) | D §2.7/§2.8, L |
 | `patch_id` | first field of `git diff <base>...<head> \| git patch-id --verbatim` | 40 hex | C44, v1 skills/wish/references/review.md:40 at cbbfbf8 |
 | `artifact_sha256` | sha256 of the frozen research artifact; equals `head` for a research unit | 64 lowercase hex | A §C.1, O `ulw-research` |
@@ -102,8 +102,8 @@ A type must produce these lane receipts before `status.next` may leave `verify_l
 `units[]` and `wave` (A §B5): a wave holds the units whose write scopes do not overlap; one unit's REVISE
 never blocks another unit's merge. A first program run is diagnostic only (A §F M7).
 
-Gap-level records add two more receipts per **defect** gap: `before-<gap>-<tree7>` and, once fixed,
-`after-<gap>-<tree7>` (§4.2, §6). `before` receipts are exempt from reuse checks: a pre-edit capture is
+Gap-level records add two more receipts per **defect** gap: the pre-edit and post-fix captures that §4.2
+names (§6). `before` receipts are exempt from reuse checks: a pre-edit capture is
 deliberately old (A §B3).
 
 ## 4. `receipt` — one lane's evidence
@@ -144,7 +144,7 @@ A `FAIL` receipt is a claim, not a verdict: the session reproduces it before `bl
 
 ### 4.2 Filenames
 
-`parseReceiptFilename` / `validateReceiptAgainstFilename`:
+`parseReceiptFilename` / `validateReceiptAgainstFilename` in `skills/wish/scripts/lib/schema.mjs` are the implementation:
 
 | Kind | Filename | Source |
 | --- | --- | --- |
@@ -153,6 +153,8 @@ A `FAIL` receipt is a claim, not a verdict: the session reproduces it before `bl
 | `vqa-*` | `vqa-passA-<head7>.<ext>`, `vqa-passB-<head7>.<ext>`, `vqa-capture-<head7>.<ext>` | A §C.4 |
 | `claim-gate` | `claim-gate-<sha7>.json`, where `sha7` prefixes the research `head` | A §C.4 |
 | `lint` | `lint-<name>-<tree7>.json` | A §C.4 |
+
+Extensions: lane receipts accept `.json` and `.md`; `before`/`after` accept `.json`, `.md`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.txt`; `vqa-*` accept `.json`, `.md`, `.png`, `.jpg`, `.jpeg`, `.webp`; `claim-gate` and `lint` accept `.json` only.
 
 `<stage>` is a §9 event, `<lane>` is kebab-case, `<gap>` is `G<n>`, `<head7>`/`<tree7>`/`<sha7>` are the
 first seven hex of the receipt's own head/tree. A receipt whose filename anchor disagrees with its body is
@@ -209,7 +211,7 @@ Fifteen columns, header first, same TSV rules as §5 (A §B2/§C.4):
 | `area`, `surface` | non-empty | the area and the surface (route, screen, file, artifact) | A §B2 |
 | `rule` | `L<n>` or `skill:<skill>:<code>` (the skill's own id form, e.g. `skill:visual-qa:B1`) | the lens rule or omo rule that judges it | A §B1/§B2 |
 | `current`, `ideal` | non-empty | observed state and ideal state | A §B2 |
-| `before_artifact` | path or `-` | the pre-edit capture; required once a defect row leaves `open` — the `gaps set` bind of the existing `before-<gap>-<tree7>` receipt | A §B3 |
+| `before_artifact` | path or `-` | the pre-edit capture; required once a defect row leaves `open` — `gaps set` binds the existing §4.2 gap receipt | A §B3 |
 | `severity` | §5 severity | defect severity | A §B2 |
 | `kind` | `defect` \| `taste` | visual-qa's own split; both are listed, only `defect` blocks | A §B2, O `visual-qa:227,367` |
 | `class` | the row type's §5.1 set | the defect class | A §C.1 |
@@ -528,7 +530,7 @@ The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, ar
 | `status` | `[--json] [--progress] [--head <sha>]` | replay the ledger, re-judge receipts, print §11 | 0 ok; 2 usage; 3 state unreadable or the head contradicts `frozen_head` | D §4 |
 | `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it | 0 ok; 1 schema failure; 2 usage; 3 out of stage order | U, D §2.8 |
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
-| `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <absolute path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing `before-<gap>-<tree7>` receipt is bound automatically or with the flag, which must name an absolute receipt path (a relative path is refused) | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
+| `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <absolute path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing §4.2 gap receipt is bound automatically or with the flag, which must name an absolute receipt path (a relative path is refused) | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
 | `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or park/resolve a question | 0 ok; 1 a prior blocker still reproduces; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
