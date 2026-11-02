@@ -730,6 +730,39 @@ describe("gaps", () => {
     expect(addGaps(state, [gapRow()]).code).toBe(1);
   });
 
+  test("a research defect row binds a head-anchored before receipt", () => {
+    const sha = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    const researchRow = () => gapRow({
+      type: "research", class: "fidelity_unresolved", rule: "skill:wish:C",
+      before_artifact: "-", status: "open", fixed_head: "-",
+    });
+    const state = scene({ type: "research" });
+    expect(addGaps(state, [researchRow()]).code).toBe(0);
+    const receiptsDir = join(state.root, "receipts");
+    mkdirSync(receiptsDir, { recursive: true });
+    const name = `before-G1-${sha.slice(0, 7)}.json`;
+    const body = {
+      kind: "before", type: "research", unit: state.unit, program_id: null, lane: "fact-verify",
+      head: sha, tree: null, scope: ["report.md"], started_at: "2026-11-02T15:00:00Z",
+      ended_at: "2026-11-02T15:01:00Z", status: "PASS",
+      rows: [{ id: "r1", command: "probe", observable: "the pre-edit source state", verdict: "PASS", artifact: "probe.log" }],
+      artifacts: ["probe.log"], cleanup: [], gap: "G1",
+    };
+    writeFileSync(join(receiptsDir, name), JSON.stringify(body, null, 2));
+    const fixed = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", sha, "--root", state.root]);
+    expect(fixed.code).toBe(0);
+    expect(JSON.parse(fixed.out).before_artifact).toBe(join(receiptsDir, name));
+
+    const wrongState = scene({ type: "research" });
+    expect(addGaps(wrongState, [researchRow()]).code).toBe(0);
+    const wrongDir = join(wrongState.root, "receipts");
+    mkdirSync(wrongDir, { recursive: true });
+    writeFileSync(join(wrongDir, "before-G1-1111111.json"), JSON.stringify({ ...body, unit: wrongState.unit }, null, 2));
+    const wrong = cli(["gaps", "set", "--id", "G1", "--status", "fixed", "--fixed-head", sha, "--root", wrongState.root]);
+    expect(wrong.code).toBe(1);
+    expect(wrong.err).toContain("needs a before receipt");
+  });
+
   test("a defect row stored with before_artifact '-' binds its before receipt on move to fixed", async () => {
     const state = scene({ type: "design" });
     // Register a defect row in 'open' with no before artifact (legal: only 'open' allows '-').

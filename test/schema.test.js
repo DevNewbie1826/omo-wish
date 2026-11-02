@@ -119,6 +119,25 @@ test("a receipt body must agree with its filename anchors", () => {
   expect(validateReceipt({ ...vqa, pass: undefined }).ok).toBe(false);
 });
 
+test("a research before receipt anchors on its artifact head, not a git tree", () => {
+  const before = (overrides = {}) => receipt({
+    kind: "before", type: "research", lane: "fact-verify", head: SHA256, tree: null,
+    gap: "G1", stage: undefined, ...overrides,
+  });
+  const correct = `before-G1-${SHA256.slice(0, 7)}.json`;
+  expect(validateReceipt(before()).ok).toBe(true);
+  expect(validateReceiptAgainstFilename(before(), correct).ok).toBe(true);
+  expect(validateReceiptAgainstFilename(before({ kind: "after" }), `after-G1-${SHA256.slice(0, 7)}.json`).ok).toBe(true);
+  const mixed = before({ type: "mixed", primary: "research", secondary: "code" });
+  expect(validateReceipt(mixed).ok).toBe(true);
+  expect(validateReceiptAgainstFilename(mixed, correct).ok).toBe(true);
+  const code = before({ type: "code", lane: "sweep", head: HEAD, tree: TREE });
+  expect(validateReceipt(code).ok).toBe(true);
+  expect(validateReceiptAgainstFilename(code, `before-G1-${TREE.slice(0, 7)}.json`).ok).toBe(true);
+  expect(validateReceiptAgainstFilename(code, "before-G1-1111111.json").ok).toBe(false);
+  expect(validateReceiptAgainstFilename(before(), "before-G1-1111111.json").ok).toBe(false);
+});
+
 test("findings rows enforce the column set, the class set and non-blocking notes", () => {
   const header = FINDINGS_COLUMNS.join("\t");
   const good = `${header}\nF1\t1\tultrabrain\tC\tHIGH\tsrc/a.mjs:4\t1\tbun test\t${HEAD}\topen\t-\n`;
