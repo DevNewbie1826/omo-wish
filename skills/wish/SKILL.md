@@ -32,8 +32,9 @@ repository on purpose: evidence never costs a commit and never moves a reviewed 
 `ulw-execute` selects as its plan; a plan in another place or another shape is a defect, not a preference.
 
 The gate is advisory to the CLI: `status.next` does not read gates and no shipped check refuses a stage because
-one is open, so the session reads `status` and stops on its blocking list. Gates are written only by `wish gate
-add`, `wish gate remove` and `wish gate resolve`; hand editing `gates.md` is not detected.
+one is open, so the session reads `status` and stops on its blocking list. A `gates.md` block is written only by
+`wish gate add`, `wish gate remove` and `wish gate resolve`, while `wish gate --round` writes the ledger dispatch
+gate; hand editing `gates.md` is not detected.
 
 | # | stage | omo feature that runs it | receipt `status` requires |
 | --- | --- | --- | --- |

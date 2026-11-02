@@ -516,10 +516,12 @@ poteto-mode's rendered shape (P `store.ts:597-668`), adopted by D §2.8:
 A gate is parked only for an owner decision (D §2.2, A §C.6.4). Every gate open longer than 15 minutes is
 recorded so `status` can report the wait (D §5.1).
 
-A gate block is written only by `wish gate add`, `wish gate remove` and `wish gate resolve`; hand editing
-`gates.md` is not detected and no shipped check compares the file against the ledger. A hand edit therefore
-stays outside the contract: a deleted gate stops blocking, a forged `Status: resolved` stops blocking, and a
-forged `Status: open` blocks. `gate remove` refuses a resolved gate (exit 1) and an unknown id (exit 3), so the
+A gate block is written only by `wish gate add`, `wish gate remove` and `wish gate resolve`; `wish gate --round`
+writes the ledger `dispatch` gate, and `ledger append --event gate` can write any id. Hand editing `gates.md` is
+not detected and no shipped check compares the file against the ledger. A hand edit therefore stays outside the
+contract, and it changes only the file source: deleting a block or forging its `Status: resolved` removes the
+file's contribution, and the id stops blocking only when no independently open ledger source remains; a forged
+`Status: open` blocks. `gate remove` refuses a resolved gate (exit 1) and an unknown id (exit 3), so the
 correction path for a wrongly registered open gate is the CLI, not an editor.
 
 The blocking union is fail-closed: an id open in `gates.md` or open in a ledger `gate` event blocks, and a

@@ -5,8 +5,9 @@ Type `code`: a patch, a feature, or a refactor. Read `../SKILL.md` for the stage
 task each, verbatim.** Skipped steps: `../SKILL.md`.
 `status` is the gate: run `wish.mjs status` before dispatching the next stage and dispatch
 only the stage it names. The gate is advisory to the CLI: `status.next` does not read gates and no shipped check
-refuses a stage because one is open, so read the blocking list yourself and stop on it. Gates are written only
-by `wish gate add`, `wish gate remove` and `wish gate resolve`; hand editing `gates.md` is not detected.
+refuses a stage because one is open, so read the blocking list yourself and stop on it. A `gates.md` block is
+written only by `wish gate add`, `wish gate remove` and `wish gate resolve`, while `wish gate --round` writes the
+ledger dispatch gate; hand editing `gates.md` is not detected.
 While any unit runs, print the `PROGRESS:` line at every milestone (cadence: `../SKILL.md`).
 
 Set these once after step 1 and keep them for every command:
