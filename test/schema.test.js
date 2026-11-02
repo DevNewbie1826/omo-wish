@@ -127,7 +127,6 @@ test("a research before receipt anchors on its artifact head, not a git tree", (
   const correct = `before-G1-${SHA256.slice(0, 7)}.json`;
   expect(validateReceipt(before()).ok).toBe(true);
   expect(validateReceiptAgainstFilename(before(), correct).ok).toBe(true);
-  expect(validateReceiptAgainstFilename(before(), "before-G1-1111111.json").ok).toBe(false);
   expect(validateReceiptAgainstFilename(before({ kind: "after" }), `after-G1-${SHA256.slice(0, 7)}.json`).ok).toBe(true);
   const mixed = before({ type: "mixed", primary: "research", secondary: "code" });
   expect(validateReceipt(mixed).ok).toBe(true);
@@ -136,6 +135,7 @@ test("a research before receipt anchors on its artifact head, not a git tree", (
   expect(validateReceipt(code).ok).toBe(true);
   expect(validateReceiptAgainstFilename(code, `before-G1-${TREE.slice(0, 7)}.json`).ok).toBe(true);
   expect(validateReceiptAgainstFilename(code, "before-G1-1111111.json").ok).toBe(false);
+  expect(validateReceiptAgainstFilename(before(), "before-G1-1111111.json").ok).toBe(false);
 });
 
 test("findings rows enforce the column set, the class set and non-blocking notes", () => {
