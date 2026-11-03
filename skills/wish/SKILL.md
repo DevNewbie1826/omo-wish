@@ -35,7 +35,7 @@ Read each skill below before the stage it names begins; the stage table says wha
 | `plan` | `ulw-plan` for the checkbox grammar, then `remove-ai-slops`, `programming` and the work type's skill |
 | the commit node of `build` and `fix` | `git-master` |
 | `verify_lane`, `round` | `review-work` |
-| `design` work | `frontend` to build, `visual-qa` to verify, `browser` to capture |
+| `design` work | `frontend` to build, `visual-qa` to verify |
 | `research` work | `ulw-research` |
 
 ## Stages — the omo feature that runs each one
