@@ -81,8 +81,8 @@ Examples:
 ```text
 /wish <request>
   ├─ prompts/wish.md: argument + "Read and follow the `wish` skill" + the mass-ulw / ulw-loop sentence
-  ├─ extensions/wish.js: sees the ultrawork keyword in the expanded text and
-  │   turns the host ultrawork mode on once if it is not already on
+  ├─ extensions/wish.js: sees the ultrawork keyword in the expanded text, turns the host
+  │   ultrawork mode on once if needed, and injects a hidden stage-skills pointer per /wish
   ├─ the host resolves the `wish` skill from the pi.skills manifest
   └─ SKILL.md: the contract and the stage map (this file is authoritative)
       ├─ the work type's playbook (playbooks/<type>.md): the steps copied into `todo`
