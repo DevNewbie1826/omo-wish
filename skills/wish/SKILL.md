@@ -24,6 +24,20 @@ and open no goal or notepad at bootstrap; the plan file holds the notes until `g
 through ulw-loop. Decisions are asked once, at `decide`, as one batch with a recommended default each; after that
 nothing is asked, and a decision that appears mid-run parks only its own lane while every other lane continues.
 
+## Skills to read before each stage
+
+Read each skill below before the stage it names begins; the stage table says what that skill runs there.
+
+| before | read |
+| --- | --- |
+| `collect`, `build`, `fix` | `mass-ulw`: each of these stages is one mass-ulw run |
+| `goal`, `checkpoint` | `ulw-loop` for goals, evidence and the checkpoint; `ulw-execute` for the Boulder format |
+| `plan` | `ulw-plan` for the checkbox grammar, then `remove-ai-slops`, `programming` and the work type's skill |
+| the commit node of `build` and `fix` | `git-master` |
+| `verify_lane`, `round` | `review-work` |
+| `design` work | `frontend` to build, `visual-qa` to verify, `browser` to capture |
+| `research` work | `ulw-research` |
+
 ## Stages — the omo feature that runs each one
 
 `wish status` names the next stage and the receipt blocking it. `<ER>` is the ulw-loop evidenceRoot, outside the
