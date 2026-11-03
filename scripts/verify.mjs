@@ -112,6 +112,13 @@ async function main() {
 
   const messages = async (runner, text, options = {}) =>
     (await runner.emitBeforeAgentStart(text, undefined, "", {}, options))?.messages ?? [];
+  const directiveMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-ultrawork:directive");
+  const stageSkillsMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-wish:stage-skills");
+  const stageSkillsMessage = {
+    customType: "omo-wish:stage-skills",
+    content: "This /wish run stages its work through two omo skills: read the `mass-ulw` skill before the collect, build and fix stages (each is one mass-ulw run) and the `ulw-loop` skill before the goal and checkpoint stages (goals, evidence, checkpoints). Load each with the read tool when its first stage begins; the session's skill list carries their SKILL.md paths.",
+    display: false,
+  };
 
   try {
     const loader = new DefaultResourceLoader({
@@ -158,7 +165,8 @@ async function main() {
     for (const text of [bare, args]) {
       const preview = await messages(runner, text, { preview: true });
       check("preview leaves expanded entry without injected messages", () => {
-        assert.deepEqual(preview, []);
+        assert.deepEqual(directiveMessages(preview), []);
+        assert.deepEqual(stageSkillsMessages(preview), []);
       });
     }
     const marks = [];
@@ -174,38 +182,42 @@ async function main() {
       const inactive = await messages(runner, raw);
       check(`unrelated or lookalike input stays inactive: ${raw}`, () => {
         assert.equal(expandPromptTemplate(raw, prompts.prompts), raw);
-        assert.deepEqual(inactive, []);
+        assert.deepEqual(directiveMessages(inactive), []);
         assert.deepEqual(marks, []);
       });
     }
     const preview = await messages(runner, args, { preview: true });
     check("preview does not consume activation", () => {
-      assert.deepEqual(preview, []);
+      assert.deepEqual(directiveMessages(preview), []);
+      assert.deepEqual(stageSkillsMessages(preview), []);
       assert.deepEqual(marks, []);
     });
     armed.add("wish-verification");
     const prearmed = await messages(runner, args);
     check("an explicitly armed session remains silent", () => {
-      assert.deepEqual(prearmed, []);
+      assert.deepEqual(directiveMessages(prearmed), []);
+      assert.deepEqual(stageSkillsMessages(prearmed), [stageSkillsMessage]);
       assert.deepEqual(marks, []);
     });
     armed.delete("wish-verification");
     const first = await messages(runner, args);
     const repeat = await messages(runner, args);
     check("first real wish arms once with the exact supplied directive", () => {
-      assert.deepEqual(first, [{
+      assert.deepEqual(directiveMessages(first), [{
         customType: "omo-ultrawork:directive",
         content: "DIRECTIVE_SENTINEL",
         display: false,
       }]);
       assert.deepEqual(marks, ["wish-verification"]);
-      assert.deepEqual(repeat, []);
+      assert.deepEqual(directiveMessages(repeat), []);
+      assert.deepEqual(stageSkillsMessages(first), [stageSkillsMessage]);
+      assert.deepEqual(stageSkillsMessages(repeat), [stageSkillsMessage]);
       assert.equal(globalThis[armingSymbol].directive, "DIRECTIVE_SENTINEL");
     });
     armed.delete("wish-verification");
     const ordinary = await messages(runner, "ordinary ULW request");
     check("ordinary whole-word ulw activates only generic mode", () => {
-      assert.deepEqual(ordinary, [{
+      assert.deepEqual(directiveMessages(ordinary), [{
         customType: "omo-ultrawork:directive",
         content: "DIRECTIVE_SENTINEL",
         display: false,
@@ -216,19 +228,22 @@ async function main() {
     const fresh = createRunner(loader);
     const afterReload = await messages(fresh, bare);
     check("fresh resource reload preserves already armed state", () => {
-      assert.deepEqual(afterReload, []);
+      assert.deepEqual(directiveMessages(afterReload), []);
+      assert.deepEqual(stageSkillsMessages(afterReload), [stageSkillsMessage]);
       assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
     });
     delete globalThis[armingSymbol];
     const withoutMode = await messages(fresh, bare);
     check("absent mode state sends no message or mutation", () => {
       assert.equal(Object.hasOwn(globalThis, armingSymbol), false);
-      assert.deepEqual(withoutMode, []);
+      assert.deepEqual(directiveMessages(withoutMode), []);
+      assert.deepEqual(stageSkillsMessages(withoutMode), [stageSkillsMessage]);
     });
     globalThis[armingSymbol] = { directive: "DIRECTIVE_SENTINEL" };
     const unsupported = await messages(fresh, bare);
     check("unsupported interop sends no message or mutation", () => {
-      assert.deepEqual(unsupported, []);
+      assert.deepEqual(directiveMessages(unsupported), []);
+      assert.deepEqual(stageSkillsMessages(unsupported), [stageSkillsMessage]);
       assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
     });
 
