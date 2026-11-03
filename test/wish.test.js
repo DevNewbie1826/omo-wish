@@ -160,6 +160,32 @@ test("stage skills preview does not inject or latch the pointer", async () => {
     .toEqual([stageSkillsMessage]);
 });
 
+test("stage skills skip non-prompt triggers", async () => {
+  const { templates } = await resources();
+  const extensionRunner = await runner();
+  const wish = expandPromptTemplate("/wish delivery", templates);
+  const symbol = Symbol.for("omo.ultrawork.arming");
+  const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
+  const armed = new Set();
+  try {
+    globalThis[symbol] = {
+      directive: "DIRECTIVE_SENTINEL",
+      arming: {
+        isArmed: (id) => armed.has(id),
+        markArmed: (id) => armed.add(id),
+      },
+    };
+    const delivery = await messages(extensionRunner, wish, { trigger: "delivery" });
+    expect(delivery.filter((message) => message?.customType === "omo-wish:stage-skills")).toEqual([]);
+    const prompt = await messages(extensionRunner, wish);
+    expect(prompt.filter((message) => message?.customType === "omo-wish:stage-skills"))
+      .toEqual([stageSkillsMessage]);
+  } finally {
+    if (prior) Object.defineProperty(globalThis, symbol, prior);
+    else delete globalThis[symbol];
+  }
+});
+
 test("stage skills context re-appends once only for a latched session", async () => {
   const extensionRunner = await runner();
   const { templates } = await resources();
@@ -250,6 +276,7 @@ test("real wish entry arms once; preview, unrelated input and pre-armed sessions
     armed.add("wish-test");
     const prearmed = await messages(first, text);
     expect(directiveMessages(prearmed)).toEqual([]);
+    expect(prearmed.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
     expect(marks).toEqual([]);
     armed.delete("wish-test");
     const activation = await messages(first, text);
@@ -258,17 +285,24 @@ test("real wish entry arms once; preview, unrelated input and pre-armed sessions
       content: "DIRECTIVE_SENTINEL",
       display: false,
     }]);
+    expect(activation.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
     expect(marks).toEqual(["wish-test"]);
     for (const next of [first, await runner()]) {
-      expect(directiveMessages(await messages(next, text))).toEqual([]);
+      const repeat = await messages(next, text);
+      expect(directiveMessages(repeat)).toEqual([]);
+      expect(repeat.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
     }
     expect(marks).toEqual(["wish-test"]);
     expect(globalThis[symbol].directive).toBe("DIRECTIVE_SENTINEL");
     delete globalThis[symbol];
-    expect(directiveMessages(await messages(first, text))).toEqual([]);
+    const withoutState = await messages(first, text);
+    expect(directiveMessages(withoutState)).toEqual([]);
+    expect(withoutState.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
     expect(Object.hasOwn(globalThis, symbol)).toBe(false);
     globalThis[symbol] = { directive: "DIRECTIVE_SENTINEL" };
-    expect(directiveMessages(await messages(first, text))).toEqual([]);
+    const unsupported = await messages(first, text);
+    expect(directiveMessages(unsupported)).toEqual([]);
+    expect(unsupported.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
     expect(marks).toEqual(["wish-test"]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
