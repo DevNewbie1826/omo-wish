@@ -989,7 +989,7 @@ function walkEvidence(dir, depth = 0) {
 function verbPrBody(parsed, root) {
   const { plan, planPath, events } = planFor(root, parsed, { missingPlanReason: "plan body" });
   const unit = plan.wish.unit ?? "u1";
-  const frozen = [...events].reverse().find((event) => event.event === "freeze" && event.unit === unit);
+  const { freeze: frozen } = unitLedgerFacts(events, unit);
   if (!frozen) throw stateMismatch("no freeze event: freeze the head before building the PR body");
   const gaps = readGaps(root) ?? [];
   const findings = readFindings(root, findingOptions(plan, events)) ?? [];

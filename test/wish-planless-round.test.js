@@ -65,7 +65,27 @@ function scene() {
     started_at: "2026-10-27T16:00:00Z", ended_at: "2026-10-27T16:01:00Z",
     status: "PASS", rows: [], artifacts: [], cleanup: [],
   }));
-  return { cli, append, plan, head, root };
+  return { cli, append, plan, head, root, work, git };
+}
+
+function latestScene() {
+  const state = scene();
+  expect(state.append({ event: "pr_open", pr: 11, head: state.head }).code).toBe(0);
+  expect(state.append({ event: "round", round: 1, verdict: "REVISE", head: state.head }).code).toBe(0);
+  writeFileSync(join(state.work, "file"), "second commit\n");
+  state.git("add", "file");
+  state.git("commit", "-q", "-m", "second");
+  const head = state.git("rev-parse", "HEAD");
+  const tree = state.git("rev-parse", "HEAD^{tree}");
+  expect(state.cli("freeze", "--head", head).code).toBe(0);
+  expect(state.append({ event: "pr_open", pr: 22, head }).code).toBe(0);
+  writeFileSync(join(state.root, "receipts", `verify_lane-code-review-${head.slice(0, 7)}.json`), JSON.stringify({
+    kind: "lane", stage: "verify_lane", type: "code", unit: "u1", program_id: null,
+    lane: "code-review", head, tree, scope: [state.plan],
+    started_at: "2026-10-27T16:00:00Z", ended_at: "2026-10-27T16:01:00Z",
+    status: "PASS", rows: [], artifacts: [], cleanup: [],
+  }));
+  return { ...state, latestHead: head, latestTree: tree };
 }
 
 test("round append succeeds after dispatch when the plan is absent", () => {
@@ -89,4 +109,30 @@ test("round append enforces the plan frozen head when the plan exists", () => {
   expect(round.code).toBe(3);
   expect(round.err).toContain(`code-review missing at ${other.slice(0, 7)}`);
   expect(readFileSync(join(state.root, "ledger.jsonl"), "utf8")).toBe(before);
+});
+
+test("status uses the latest PR and round after multiple records", () => {
+  const state = latestScene();
+  rmSync(state.plan);
+  expect(state.append({ event: "round", round: 2, verdict: "APPROVED", head: state.latestHead }).code).toBe(0);
+  const result = state.cli("status", "--json");
+  expect(result.code).toBe(0);
+  expect(JSON.parse(result.out).units.find((unit) => unit.id === "u1")).toMatchObject({ pr: 22, round: 2 });
+});
+
+test("pr-body renders the latest freeze head and tree", () => {
+  const state = latestScene();
+  const result = state.cli("pr-body");
+  expect(result.code).toBe(0);
+  expect(result.out).toContain(`Frozen head: ${state.latestHead}  tree: ${state.latestTree}`);
+});
+
+test("planless round append uses the latest freeze review", () => {
+  const state = latestScene();
+  rmSync(join(state.root, "receipts", `verify_lane-code-review-${state.head.slice(0, 7)}.json`));
+  rmSync(state.plan);
+  const result = state.append({ event: "round", round: 2, verdict: "APPROVED", head: state.latestHead });
+  expect(result.code).toBe(0);
+  expect(JSON.parse(readFileSync(join(state.root, "ledger.jsonl"), "utf8").trim().split("\n").at(-1)))
+    .toMatchObject({ event: "round", round: 2, head: state.latestHead });
 });
