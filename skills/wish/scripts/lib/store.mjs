@@ -38,6 +38,8 @@ import {
 import {
   closeSync,
   existsSync,
+  fstatSync,
+  ftruncateSync,
   mkdirSync,
   openSync,
   readFileSync,
@@ -315,13 +317,28 @@ export function withLock(root, fn, options = {}) {
 }
 // --------------------------------------------------------------------- ledger
 
-// §9: one JSON object per line, append-only. A malformed line is a state error,
-// never silently skipped: a lost event would move `status` backwards.
+// Only an unterminated final segment can be an interrupted append.
+function ledgerTail(text) {
+  if (text === "" || text.endsWith("\n")) return { kind: "terminated" };
+  const start = text.lastIndexOf("\n") + 1;
+  try {
+    const value = JSON.parse(text.slice(start));
+    if (value !== null && typeof value === "object" && !Array.isArray(value)) {
+      return { kind: "complete" };
+    }
+  } catch {
+    // An unparsable final segment is an uncommitted write.
+  }
+  return { kind: "torn", size: Buffer.byteLength(text.slice(0, start)) };
+}
+
+// §9: terminated malformed lines are state errors; a torn final write is ignored.
 export function readLedger(root) {
   const paths = rootPaths(root);
   const text = readTextOrNull(paths.ledger);
   if (text === null) return [];
   const lines = text.split("\n");
+  if (ledgerTail(text).kind === "torn") lines.pop();
   const events = [];
   lines.forEach((line, index) => {
     const raw = line.trim();
@@ -413,13 +430,20 @@ export function appendEvent(root, input, { plan, sessionId = "senpi:wish-cli", n
   return event;
 }
 
-// Atomic append under the caller's lock: O_APPEND keeps concurrent writers from
-// interleaving a line (QA12).
+// Repair only while the caller holds the lock. Include padding in the checked
+// write so a short write can be rolled back to the repaired pre-write size.
 function appendLine(file, text) {
   ensureDir(dirname(file));
   const fd = openSync(file, "a");
   try {
-    writeSync(fd, text);
+    const tail = ledgerTail(readTextOrNull(file) ?? "");
+    if (tail.kind === "torn") ftruncateSync(fd, tail.size);
+    const size = fstatSync(fd).size;
+    const data = tail.kind === "complete" ? `\n${text}` : text;
+    if (writeSync(fd, data) !== Buffer.byteLength(data)) {
+      ftruncateSync(fd, size);
+      throw stateMismatch(`short write to ${file}`);
+    }
   } finally {
     closeSync(fd);
   }
