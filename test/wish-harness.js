@@ -11,6 +11,7 @@ const { DefaultResourceLoader } = await import(`${senpi}/dist/core/resource-load
 const { SettingsManager } = await import(`${senpi}/dist/core/settings-manager.js`);
 const { loadExtensions } = await import(`${senpi}/dist/core/extensions/loader.js`);
 const { ExtensionRunner } = await import(`${senpi}/dist/core/extensions/runner.js`);
+import { stageSkillsText } from "../extensions/wish.js";
 export const fixtures = [];
 
 // Bun binds a hook in a shared module to its first importer only, so each test file registers its own afterAll(removeFixtures).
@@ -32,10 +33,11 @@ export async function resources(root = repo) {
   return { templates: loader.getPrompts().prompts, skills: loader.getSkills(), extensionPaths: paths("extensions") };
 }
 
-export async function runner(root = repo, sessionId = "wish-test") {
+export async function runner(root = repo, sessionId = "wish-test", { sendMessage } = {}) {
   const { extensionPaths } = await resources(root);
   const loaded = await loadExtensions(extensionPaths, root);
   expect(loaded.errors).toEqual([]);
+  if (sendMessage) loaded.runtime.sendMessage = sendMessage;
   const sessionManager = {
     getSessionId: () => sessionId,
     getBranch: () => [],
@@ -52,7 +54,7 @@ export async function messages(extensionRunner, prompt, options = {}) {
 export const directiveMessages = (list) => (list ?? []).filter((m) => m?.customType === "omo-ultrawork:directive");
 export const stageSkillsMessage = {
   customType: "omo-wish:stage-skills",
-  content: "This /wish run stages its work through two omo skills: read the `mass-ulw` skill before the collect, build and fix stages (each is one mass-ulw run) and the `ulw-loop` skill before the goal and checkpoint stages (goals, evidence, checkpoints). Load each with the read tool when its first stage begins; the session's skill list carries their SKILL.md paths.",
+  content: stageSkillsText,
   display: false,
 };
 

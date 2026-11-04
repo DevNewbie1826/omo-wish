@@ -1,4 +1,5 @@
 import { expect, test } from "bun:test";
+import { convertToLlm } from "/home/mirage/.bun/install/global/node_modules/@code-yeongyu/senpi/dist/core/messages.js";
 import { repo, expandPromptTemplate, resources, runner, messages, stageSkillsMessage } from "./wish-harness.js";
 
 test("stage skills inject per wish command but not for ordinary mass-ulw text", async () => {
@@ -53,32 +54,52 @@ test("stage skills skip non-prompt triggers", async () => {
     .toEqual([stageSkillsMessage]);
 });
 
-test("stage skills context re-appends once only for a latched session", async () => {
+test("stage skills are never re-sent as the newest message across converted continuation turns", async () => {
   const extensionRunner = await runner();
   const { templates } = await resources();
   await messages(extensionRunner, expandPromptTemplate("/wish latch", templates));
-  const existing = [{ role: "user", content: "keep me" }];
-  const reappended = await extensionRunner.emitContext(existing, undefined, "agent");
-  expect(reappended).toEqual([...existing, {
-    role: "custom",
-    ...stageSkillsMessage,
-  }]);
-  const alreadyPresent = [...existing, { role: "custom", ...stageSkillsMessage }];
-  expect(await extensionRunner.emitContext(alreadyPresent, undefined, "agent")).toEqual(alreadyPresent);
+  let transcript = [
+    { role: "user", content: "/wish go", timestamp: 1 },
+    { role: "custom", ...stageSkillsMessage, timestamp: 2 },
+    { role: "assistant", content: [{ type: "text", text: "starting" }], timestamp: 3 },
+    { role: "user", content: "continue", timestamp: 4 },
+  ];
+  for (let turn = 1; turn <= 3; turn++) {
+    // The host's compaction hook runs convertToLlm first: customType is gone before this extension's hooks.
+    const sent = await extensionRunner.emitContext(convertToLlm(transcript), undefined, "agent");
+    const copies = sent.filter((m) => JSON.stringify(m.content).includes(stageSkillsMessage.content));
+    expect(copies).toHaveLength(1);
+    expect(JSON.stringify(sent.at(-1).content)).not.toContain(stageSkillsMessage.content);
+    transcript = [...transcript, { role: "assistant", content: [{ type: "text", text: "ok" }], timestamp: 9 }, { role: "user", content: "next", timestamp: 10 }];
+  }
+});
 
-  const cold = await runner(repo, "wish-test-cold");
-  expect(await cold.emitContext(existing, undefined, "agent")).toEqual(existing);
+test("stage skills restore once per accepted compaction for a latched session only", async () => {
+  const sent = [];
+  const extensionRunner = await runner(repo, "wish-test-compact", { sendMessage: (message, options) => sent.push([message, options]) });
+  const { templates } = await resources();
+  const compact = (accepted) => extensionRunner.emit({ type: "session_compact", accepted, reason: "manual", requestId: "r", fromExtension: false, willRetry: false, ...(accepted ? { compactionEntry: {} } : { rejectionCause: "cancelled-by-extension" }) });
+  await compact(true);
+  expect(sent).toEqual([]);
+  await messages(extensionRunner, expandPromptTemplate("/wish latch", templates));
+  await compact(false);
+  expect(sent).toEqual([]);
+  await compact(true);
+  expect(sent).toEqual([[{ customType: stageSkillsMessage.customType, content: stageSkillsMessage.content, display: false }, { triggerTurn: false }]]);
+  await extensionRunner.emitContext([{ role: "user", content: "x" }], undefined, "agent");
+  expect(sent).toHaveLength(1);
 });
 
 test("stage skills refuse invalid session ids and keep context unchanged", async () => {
   const { templates } = await resources();
   for (const invalidId of [0, false, ""]) {
-    const extensionRunner = await runner(repo, invalidId);
+    const sent = [];
+    const extensionRunner = await runner(repo, invalidId, { sendMessage: (...args) => sent.push(args) });
     const wish = expandPromptTemplate("/wish guards", templates);
     expect((await messages(extensionRunner, wish)).filter((m) => m?.customType === "omo-wish:stage-skills"))
       .toEqual([]);
-    const existing = [{ role: "user", content: "keep me" }];
-    expect(await extensionRunner.emitContext(existing, undefined, "agent")).toEqual(existing);
+    await extensionRunner.emit({ type: "session_compact", accepted: true, reason: "manual", requestId: "r", fromExtension: false, willRetry: false, compactionEntry: {} });
+    expect(sent).toEqual([]);
   }
   const control = await runner(repo, "wish-test-guard-control");
   const wish = expandPromptTemplate("/wish guards", templates);
