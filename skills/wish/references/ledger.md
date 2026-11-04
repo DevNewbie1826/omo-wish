@@ -152,13 +152,13 @@ A `FAIL` receipt is a claim, not a verdict: the session reproduces it before `bl
 | `before`, `after` | `before-<gap>-<tree7>.<ext>`, `after-<gap>-<tree7>.<ext>` (research: `before-<gap>-<head7>.<ext>`, `after-<gap>-<head7>.<ext>`) | A §B3/§B6/§C.4 |
 | `vqa-*` | `vqa-passA-<head7>.<ext>`, `vqa-passB-<head7>.<ext>`, `vqa-capture-<head7>.<ext>` | A §C.4 |
 | `claim-gate` | `claim-gate-<sha7>.json`, where `sha7` prefixes the research `head` | A §C.4 |
-| `lint` | `lint-<name>-<tree7>.json` | A §C.4 |
+| `lint` | `lint-<name>-<tree7>.json` (research: `lint-<name>-<head7>.json`) | A §C.4 |
 
 Extensions: lane receipts accept `.json` and `.md`; `before`/`after` accept `.json`, `.md`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.txt`; `vqa-*` accept `.json`, `.md`, `.png`, `.jpg`, `.jpeg`, `.webp`; `claim-gate` and `lint` accept `.json` only.
 
 `<stage>` is a §9 event, `<lane>` is kebab-case, `<gap>` is `G<n>`, `<head7>`/`<tree7>`/`<sha7>` are the
 first seven hex of the receipt's own head/tree. A research receipt has no git tree, so its `before`/`after`
-anchor is the artifact's `<head7>`; every other receipt kind keeps `<tree7>`. A receipt whose filename anchor
+and `lint` anchors are the artifact's `<head7>`; every other receipt kind keeps `<tree7>`. A receipt whose filename anchor
 disagrees with its body is rejected. An `.md` receipt is the same object in YAML front matter with `rows: []`
 and the report below it.
 

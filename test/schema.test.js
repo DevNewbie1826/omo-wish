@@ -138,6 +138,28 @@ test("a research before receipt anchors on its artifact head, not a git tree", (
   expect(validateReceiptAgainstFilename(before(), "before-G1-1111111.json").ok).toBe(false);
 });
 
+test("a research-primary lint receipt anchors on its artifact head", () => {
+  const head = "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
+  const mixed = receipt({
+    kind: "lint", type: "mixed", primary: "research", secondary: "audit", lane: "lint",
+    name: "draft-guard", head, tree: null, scope: ["x/**"], rows: [],
+  });
+  const filename = `lint-draft-guard-${head.slice(0, 7)}.json`;
+  expect(validateReceipt(mixed).ok).toBe(true);
+  expect(validateReceiptAgainstFilename(mixed, filename).ok).toBe(true);
+  const wrongPrefix = validateReceiptAgainstFilename(mixed, "lint-draft-guard-9999999.json");
+  expect(wrongPrefix.ok).toBe(false);
+  expect(codes(wrongPrefix)).toContain("receipt.head");
+
+  const auditHead = "1234567890abcdef1234567890abcdef12345678";
+  const auditTree = "fedcba0987654321fedcba0987654321fedcba09";
+  const audit = receipt({
+    kind: "lint", type: "audit", lane: "lint", name: "draft-guard",
+    head: auditHead, tree: auditTree,
+  });
+  expect(validateReceiptAgainstFilename(audit, `lint-draft-guard-${auditTree.slice(0, 7)}.json`).ok).toBe(true);
+});
+
 test("findings rows enforce the column set, the class set and non-blocking notes", () => {
   const header = FINDINGS_COLUMNS.join("\t");
   const good = `${header}\nF1\t1\tultrabrain\tC\tHIGH\tsrc/a.mjs:4\t1\tbun test\t${HEAD}\topen\t-\n`;

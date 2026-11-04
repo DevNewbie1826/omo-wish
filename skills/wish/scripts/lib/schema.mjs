@@ -477,7 +477,7 @@ export function validateReceiptAgainstFilename(receipt, name) {
   }
   if (parsed.pass && receipt.pass !== parsed.pass) fail(errors, "receipt.pass", `filename says ${parsed.pass}`);
   const identity = receipt.type === "mixed" ? receipt.primary : receipt.type;
-  const headAnchored = (parsed.kind === "before" || parsed.kind === "after") && identity === "research";
+  const headAnchored = (parsed.kind === "before" || parsed.kind === "after" || parsed.kind === "lint") && identity === "research";
   if (parsed.tree7) {
     const anchor = headAnchored ? receipt.head : receipt.tree;
     const label = headAnchored ? "head7" : "tree7";
