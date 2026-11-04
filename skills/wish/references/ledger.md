@@ -29,7 +29,7 @@ Sources cited per field:
 The original design documents are not tracked in those commits. D/A section labels below are historical
 source anchors preserved by the archived contract, not claims that the original source files ship.
 
-`$SKILL` means `skills/wish`. `<ER>` is the ulw-loop evidence root
+`$SKILL` means the absolute installed wish skill directory containing `SKILL.md`. `<ER>` is the ulw-loop evidence root
 (`agentToolkit.status().result.evidenceRoot`), outside the repository on purpose: evidence never costs a
 commit and never moves a reviewed head (D §2.6/§2.8).
 
@@ -543,6 +543,11 @@ recommended choices, and `parked` names the lane awaiting an answer. The `gates.
 questions and defaults; only the affected lane parks while other lanes continue.
 
 ## 14. CLI — `$SKILL/scripts/wish.mjs`
+
+Set `SKILL` to the absolute directory containing the installed wish `SKILL.md`, normally
+`~/.omo/agent/git/github.com/DevNewbie1826/omo-wish/skills/wish`, and override it for a different installation.
+Invoke wish helper scripts from `$SKILL/scripts`, never from the target worktree, which may be a different
+repository or may be removed.
 
 The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, arguments and exit codes.
 

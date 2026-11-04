@@ -7,7 +7,8 @@ that the ledger already records.
 ```
 ER=<evidence root>   export WISH_EVIDENCE_ROOT=$ER
 PLAN=.omo/plans/wish-<slug>.md   WT=<absolute worktree>
-wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
+SKILL=${SKILL:-"$HOME/.omo/agent/git/github.com/DevNewbie1826/omo-wish/skills/wish"}
+wish() { bun "$SKILL/scripts/wish.mjs" "$@"; }
 ```
 
 ## The steps

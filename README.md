@@ -239,6 +239,11 @@ equals the frozen head and the observed head.
 
 ## Scripts
 
+Set `SKILL` to the absolute directory containing the installed wish `SKILL.md` (normally
+`~/.omo/agent/git/github.com/DevNewbie1826/omo-wish/skills/wish`); override it for another installation.
+Invoke all wish helper scripts from `$SKILL/scripts`, not from the target worktree, which may belong
+to another repository or be removed.
+
 All of them are helper commands an agent calls. None decides a stage or dispatches a review. Exit codes are
 shared: **0** ok, **1** check failed, **2** usage error, **3** state mismatch. The verdict line and receipt
 reuse are plain rules the session applies from the skill text; `wish gate` enforces

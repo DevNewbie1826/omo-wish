@@ -9,7 +9,8 @@ before/after pairs and the verdict. Read `../SKILL.md` first; copy these steps i
 ER=<evidence root>   export WISH_EVIDENCE_ROOT=$ER
 PLAN=.omo/plans/wish-<slug>.md   WT=<absolute worktree>   BR=<branch>
 BASE=<the repository's integration branch for this request>
-wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
+SKILL=${SKILL:-"$HOME/.omo/agent/git/github.com/DevNewbie1826/omo-wish/skills/wish"}
+wish() { bun "$SKILL/scripts/wish.mjs" "$@"; }
 ```
 
 The before matrix is `visual-qa`'s: each case × `{390, 1440}` (add 1920 when the surface has it) ×
@@ -28,7 +29,7 @@ light/dark, plus the scroll end and each interaction frame. `wish init` writes t
       (b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
       (c) Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
       ```
-- [ ] 6. PLAN-LINT: `bun $WT/skills/wish/scripts/check-plan.mjs $PLAN [--register $ER/gaps.tsv]` must exit 0; a `code` device on a `design` plan is a complaint [omo: `check-plan.mjs`] [receipt: `plan_lint` event, exit 0]
+- [ ] 6. PLAN-LINT: `bun "$SKILL/scripts/check-plan.mjs" $PLAN [--register $ER/gaps.tsv]` must exit 0; a `code` device on a `design` plan is a complaint [omo: `check-plan.mjs`] [receipt: `plan_lint` event, exit 0]
 - [ ] 7. PLAN-REVIEW: one `category: architect` review of the contract (does each `SCREEN` row promise what the request needs, is every visual-QA condition carried by a device, is every limit real); `plan-reviewer` only in the ulw-plan branch [omo: `category: architect`] [receipt: `receipts/plan_review-architect-<head7>.md` + `plan_review` event]
 - [ ] 8. DECIDE: one decision batch in `<ER>/gates.md`, each entry with a recommended default, added with `wish gate add --id <id> --question <text> --options <a|b> --default <a>` and asked once; append `decide` [omo: session] [receipt: `decide` event + `<ER>/gates.md` entries with a recommended default]
 - [ ] 9. GOAL: one paragraph per unit pairing the `SCREEN` and `IS` rows with their devices; register through ulw-loop, write the Boulder record that hands the plan to ulw-execute, then record the BEFORE captures with `recordEvidence({status:"fail"})` [omo: `ulw-loop` goals + Boulder as format only] [receipt: `goal` event]

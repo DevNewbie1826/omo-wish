@@ -12,7 +12,8 @@ A research unit carries no `code-review` lane, so its round has no code-review g
 ER=<evidence root>   export WISH_EVIDENCE_ROOT=$ER
 PLAN=.omo/plans/wish-<slug>.md   WT=<absolute worktree>   BR=<branch>
 BASE=<the repository's integration branch for this request>
-wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
+SKILL=${SKILL:-"$HOME/.omo/agent/git/github.com/DevNewbie1826/omo-wish/skills/wish"}
+wish() { bun "$SKILL/scripts/wish.mjs" "$@"; }
 ```
 
 ## The steps
@@ -28,7 +29,7 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
       (b) In addition, fix it, and also include, strictly, a device that confirms the fix was made.
       (c) Proceed with ulw-plan, and make the plan include the following: fix this; also include, strictly, a device that confirms the fix was made; and verify the visual QA conditions specifically and in detail, with not a single one omitted.
       ```
-- [ ] 6. PLAN-LINT: `bun $WT/skills/wish/scripts/check-plan.mjs $PLAN [--register $ER/gaps.tsv]` must exit 0; a `claim C<n>` device must cite a declared `CLAIM` row [omo: `check-plan.mjs`] [receipt: `plan_lint` event, exit 0]
+- [ ] 6. PLAN-LINT: `bun "$SKILL/scripts/check-plan.mjs" $PLAN [--register $ER/gaps.tsv]` must exit 0; a `claim C<n>` device must cite a declared `CLAIM` row [omo: `check-plan.mjs`] [receipt: `plan_lint` event, exit 0]
 - [ ] 7. PLAN-REVIEW: one `category: architect` review: are the axes the ones that actually answer the request, and is each claim supportable by the evidence the plan requires [omo: `category: architect`] [receipt: `receipts/plan_review-architect-<head7>.md` + `plan_review` event]
 - [ ] 8. DECIDE: one decision batch in `<ER>/gates.md`, each entry with a recommended default, added with `wish gate add --id <id> --question <text> --options <a|b> --default <a>` and asked once; a wave-ceiling extension `ulw-research` may need later is listed here with its default [omo: session] [receipt: `decide` event + `<ER>/gates.md` entries with a recommended default]
 - [ ] 9. GOAL: one paragraph per unit pairing each claim with its gate; register through ulw-loop, write the Boulder record that hands the plan to ulw-execute, then record the BEFORE snapshots with `recordEvidence({status:"fail"})` [omo: `ulw-loop` goals + Boulder as format only] [receipt: `goal` event]
