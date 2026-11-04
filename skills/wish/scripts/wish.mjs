@@ -51,6 +51,7 @@ import {
   setGap,
   stateMismatch,
   switchesOf,
+  unitLedgerFacts,
   usage,
   withLock,
   writeFrontMatter,
@@ -301,8 +302,10 @@ function identityOf(plan, events) {
 function planFor(root, parsed, { planless = false, missingPlanReason = null } = {}) {
   const events = readLedger(root);
   const planPath = resolvePlanPath(events, parsed.get("--plan"));
-  // Planless mode serves ledger append, status, dispatch gate and freeze --check,
-  // and only after resolvePlanPath has resolved the unit's plan path: when that
+  // Planless mode serves ledger append (including round), status, gate --round
+  // dispatch and freeze --check; freeze and pr-body still need the plan for
+  // front matter writes and body rendering respectively. It runs only after
+  // resolvePlanPath has resolved the unit's plan path: when that
   // file no longer exists the ledger's own intake is the identity, never a
   // guess. When the plan exists the planful path runs first and every refusal
   // fires exactly as before (INV1).
@@ -334,9 +337,7 @@ function planFromLedger(events, planPath) {
     throw stateMismatch(`the intake for ${planPath} records no run_id: a ledger written before planless identity needs its plan file`);
   }
   const unit = intake.unit;
-  const latest = (name) => [...events].reverse().find((event) => event.unit === unit && event.event === name);
-  const prSource = [...events].reverse().find((event) => event.unit === unit
-    && ((event.event === "pr_open" && Number.isInteger(event.pr)) || (event.event === "freeze" && Number.isInteger(event.pr))));
+  const { pr, frozen_head, round } = unitLedgerFacts(events, unit);
   return {
     wish: {
       run_id: intake.run_id,
@@ -346,9 +347,9 @@ function planFromLedger(events, planPath) {
       program_id: intake.program_id ?? null,
       worktree: intake.worktree ?? null,
       branch: intake.branch ?? null,
-      pr: prSource?.pr ?? null,
-      frozen_head: latest("freeze")?.head ?? null,
-      round: latest("round")?.round ?? 0,
+      pr,
+      frozen_head,
+      round,
     },
     body: "",
     path: planPath,
@@ -906,8 +907,7 @@ function verbFreeze(parsed, root) {
     }
     if (frozen !== head) throw stateMismatch(`the head moved after the freeze: frozen ${frozen.slice(0, 7)}, now ${head.slice(0, 7)}`);
     if (identity !== "research" && plan.wish.frozen_head && observed.tree) {
-      const frozenEvent = [...readLedger(root)].reverse().find((event) => event.event === "freeze"
-        && event.unit === (plan.wish.unit ?? "u1"));
+      const { freeze: frozenEvent } = unitLedgerFacts(readLedger(root), plan.wish.unit ?? "u1");
       if (frozenEvent && frozenEvent.tree && frozenEvent.tree !== observed.tree) {
         throw stateMismatch(`the tree moved after the freeze: frozen ${frozenEvent.tree.slice(0, 7)}, now ${observed.tree.slice(0, 7)}`);
       }
@@ -989,7 +989,7 @@ function walkEvidence(dir, depth = 0) {
 function verbPrBody(parsed, root) {
   const { plan, planPath, events } = planFor(root, parsed, { missingPlanReason: "plan body" });
   const unit = plan.wish.unit ?? "u1";
-  const frozen = [...events].reverse().find((event) => event.event === "freeze" && event.unit === unit);
+  const { freeze: frozen } = unitLedgerFacts(events, unit);
   if (!frozen) throw stateMismatch("no freeze event: freeze the head before building the PR body");
   const gaps = readGaps(root) ?? [];
   const findings = readFindings(root, findingOptions(plan, events)) ?? [];

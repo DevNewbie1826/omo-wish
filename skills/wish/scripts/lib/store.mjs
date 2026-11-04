@@ -416,12 +416,12 @@ export function appendEvent(root, input, { plan, sessionId = "senpi:wish-cli", n
   if (pending.length > 0) throw stateMismatch("out of stage order", pending);
   if (event.event === "round") {
     const intake = existing.find((other) => other.unit === event.unit && other.event === "intake");
-    const frozen = [...existing].reverse().find((other) => other.unit === event.unit && other.event === "freeze");
-    const planState = readPlan(event.plan);
+    const { freeze: frozen } = unitLedgerFacts(existing, event.unit);
+    const planState = existsSync(event.plan) ? readPlan(event.plan) : null;
     requireCodeReview({
       receipts: listReceipts(root), unit: event.unit,
       requiredLanes: requiredReceiptsFor(intake.type, intake),
-      frozenHead: planState.wish.unit === event.unit ? planState.wish.frozen_head : frozen?.head,
+      frozenHead: planState?.wish.unit === event.unit ? planState.wish.frozen_head : frozen?.head,
       tree: frozen?.tree,
     });
   }
@@ -482,6 +482,15 @@ export function roundsOf(events, unit) {
   return events
     .filter((event) => event.event === "round" && event.unit === unit)
     .sort((left, right) => left.round - right.round);
+}
+
+export function unitLedgerFacts(events, unit) {
+  const reversed = [...events].reverse();
+  const prSource = reversed.find((event) => event.unit === unit
+    && ((event.event === "pr_open" && Number.isInteger(event.pr)) || (event.event === "freeze" && Number.isInteger(event.pr))));
+  const freeze = reversed.find((event) => event.unit === unit && event.event === "freeze");
+  const rounds = roundsOf(events, unit);
+  return { pr: prSource?.pr ?? null, round: rounds.at(-1)?.round ?? 0, frozen_head: freeze?.head ?? null, freeze };
 }
 
 export function switchesOf(events, unit) {
@@ -1496,15 +1505,12 @@ export function firstInvalidStage(context) {
 function unitStatus(context) {
   const stage = deriveStage(context.events, context.receipts, context.unit);
   const enriched = { ...context, stage };
-  const rounds = roundsOf(context.events, context.unit);
-  const last = rounds[rounds.length - 1];
-  const prSources = [...context.events].reverse().filter((event) => event.unit === context.unit
-    && ((event.event === "pr_open" && Number.isInteger(event.pr)) || (event.event === "freeze" && Number.isInteger(event.pr))));
+  const { pr, round } = unitLedgerFacts(context.events, context.unit);
   return {
     id: context.unit,
     stage,
-    pr: prSources.length > 0 ? prSources[0].pr : null,
-    round: last ? last.round : 0,
+    pr,
+    round,
     switches: switchesOf(context.events, context.unit).length,
     next: deriveNext(stage, enriched),
     blocking: blockingFor(enriched),
