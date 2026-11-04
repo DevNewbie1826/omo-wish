@@ -46,7 +46,7 @@ wish() { bun "$WT/skills/wish/scripts/wish.mjs" "$@"; }
 - [ ] 17. MERGE: after `APPROVED` and all five gates PASS, merge the deliverable PR and append `merge`; the closing briefing and `team_delete` belong to the same step when a team ran [omo: session + `ulw-research` closing rules] [receipt: `merge` event]
 - [ ] 18. POST-MERGE: the artifact hash must match the frozen one; a mismatch is the full gate set again [omo: `omo-native-qa-executor` for any runnable check] [receipt: `post_merge` event + `receipts/post_merge-<tree7>.*`]
 - [ ] 19. CHECKPOINT: ulw-loop `checkpoint`, then `omo-native-gate-reviewer` on the evidence record [omo: `ulw-loop` + `omo-native-gate-reviewer`] [receipt: `checkpoint` event, `checkpoint_op: complete`]
-- [ ] 20. CLEANUP: `memory` for the classes caught, teardown of team, worktree and temp sources, then append `cleanup` [omo: session + `memory`] [receipt: `cleanup` event with ≥1 teardown receipt]
+- [ ] 20. CLEANUP: `memory` for the classes caught, then (1) tear down the team and temp sources, with exit codes; (2) append `cleanup` whose `cleanup[]` lists those teardowns plus `worktree <path>: removed last, confirmation $ER/receipts/cleanup-worktree-<head7>.txt`, because the CLI reads the plan from inside the worktree; (3) from the repository root run `git worktree remove` and `git branch -D` as the last action and write `git worktree list` into that file [omo: session + `memory`] [receipt: `cleanup` event with ≥1 teardown receipt]
 
 ## What the research type enforces
 

@@ -748,7 +748,7 @@ The ledger, including a third-round REVISE that switches approach and a fourth-r
 {"event":"merge","stage":"merge","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:30:00Z","head":"0123456789abcdef0123456789abcdef01234567","sha":"2222222222222222222222222222222222222222","merged_at":"2026-10-27T18:30:00Z","pr":51}
 {"event":"post_merge","stage":"post_merge","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:35:00Z","head":"0123456789abcdef0123456789abcdef01234567","tree":"89abcdef0123456789abcdef0123456789abcdef"}
 {"event":"checkpoint","stage":"checkpoint","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:40:00Z","checkpoint_op":"complete"}
-{"event":"cleanup","stage":"cleanup","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:45:00Z","cleanup":["worktree removed (exit 0)","branch deleted (exit 0)"]}
+{"event":"cleanup","stage":"cleanup","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:45:00Z","cleanup":["tool.monitor pr-watch stopped (exit 0)","worktree /work/m0: removed last, confirmation /evidence/w-u1-20261027-1600/receipts/cleanup-worktree-0123456.txt"]}
 {"event":"resume","stage":"resume","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:50:00Z","note":"all stages valid"}
 ```
 
