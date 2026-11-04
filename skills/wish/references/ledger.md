@@ -7,7 +7,7 @@ library enforces it, and `test/schema.test.js` validates every machine example i
 code cannot drift.
 
 `references/ledger.md` and `scripts/lib/schema.mjs` live under `skills/wish/`; `test/schema.test.js` is the
-repository test suite at the repo root, together with the existing `test/wish.test.js` (design §3 tree).
+repository test suite at the repo root, together with the `test/wish-*.test.js` files (design §3 tree).
 
 Sources cited per field:
 
