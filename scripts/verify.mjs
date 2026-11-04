@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
 import { homedir } from "node:os";
+import { pathToFileURL } from "node:url";
 import { dirname, join, relative, resolve, sep } from "node:path";
 
 export const HELP_TIMEOUT_MS = 20_000;
@@ -113,10 +114,11 @@ async function main() {
   const messages = async (runner, text, options = {}) =>
     (await runner.emitBeforeAgentStart(text, undefined, "", {}, options))?.messages ?? [];
   const directiveMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-ultrawork:directive");
+  const { stageSkillsText } = await import(pathToFileURL(join(root, "extensions/wish.js")).href);
   const stageSkillsMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-wish:stage-skills");
   const stageSkillsMessage = {
     customType: "omo-wish:stage-skills",
-    content: "This /wish run stages its work through two omo skills: read the `mass-ulw` skill before the collect, build and fix stages (each is one mass-ulw run) and the `ulw-loop` skill before the goal and checkpoint stages (goals, evidence, checkpoints). Load each with the read tool when its first stage begins; the session's skill list carries their SKILL.md paths.",
+    content: stageSkillsText,
     display: false,
   };
 

@@ -1,7 +1,7 @@
 const keyword = /\b(?:ultrawork|ulw)\b/i;
 const armingSymbol = Symbol.for("omo.ultrawork.arming");
-const stageSkillsType = "omo-wish:stage-skills";
-const stageSkillsText = "This /wish run stages its work through two omo skills: read the `mass-ulw` skill before the collect, build and fix stages (each is one mass-ulw run) and the `ulw-loop` skill before the goal and checkpoint stages (goals, evidence, checkpoints). Load each with the read tool when its first stage begins; the session's skill list carries their SKILL.md paths.";
+export const stageSkillsType = "omo-wish:stage-skills";
+export const stageSkillsText = "This /wish run stages its work through two omo skills: read the `mass-ulw` skill before the collect, build and fix stages (each is one mass-ulw run) and the `ulw-loop` skill before the goal and checkpoint stages (goals, evidence, checkpoints). Load each with the read tool when its first stage begins, unless it is already loaded in this session; if it is already loaded, ignore this note and do not restate it. The session's skill list carries their SKILL.md paths.";
 const wishMarker = "Read and follow the `wish` skill";
 const stageSkillsKeyword = /\b(?:mass-ulw|ulw-loop)\b/i;
 const stageSkillsSessions = new Set();
@@ -36,17 +36,11 @@ export default function (pi) {
     return { message: { customType: stageSkillsType, content: stageSkillsText, display: false } };
   }, { previewSafe: true });
 
-  pi.on("context", (event, ctx) => {
+  // The host's compaction summarizes the pointer away; restore it once, persisted, never as a trailing message.
+  pi.on("session_compact", (event, ctx) => {
+    if (event.accepted !== true) return;
     const sessionId = ctx.sessionManager?.getSessionId();
     if (typeof sessionId !== "string" || sessionId.length === 0 || !stageSkillsSessions.has(sessionId)) return;
-    if (event.messages.some(message => message.customType === stageSkillsType)) return;
-    return {
-      messages: [...event.messages, {
-        role: "custom",
-        customType: stageSkillsType,
-        content: stageSkillsText,
-        display: false,
-      }],
-    };
+    pi.sendMessage({ customType: stageSkillsType, content: stageSkillsText, display: false }, { triggerTurn: false });
   });
 }
