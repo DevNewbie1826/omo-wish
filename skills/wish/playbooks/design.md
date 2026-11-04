@@ -46,7 +46,7 @@ light/dark, plus the scroll end and each interaction frame. `wish init` writes t
 - [ ] 17. MERGE: after `APPROVED` **and** the visual-qa completion gate (every page's fresh captures passed an independent reviewer, `defect` count 0, taste only), merge and append `merge` [omo: session] [receipt: `merge` event]
 - [ ] 18. POST-MERGE: `omo-native-qa-executor` runs what the tree comparison calls for (`../SKILL.md`, the `post_merge` row) [omo: `omo-native-qa-executor`] [receipt: `post_merge` event + `receipts/post_merge-<tree7>.*`]
 - [ ] 19. CHECKPOINT: ulw-loop `checkpoint`, then `omo-native-gate-reviewer` on the evidence record [omo: `ulw-loop` + `omo-native-gate-reviewer`] [receipt: `checkpoint` event, `checkpoint_op: complete`]
-- [ ] 20. CLEANUP: `memory` for the design classes caught, teardown of captures, browser contexts and worktrees, then append `cleanup` [omo: session + `memory`] [receipt: `cleanup` event with ≥1 teardown receipt]
+- [ ] 20. CLEANUP: `memory` for the design classes caught, then (1) tear down captures and browser contexts, with exit codes; (2) append `cleanup` whose `cleanup[]` lists those teardowns plus `worktree <path>: removed last, confirmation $ER/receipts/cleanup-worktree-<head7>.txt`, because the CLI reads the plan from inside the worktree; (3) from the repository root run `git worktree remove` and `git branch -D` as the last action and write `git worktree list` into that file [omo: session + `memory`] [receipt: `cleanup` event with ≥1 teardown receipt]
 
 ## What the design type enforces
 
