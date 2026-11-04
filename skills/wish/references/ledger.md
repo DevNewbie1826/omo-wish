@@ -555,10 +555,10 @@ The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, ar
 | --- | --- | --- | --- | --- |
 | `init` | `--run-id <w-slug-yyyymmdd-hhmm> --type <type> --tier <S\|M\|L> --plan <path> [--program <id>] [--unit <id>] [--worktree <path>]` | create `<ER>`, write front matter, append `intake` | 0 ok; 2 usage; 3 a different run owns the plan, or a different run owns the ledger (a conflicting `--run-id`; the message names the ledger's run) | D §2.8, A §F |
 | `status` | `[--json] [--progress] [--head <sha>]` | replay the ledger, re-judge receipts, print §11 | 0 ok, also when serving planless from ledger identity; 2 usage; 3 state unreadable or the head contradicts `frozen_head` (unreadable names the fail-closed identity case; the message contains `run_id`) | D §4 |
-| `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it; a planless append succeeds for a run whose plan file is gone (a `round` append still rereads the plan and fails closed) | 0 ok; 1 schema failure; 2 usage; 3 out of stage order, or the planless missing-identity refusal | U, D §2.8 |
+| `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it; planless append includes `round`, using the ledger freeze when the plan file is gone | 0 ok; 1 schema failure; 2 usage; 3 out of stage order, or the planless missing-identity refusal | U, D §2.8 |
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
 | `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <absolute path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing §4.2 gap receipt is bound automatically or with the flag, which must name an absolute receipt path (a relative path is refused) | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
-| `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `remove --id <id>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or add, remove, or resolve a question | 0 ok; 1 a prior blocker still reproduces, or the gate is not open; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
+| `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `remove --id <id>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table (also planless), or add, remove, or resolve a question | 0 ok; 1 a prior blocker still reproduces, or the gate is not open; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
 | `freeze` | `[--head <sha>] [--pr <n>]` / `--check [--head <sha>]` | record `head`, `tree`, `pr`; `--check` proves nothing landed after it | 0 ok; 1 dirty tree, pending commit or verdict mismatch; 2 usage; 3 head moved | D §2.6 |
 | `pr-body` | `[--pr <n>] [--out <path>]` | build the body, including the §4.2 before/after table | 0 ok; 2 usage; 3 freeze or a before/after pair is missing | D §2.2, A §B6 |
 | `switch` | `record --round <n> --kind <kind> --premise <text> --new-approach <text>` | record the approach switch (§9.4) | 0 ok; 1 schema failure; 2 usage; 3 no REVISE at that round | A §C.6 |
@@ -566,9 +566,10 @@ The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, ar
 
 Exit codes are fixed by D §4: **0** ok, **1** check failed, **2** usage, **3** state mismatch. A usage
 mistake never exits 1 and a schema failure never exits 3, so the session can branch without parsing text.
-`--help` exits 0 on every verb and prints the usage above. Planless service is `status` and `ledger append`
-only; every remaining verb still requires a readable plan (`init` writes one). A `round` append still
-rereads the plan and fails closed.
+`--help` exits 0 on every verb and prints the usage above. Planless service covers `status`, `ledger append`
+(including `round`), `gate --round` dispatch, and `freeze --check`. A round append uses the plan's
+frozen head when the plan exists and the latest ledger freeze otherwise. `freeze` and `pr-body` still
+require a readable plan to write front matter and render the plan body respectively (`init` writes one).
 
 ### 14.1 `$SKILL/scripts/pr-watch.mjs`
 
