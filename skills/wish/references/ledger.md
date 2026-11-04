@@ -327,7 +327,9 @@ All stages not marked conditional always apply. Side events (`reuse`, `gate`, `v
 | `head`, `tree` | §2 values when the event reports on a state | D §2.8, U |
 | `ended_at`, `duration_s` | ISO timestamp, seconds ≥ 0 | D §2.10 |
 | `commands`, `artifact`, `cleanup`, `attempt`, `checkpoint_opened_at`, `adversarial_classes` | U's field set | U |
-| `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task`, `prior_repeat` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
+| `category` \| `agent`, `model_family`, `lane`, `tier`, `verdict`, `round`, `reuse`, `gate_id`, `gate_status`, `checkpoint_op`, `pr`, `sha`, `merged_at`, `note`, `primary`, `secondary`, `facts`, `progress`, `gap_id`, `gap_status`, `kind`, `premise`, `new_approach`, `rules_total`, `task`, `prior_repeat`; intake only: `run_id`, `worktree`, `branch` | optional, validated when present | D §2.2/§2.10, A §C.4/§C.6 |
+
+`intake` gains three optional identity keys, validated when present and unknown on every other event: `run_id` (RUN_ID format `w-<slug>-<yyyymmdd>-<hhmm>`), `worktree` (non-empty) and `branch` (non-empty). They are written by `init` only: `run_id` always from `--run-id`, `worktree` and `branch` only when those flags are given. A plain `ledger append --event intake` does not backfill them from the plan.
 
 ### 9.3 Extras per event
 
@@ -337,7 +339,7 @@ recommendations are arrays of non-empty strings. Optional fields do not make a s
 
 | Event | Extra required fields | Source |
 | --- | --- | --- |
-| `intake` | `tier`, `facts` (non-empty) | D §2.2/§2.3 |
+| `intake` | `tier`, `facts` (non-empty); optional `run_id` (RUN_ID format `w-<slug>-<yyyymmdd>-<hhmm>`, validated when present), `worktree` (non-empty), `branch` (non-empty), written by `init` only | D §2.2/§2.3 |
 | `collect` | optional `sources`, `elements`, `report` (collect.md) | v3 stage map |
 | `define` | optional `round` (0 initially), `ideal`, `gaps`, `report` (define.md) | v3 stage map |
 | `before` | `gap_id`, `artifact` (the before receipt) | A §B3 |
@@ -463,7 +465,7 @@ before_receipts`; `rounds` gains `type, unit, program_id, switch_count, switch_k
 | --- | --- | --- | --- |
 | `run_id` | `w-<slug>-<yyyymmdd>-<hhmm>` | run identity (M0 addition to the D §4 / A §C.4 key list; the format is D §2.2's) | D §2.2 |
 | `stage` | §9.1 name or `done` | furthest stage whose required receipts are valid | D §4 |
-| `type`, `tier` | work type, `S`/`M`/`L` | from the plan | A §C.4, D §2.3 |
+| `type`, `tier` | work type, `S`/`M`/`L` | from the plan, or from the intake when the plan file is gone | A §C.4, D §2.3 |
 | `head`, `tree` | §2 or `null` | the state described | D §4 |
 | `round` | integer ≥ 0 | current ultrabrain round | D §4 |
 | `valid_receipts`, `stale_receipts` | receipt filenames | reuse verdict per receipt | D §4/§2.7 |
@@ -472,6 +474,8 @@ before_receipts`; `rounds` gains `type, unit, program_id, switch_count, switch_k
 | `units` | `[{id, stage, pr, round, switches}]`, where `stage` is a §9.1 name or `done` | per-unit state (program mode) | A §C.4 |
 | `wave` | `{k, n}` | current wave of a program | A §B5/§C.4 |
 | `progress` | §11 values | the counters the PROGRESS line prints | A §B7/§C.4 |
+
+The evidence root is bound by `--root` or `WISH_EVIDENCE_ROOT`, the ledger lives at `<ER>/ledger.jsonl`, and when the plan file is gone the run's identity comes from the intake of the unit whose plan equals the resolved path. When the plan file exists, the front matter stays the authority, the intake copy is not read, and the two copies are never compared. A ledger whose intake lacks `run_id` is not served this way: the read fails closed and the message names `run_id`.
 
 `status --progress` prints one machine-read line (A §B7):
 
@@ -544,9 +548,9 @@ The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, ar
 
 | Verb | Arguments | Effect | Exit codes | Source |
 | --- | --- | --- | --- | --- |
-| `init` | `--run-id <w-slug-yyyymmdd-hhmm> --type <type> --tier <S\|M\|L> --plan <path> [--program <id>] [--unit <id>] [--worktree <path>]` | create `<ER>`, write front matter, append `intake` | 0 ok; 2 usage; 3 a different run owns the plan | D §2.8, A §F |
-| `status` | `[--json] [--progress] [--head <sha>]` | replay the ledger, re-judge receipts, print §11 | 0 ok; 2 usage; 3 state unreadable or the head contradicts `frozen_head` | D §4 |
-| `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it | 0 ok; 1 schema failure; 2 usage; 3 out of stage order | U, D §2.8 |
+| `init` | `--run-id <w-slug-yyyymmdd-hhmm> --type <type> --tier <S\|M\|L> --plan <path> [--program <id>] [--unit <id>] [--worktree <path>]` | create `<ER>`, write front matter, append `intake` | 0 ok; 2 usage; 3 a different run owns the plan, or a different run owns the ledger (a conflicting `--run-id`; the message names the ledger's run) | D §2.8, A §F |
+| `status` | `[--json] [--progress] [--head <sha>]` | replay the ledger, re-judge receipts, print §11 | 0 ok, also when serving planless from ledger identity; 2 usage; 3 state unreadable or the head contradicts `frozen_head` (unreadable names the fail-closed identity case; the message contains `run_id`) | D §4 |
+| `ledger` | `append --event <name> --json <file\|->` | validate one event (§9) and append it; a planless append succeeds for a run whose plan file is gone (a `round` append still rereads the plan and fails closed) | 0 ok; 1 schema failure; 2 usage; 3 out of stage order, or the planless missing-identity refusal | U, D §2.8 |
 | `findings` | `add --tsv <file\|->`; `set --id <id> --status <status> [--fixed-head <sha>] [--blocking <0\|1>]` | append or transition findings | 0 ok; 1 schema or transition failure; 2 usage; 3 unknown id | D §2.8 |
 | `gaps` | `add --tsv <file\|->`; `set --id <id> --status <status> [--pr <n>] [--fixed-head <sha>] [--before-artifact <absolute path>]`; `list [--json]` | maintain the register; a non-open defect row needs a before capture, and the existing §4.2 gap receipt is bound automatically or with the flag, which must name an absolute receipt path (a relative path is refused) | 0 ok; 1 schema failure; 2 usage; 3 unknown id or illegal transition | A §B2/§F |
 | `gate` | `[--round <n>]` / `add --id <id> --question <text> --options <a\|b> --default <a>` / `remove --id <id>` / `resolve --id <id> --answer <text>` | run the dispatch gate's reproduction table, or add, remove, or resolve a question | 0 ok; 1 a prior blocker still reproduces, or the gate is not open; 2 usage; 3 missing receipt, a frozen head the worktree has moved past, or unknown gate | D §2.6, P |
@@ -557,7 +561,9 @@ The CLI implements one entry point; `scripts/lib/schema.mjs` fixes the verbs, ar
 
 Exit codes are fixed by D §4: **0** ok, **1** check failed, **2** usage, **3** state mismatch. A usage
 mistake never exits 1 and a schema failure never exits 3, so the session can branch without parsing text.
-`--help` exits 0 on every verb and prints the usage above.
+`--help` exits 0 on every verb and prints the usage above. Planless service is `status` and `ledger append`
+only; every remaining verb still requires a readable plan (`init` writes one). A `round` append still
+rereads the plan and fails closed.
 
 ### 14.1 `$SKILL/scripts/pr-watch.mjs`
 
@@ -713,7 +719,7 @@ L2 | Destructive actions are never the Enter default | visual-qa B2 (HIG) | plat
 The ledger, including a third-round REVISE that switches approach and a fourth-round APPROVED:
 
 ```jsonl wish:ledger
-{"event":"intake","stage":"intake","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:00:00Z","tier":"M","facts":["new module: the M0 contract","three files touched"]}
+{"event":"intake","stage":"intake","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","run_id":"w-wish-demo-20261027-1610","worktree":"/work/m0","branch":"wish/m0","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:00:00Z","tier":"M","facts":["new module: the M0 contract","three files touched"]}
 {"event":"collect","stage":"collect","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:01:00Z","sources":2,"elements":9,"report":"/evidence/w-u1-20261027-1600/collect.md"}
 {"event":"define","stage":"define","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:02:00Z","round":0,"ideal":3,"gaps":1,"report":"/evidence/w-u1-20261027-1600/define.md"}
 {"event":"before","stage":"before","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T16:04:00Z","gap_id":"G1","artifact":"/evidence/w-u1-20261027-1600/receipts/before-G1-89abcde.txt"}

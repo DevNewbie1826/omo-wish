@@ -1492,8 +1492,11 @@ function unitStatus(context) {
 
 // §11. 'head'/'tree' are what the caller observed in the unit's worktree; the
 // derivation itself is pure, so a test can pin it without a repository.
-export function computeStatus({ root, planPath, head = null, tree = null }) {
-  const plan = readPlan(planPath);
+export function computeStatus({ root, planPath, head = null, tree = null, plan: planGiven = null }) {
+  // A planless status derives the run's identity from the ledger (§9.3) and
+  // passes it here; without it the plan file is the only authority, exactly as
+  // before this seam existed.
+  const plan = planGiven ?? readPlan(planPath);
   const events = readLedger(root);
   const sequence = pendingSwitchErrors(events);
   if (sequence.length > 0) throw stateMismatch("the ledger is not a valid sequence", sequence);

@@ -288,7 +288,17 @@ const LEDGER_COMMON_SPEC = {
   unit: T.str, program_id: T.nullable(T.str), plan: T.str, session_id: T.str, started_at: T.iso,
 };
 const LEDGER_EVENT_EXTRAS = {
-  intake: { tier: T.enumOf(TIERS), facts: T.arr(T.str, 1) },
+  intake: {
+    tier: T.enumOf(TIERS), facts: T.arr(T.str, 1),
+    // The identity keys a planless read derives the run from (§9.3): optional on
+    // intake, rejected as unknown on every other event. run_id is the run's own
+    // w-<slug>-<yyyymmdd>-<hhmm>, so it faces the same shape as the front matter.
+    run_id: T.opt((v, p, e) => {
+      if (!isStr(v) || !RUN_ID.test(v)) fail(e, p, "expected w-<slug>-<yyyymmdd>-<hhmm>");
+    }),
+    worktree: T.opt(T.str),
+    branch: T.opt(T.str),
+  },
   collect: { sources: T.opt(T.int(0)), elements: T.opt(T.int(0)), report: T.opt(T.str) },
   define: { round: T.opt(T.int(0)), ideal: T.opt(T.int(0)), gaps: T.opt(T.int(0)), report: T.opt(T.str) },
   before: { gap_id: T.gap, artifact: T.str },
@@ -497,7 +507,11 @@ export function validateLedgerEvent(value) {
   const errors = [];
   T.obj(LEDGER_COMMON_SPEC)(value, "event", errors);
   if (!isObj(value)) return { ok: false, errors };
-  rejectUnknown(value, LEDGER_KEYS, "event", errors);
+  const extras = LEDGER_EVENT_EXTRAS[value.event] ?? {};
+  // The intake-only identity keys reach the allowed set through this event's own
+  // extras: they are not global ledger keys, so every other event still rejects
+  // them as unknown fields.
+  rejectUnknown(value, [...LEDGER_KEYS, ...Object.keys(extras)], "event", errors);
   Object.entries(LEDGER_OPTIONAL_SPEC).forEach(([key, fn]) => {
     if (key in value && value[key] !== undefined) fn(value[key], `event.${key}`, errors);
   });
@@ -508,7 +522,6 @@ export function validateLedgerEvent(value) {
   if (value.type === "mixed" && !(PRIMARY_TYPES.includes(value.primary) && PRIMARY_TYPES.includes(value.secondary))) {
     fail(errors, "event.primary", "a mixed event names a primary and a secondary type");
   }
-  const extras = LEDGER_EVENT_EXTRAS[value.event] ?? {};
   Object.entries(extras).forEach(([key, fn]) => {
     if (!(key in value)) {
       if (!fn.optional) fail(errors, `event.${key}`, "missing");
