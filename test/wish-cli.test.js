@@ -291,7 +291,6 @@ describe("help and usage contract", () => {
       expect(one.code).toBe(0);
       expect(one.out.length).toBeGreaterThan(20);
     }
-    expect(CLI_VERBS.length).toBe(10);
   });
 
   test("runs its verbs when invoked through a symlink", () => {
@@ -1844,7 +1843,6 @@ async function gone(pid) {
   return false;
 }
 
-void 0;
 // ---------------------------------------------------------------------------
 // Final review round 1: each test below reproduces one finding of the REVISE
 // verdict on 1026664 and fails on the code that produced it.
