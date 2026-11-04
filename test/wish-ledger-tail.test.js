@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { spawn, spawnSync } from "node:child_process";
-import { appendFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -115,9 +115,17 @@ test("valid unterminated event is retained and the next append gets its own line
 
 test("terminated malformed middle line remains a state mismatch", () => {
   const state = scene();
-  appendFileSync(state.ledger, `not json\n${JSON.stringify({ event: "later" })}\n`);
-  expect(status(state).status).toBe(3);
-  expect(append(state, collect).status).toBe(3);
+  const before = readFileSync(state.ledger, "utf8");
+  const valid = append(state, collect);
+  expect(valid.status).toBe(0);
+  expect(status(state).status).toBe(0);
+  writeFileSync(state.ledger, `${before}not json\n${valid.stdout}`);
+  const report = status(state);
+  expect(report.status).toBe(3);
+  expect(report.stderr).toContain("not a JSON event");
+  const next = append(state, define);
+  expect(next.status).toBe(3);
+  expect(next.stderr).toContain("not a JSON event");
 });
 
 test("short append returns state mismatch and rolls back its bytes", () => {
