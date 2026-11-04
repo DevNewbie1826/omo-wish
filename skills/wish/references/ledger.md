@@ -1,13 +1,13 @@
 # wish v3 — state, receipt, and interface contract
 
 This file is the single interface contract between the modules. The CLI (`wish.mjs`), the plan linter
-(`check-plan.mjs`), the PR watcher (`pr-watch.mjs`) and the internal `lib/` modules import every shape and
-value set from `scripts/lib/schema.mjs`; none of them re-declares one. The prose states the contract, the
+(`check-plan.mjs`) and the internal `lib/` modules import every shape and
+value set from `scripts/lib/schema.mjs`; none of them re-declares one. The PR watcher (`pr-watch.mjs`) is standalone and imports none of it. The prose states the contract, the
 library enforces it, and `test/schema.test.js` validates every machine example in this file, so prose and
 code cannot drift.
 
 `references/ledger.md` and `scripts/lib/schema.mjs` live under `skills/wish/`; `test/schema.test.js` is the
-repository test suite at the repo root, together with the existing `test/wish.test.js` (design §3 tree).
+repository test suite at the repo root, together with the `test/wish-*.test.js` files (design §3 tree).
 
 Sources cited per field:
 
