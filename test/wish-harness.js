@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 export const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const senpi = process.env.SENPI_ROOT ?? join(homedir(), ".bun/install/global/node_modules/@code-yeongyu/senpi");
 export const { expandPromptTemplate } = await import(`${senpi}/dist/core/prompt-templates.js`);
+export const { convertToLlm } = await import(`${senpi}/dist/core/messages.js`);
 const { DefaultResourceLoader } = await import(`${senpi}/dist/core/resource-loader.js`);
 const { SettingsManager } = await import(`${senpi}/dist/core/settings-manager.js`);
 const { loadExtensions } = await import(`${senpi}/dist/core/extensions/loader.js`);

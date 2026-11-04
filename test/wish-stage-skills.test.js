@@ -1,6 +1,5 @@
 import { expect, test } from "bun:test";
-import { convertToLlm } from "/home/mirage/.bun/install/global/node_modules/@code-yeongyu/senpi/dist/core/messages.js";
-import { repo, expandPromptTemplate, resources, runner, messages, stageSkillsMessage } from "./wish-harness.js";
+import { repo, convertToLlm, expandPromptTemplate, resources, runner, messages, stageSkillsMessage } from "./wish-harness.js";
 
 test("stage skills inject per wish command but not for ordinary mass-ulw text", async () => {
   const { templates } = await resources();
