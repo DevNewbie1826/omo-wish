@@ -298,10 +298,60 @@ function identityOf(plan, events) {
   return identityType(plan.wish.type, mixedLabelsOf(plan, events).primary);
 }
 
-function planFor(root, parsed) {
+function planFor(root, parsed, { planless = false } = {}) {
   const events = readLedger(root);
   const planPath = resolvePlanPath(events, parsed.get("--plan"));
+  // Planless mode (§9.3) serves exactly two verbs, `ledger append` and `status`,
+  // and only after resolvePlanPath has resolved the unit's plan path: when that
+  // file no longer exists the ledger's own intake is the identity, never a
+  // guess. When the plan exists the planful path runs first and every refusal
+  // fires exactly as before (INV1).
+  if (planless && !existsSync(planPath)) {
+    return { plan: planFromLedger(events, planPath), events, planPath };
+  }
   return { plan: readPlan(planPath), events, planPath };
+}
+
+// The ledger-derived identity for a planless read (§9.3): the unit is the intake
+// whose plan equals the resolved path. run_id is never guessed — an intake that
+// predates the identity keys fails closed naming run_id (the pre-change ledger
+// limit), and so does a resolved path no intake claims.
+function planFromLedger(events, planPath) {
+  const intakes = events.filter((event) => event?.event === "intake"
+    && typeof event.plan === "string" && resolve(event.plan) === planPath);
+  if (intakes.length === 0) {
+    throw stateMismatch(`no intake names the plan ${planPath}: the unit cannot be identified without the plan file`);
+  }
+  const named = intakes.filter((event) => typeof event.run_id === "string" && event.run_id !== "");
+  const units = new Set(intakes.map((event) => event.unit));
+  const runIds = new Set(named.map((event) => event.run_id));
+  if (units.size > 1 || runIds.size > 1) {
+    throw stateMismatch(`the ledger records several identities for the plan ${planPath}: the unit is ambiguous without the plan file`);
+  }
+  const intake = named[named.length - 1];
+  if (!intake) {
+    throw stateMismatch(`the intake for ${planPath} records no run_id: a ledger written before planless identity needs its plan file`);
+  }
+  const unit = intake.unit;
+  const latest = (name) => [...events].reverse().find((event) => event.unit === unit && event.event === name);
+  const prSource = [...events].reverse().find((event) => event.unit === unit
+    && ((event.event === "pr_open" && Number.isInteger(event.pr)) || (event.event === "freeze" && Number.isInteger(event.pr))));
+  return {
+    wish: {
+      run_id: intake.run_id,
+      tier: intake.tier,
+      type: intake.type,
+      unit,
+      program_id: intake.program_id ?? null,
+      worktree: intake.worktree ?? null,
+      branch: intake.branch ?? null,
+      pr: prSource?.pr ?? null,
+      frozen_head: latest("freeze")?.head ?? null,
+      round: latest("round")?.round ?? 0,
+    },
+    body: "",
+    path: planPath,
+  };
 }
 
 // -------------------------------------------------------------------- verbs
@@ -341,6 +391,13 @@ function verbInit(parsed, root) {
     }
     if (existing && existing.wish.unit !== unit) {
       throw stateMismatch(`the plan belongs to unit ${existing.wish.unit}, not ${unit}`);
+    }
+    // INV5: the ledger's recorded intake binds the unit to its run, so a re-init
+    // with a different --run-id must not rebind a ledger whose plan file is gone.
+    const ledgerEvents = readLedger(root);
+    const recorded = ledgerEvents.find((event) => event.event === "intake" && event.unit === unit);
+    if (recorded && typeof recorded.run_id === "string" && recorded.run_id !== runId) {
+      throw stateMismatch(`the ledger belongs to another run: ${recorded.run_id}`);
     }
     if (existing) {
       // A second init for the same run is a no-op: rewriting the front matter from
@@ -383,6 +440,12 @@ function verbInit(parsed, root) {
       started_at: nowIso(),
       tier,
       facts,
+      // §9.3: identity is written by init only — run_id always, worktree and
+      // branch when the caller named them. A plain `ledger append --event
+      // intake` carries identity only when the caller supplies it (no backfill).
+      run_id: runId,
+      ...(parsed.has("--worktree") ? { worktree } : {}),
+      ...(parsed.has("--branch") ? { branch } : {}),
       ...(type === "mixed" ? { primary, secondary } : {}),
     }, { plan: planPath, sessionId: sessionId(parsed) });
     const result = { run_id: runId, root: paths.root, plan: planPath, intake: event, note: "initialized" };
@@ -396,7 +459,7 @@ function printInitResult(result) {
 }
 
 function verbStatus(parsed, root) {
-  const { plan, planPath, events } = planFor(root, parsed);
+  const { plan, planPath, events } = planFor(root, parsed, { planless: true });
   const identity = identityOf(plan, events);
   const given = headArg(parsed.get("--head"), identity);
   const observed = identity === "research" ? { head: null, tree: null } : observeWorktree(plan.wish.worktree);
@@ -417,7 +480,7 @@ function verbStatus(parsed, root) {
     }
   }
 
-  const computed = computeStatus({ root, planPath, head: head ?? null, tree: tree ?? null });
+  const computed = computeStatus({ root, planPath, plan, head: head ?? null, tree: tree ?? null });
   const { status, unitStates } = computed;
   const pr = (unitStates.find((entry) => entry.id === (computed.plan.wish.unit ?? "u1")) ?? unitStates[0])?.pr ?? null;
   if (parsed.has("--progress")) {
@@ -469,7 +532,7 @@ function verbLedger(parsed, root) {
   // The body's value is attacker-controlled input; report the disagreement, not it.
   // Neither the flag value nor the body's is repeated: a caller may have pasted a token.
   if (input.event !== name) throw usage("--event disagrees with the event body's event field");
-  const { plan, planPath } = planFor(root, parsed);
+  const { plan, planPath } = planFor(root, parsed, { planless: true });
   const context = unitContext(plan);
   const event = {
     type: input.type ?? context.type,

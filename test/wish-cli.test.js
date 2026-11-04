@@ -1346,12 +1346,170 @@ describe("boundary inputs", () => {
     expect(table).toContain("src/\uD55C\uAE00.mjs:12");
   });
 
-  test("a missing plan file is a state mismatch, never a silent empty status", () => {
+  test("a missing plan file no longer blocks status: the ledger answers", () => {
     const state = scene();
     rmSync(state.plan);
     const result = status(state);
+    expect(result.code).toBe(0);
+    expect(result.json.run_id).toBe(state.runId);
+    expect(result.json.stage).toBe("intake");
+    expect(validateStatusJson(result.json).errors).toEqual([]);
+  });
+});
+
+// A root whose plan file is gone serves `ledger append` and `status` from the
+// ledger's own intake identity (ledger.md §9.3): run_id is never guessed, and
+// every other verb still refuses. Each test here is one QA row or one INV row
+// of the planless contract.
+function planlessRoot(box, plans) {
+  const root = box.root;
+  mkdirSync(root, { recursive: true });
+  const line = ({ unit, runId, plan }) => JSON.stringify({
+    event: "intake", type: "code", unit, program_id: null, plan,
+    session_id: "senpi:wish-cli", started_at: "2026-11-04T07:00:00Z", tier: "S",
+    facts: ["planless identity"], run_id: runId, worktree: join(box.dir, "gone"),
+    branch: "probe", stage: "intake",
+  });
+  writeFileSync(join(root, "ledger.jsonl"), `${plans.map(line).join("\n")}\n`);
+  return root;
+}
+
+describe("planless identity (the plan file is gone)", () => {
+  test("appends the cleanup event after the plan file is gone", () => {
+    const state = scene();
+    rmSync(state.repo.dir, { recursive: true, force: true });
+    rmSync(state.plan, { force: true });
+    const result = append(state, { event: "cleanup", cleanup: ["worktree and plan removed (test)"] });
+    expect(result.code).toBe(0);
+    const events = ledgerEvents(state);
+    expect(events.length).toBe(2);
+    expect(events[events.length - 1]).toMatchObject({
+      event: "cleanup", stage: "cleanup", unit: "u1", plan: state.plan,
+      cleanup: ["worktree and plan removed (test)"],
+    });
+  });
+
+  test("reports status from the ledger after the plan file is gone", () => {
+    const state = scene();
+    rmSync(state.repo.dir, { recursive: true, force: true });
+    rmSync(state.plan, { force: true });
+    expect(append(state, { event: "cleanup", cleanup: ["worktree and plan removed (test)"] }).code).toBe(0);
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.run_id).toBe(state.runId);
+    expect(reported.json.stage).toBe("done");
+    expect(reported.json.type).toBe("code");
+    expect(reported.json.tier).toBe("M");
+    expect(Array.isArray(reported.json.blocking)).toBe(true);
+    expect(typeof reported.json.next).toBe("string");
+    expect(validateStatusJson(reported.json).errors).toEqual([]);
+  });
+
+  test("intake records run_id, worktree and branch", () => {
+    const state = scene();
+    const events = ledgerEvents(state);
+    expect(events.length).toBe(1);
+    expect(events[0]).toMatchObject({
+      event: "intake", run_id: state.runId, worktree: state.repo.dir, branch: "fixture",
+    });
+  });
+
+  test("fails closed when intake lacks run_id and the plan file is gone", () => {
+    const state = scene();
+    const ledger = join(state.root, "ledger.jsonl");
+    const lines = readFileSync(ledger, "utf8").split("\n").filter((line) => line.trim() !== "");
+    const intake = JSON.parse(lines[0]);
+    // A ledger written before planless identity carries none of the identity keys.
+    delete intake.run_id;
+    delete intake.worktree;
+    delete intake.branch;
+    lines[0] = JSON.stringify(intake);
+    writeFileSync(ledger, `${lines.join("\n")}\n`);
+    rmSync(state.repo.dir, { recursive: true, force: true });
+    rmSync(state.plan, { force: true });
+    const reported = status(state);
+    expect(reported.code).toBe(3);
+    expect(reported.err).toContain("run_id");
+    const appended = append(state, { event: "cleanup", cleanup: ["worktree and plan removed (test)"] });
+    expect(appended.code).toBe(3);
+    expect(appended.err).toContain("run_id");
+    expect(ledgerEvents(state).length).toBe(1);
+  });
+
+  test("refuses out of stage order after the plan file is gone", () => {
+    const state = scene();
+    rmSync(state.repo.dir, { recursive: true, force: true });
+    rmSync(state.plan, { force: true });
+    const result = append(state, {
+      event: "collect", unit: "u9", sources: 1, elements: 1,
+      report: join(state.root, "collect.md"),
+    });
     expect(result.code).toBe(3);
-    expect(result.err).toContain("does not exist");
+    expect(result.err).toContain("out of stage order");
+    expect(ledgerEvents(state).length).toBe(1);
+  });
+
+  test("INV1: the plan file stays the authority and its refusals fire while it exists", () => {
+    const state = scene();
+    const ledger = join(state.root, "ledger.jsonl");
+    const lines = readFileSync(ledger, "utf8").split("\n").filter((line) => line.trim() !== "");
+    const intake = JSON.parse(lines[0]);
+    intake.run_id = "w-tamper-20261104-0000";
+    lines[0] = JSON.stringify(intake);
+    writeFileSync(ledger, `${lines.join("\n")}\n`);
+    // While the plan exists the front matter is the authority: the intake copy is
+    // not read and the two are never compared.
+    const reported = status(state);
+    expect(reported.code).toBe(0);
+    expect(reported.json.run_id).toBe(state.runId);
+    // A planful refusal still fires: malformed front matter is a state mismatch.
+    writeFileSync(state.plan, "no front matter at all\n");
+    const refused = status(state);
+    expect(refused.code).toBe(3);
+    expect(refused.err).toContain("front matter");
+  });
+
+  test("asks for --plan when two planless intakes name different plans", () => {
+    const box = sandbox();
+    const p1 = join(box.dir, "gone-a", ".omo", "plans", "p1.md");
+    const p2 = join(box.dir, "gone-b", ".omo", "plans", "p2.md");
+    const root = planlessRoot(box, [
+      { unit: "u1", runId: "w-amb1-20261104-0001", plan: p1 },
+      { unit: "u2", runId: "w-amb2-20261104-0002", plan: p2 },
+    ]);
+    const bothGone = status({ root });
+    expect(bothGone.code).toBe(2);
+    expect(bothGone.err).toContain("names 2 plans");
+    const first = status({ root }, ["--plan", p1]);
+    expect(first.code).toBe(0);
+    expect(first.json.run_id).toBe("w-amb1-20261104-0001");
+    const second = status({ root }, ["--plan", p2]);
+    expect(second.code).toBe(0);
+    expect(second.json.run_id).toBe("w-amb2-20261104-0002");
+  });
+
+  test("an unknown --plan path is a state mismatch once no intake names it", () => {
+    const box = sandbox();
+    const p1 = join(box.dir, "gone-a", ".omo", "plans", "p1.md");
+    const root = planlessRoot(box, [{ unit: "u1", runId: "w-one-20261104-0003", plan: p1 }]);
+    const unknown = join(box.dir, "gone-z", ".omo", "plans", "unknown.md");
+    const result = status({ root }, ["--plan", unknown]);
+    expect(result.code).toBe(3);
+    expect(result.err).toContain("no intake names the plan");
+  });
+
+  test("INV5: a re-init with another run id cannot rebind a planless ledger", () => {
+    const state = scene();
+    rmSync(state.plan, { force: true });
+    const again = cli([
+      "init", "--run-id", "w-other-20261027-1601", "--type", "code", "--tier", "M", "--plan", state.plan,
+      "--root", state.root, "--unit", "u1", "--worktree", state.repo.dir,
+      "--branch", "fixture", "--fact", "again",
+    ]);
+    expect(again.code).toBe(3);
+    expect(again.err).toContain(`the ledger belongs to another run: ${state.runId}`);
+    expect(existsSync(state.plan)).toBe(false);
+    expect(ledgerEvents(state).length).toBe(1);
   });
 });
 
