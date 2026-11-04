@@ -298,17 +298,18 @@ function identityOf(plan, events) {
   return identityType(plan.wish.type, mixedLabelsOf(plan, events).primary);
 }
 
-function planFor(root, parsed, { planless = false } = {}) {
+function planFor(root, parsed, { planless = false, missingPlanReason = null } = {}) {
   const events = readLedger(root);
   const planPath = resolvePlanPath(events, parsed.get("--plan"));
-  // Planless mode (§9.3) serves exactly two verbs, `ledger append` and `status`,
+  // Planless mode serves ledger append, status, dispatch gate and freeze --check,
   // and only after resolvePlanPath has resolved the unit's plan path: when that
   // file no longer exists the ledger's own intake is the identity, never a
   // guess. When the plan exists the planful path runs first and every refusal
   // fires exactly as before (INV1).
   if (planless && !existsSync(planPath)) {
-    return { plan: planFromLedger(events, planPath), events, planPath };
+    return { plan: planFromLedger(events, planPath), events, planPath, fromLedger: true };
   }
+  if (missingPlanReason && !existsSync(planPath)) throw stateMismatch(`needs the plan file: ${missingPlanReason}`);
   return { plan: readPlan(planPath), events, planPath };
 }
 
@@ -666,7 +667,7 @@ async function runDispatchGate(parsed, root) {
   if (!Number.isInteger(timeoutSeconds) || timeoutSeconds < 1 || timeoutSeconds > 1800) {
     throw usage("--timeout takes 1..1800 seconds");
   }
-  const { plan, planPath, events } = planFor(root, parsed);
+  const { plan, planPath, events, fromLedger } = planFor(root, parsed, { planless: true });
   const context = unitContext(plan);
   const rows = readFindings(root, findingOptions(plan, events)) ?? [];
   const pending = rows.filter((row) => row.blocking === "1"
@@ -798,7 +799,7 @@ async function runDispatchGate(parsed, root) {
   const lines = ["gate on " + head.slice(0, 7) + ": " + (anyFail ? "BLOCKED" : "PASS")];
   for (const entry of results) lines.push("  " + entry.id + "  " + entry.verdict + (entry.note ? "  (" + entry.note + ")" : ""));
   process.stdout.write(lines.join("\n") + "\n");
-  if (anyFail) throw checkFailed("a prior blocker still reproduces");
+  if (anyFail) throw (fromLedger ? stateMismatch : checkFailed)("a prior blocker still reproduces");
   return null;
 }
 
@@ -886,9 +887,11 @@ function killGroup(child) {
 }
 
 function verbFreeze(parsed, root) {
-  const { plan, planPath, events } = planFor(root, parsed);
-  const identity = identityOf(plan, events);
   const check = parsed.has("--check");
+  const { plan, planPath, events } = planFor(root, parsed, {
+    planless: check, missingPlanReason: check ? null : "front matter write",
+  });
+  const identity = identityOf(plan, events);
   const observed = identity === "research" ? { head: null, tree: null, dirty: null } : observeWorktree(plan.wish.worktree);
   const given = headArg(parsed.get("--head"), identity);
   // --check must compare the recorded head with the *observed* one; defaulting to
@@ -984,7 +987,7 @@ function walkEvidence(dir, depth = 0) {
 }
 
 function verbPrBody(parsed, root) {
-  const { plan, planPath, events } = planFor(root, parsed);
+  const { plan, planPath, events } = planFor(root, parsed, { missingPlanReason: "plan body" });
   const unit = plan.wish.unit ?? "u1";
   const frozen = [...events].reverse().find((event) => event.event === "freeze" && event.unit === unit);
   if (!frozen) throw stateMismatch("no freeze event: freeze the head before building the PR body");
