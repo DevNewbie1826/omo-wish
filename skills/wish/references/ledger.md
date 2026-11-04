@@ -1,8 +1,8 @@
 # wish v3 — state, receipt, and interface contract
 
 This file is the single interface contract between the modules. The CLI (`wish.mjs`), the plan linter
-(`check-plan.mjs`), the PR watcher (`pr-watch.mjs`) and the internal `lib/` modules import every shape and
-value set from `scripts/lib/schema.mjs`; none of them re-declares one. The prose states the contract, the
+(`check-plan.mjs`) and the internal `lib/` modules import every shape and
+value set from `scripts/lib/schema.mjs`; none of them re-declares one. The PR watcher (`pr-watch.mjs`) is standalone and imports none of it. The prose states the contract, the
 library enforces it, and `test/schema.test.js` validates every machine example in this file, so prose and
 code cannot drift.
 

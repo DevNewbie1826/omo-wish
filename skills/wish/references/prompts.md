@@ -1011,7 +1011,7 @@ Purpose: list every violation of <rule corpus> across <surfaces>.
 Scope: the enumerated surfaces; report only, no fixes.
 
 TASK: run the corpus' own lint and report every violation with its rule id.
-DELIVERABLE: `<ER>/receipts/lint-<name>-<tree7>.json` with one row per violation
+DELIVERABLE: `<ER>/receipts/lint-<name>-<tree7>.json` (research identity: `lint-<name>-<head7>.json`) with one row per violation
   (`<rule id> | surface | file:line or route | command | artifact`), plus the coverage line.
 SCOPE: read the surfaces; write only its receipt and captures. OUT OF SCOPE: any edit, any severity opinion.
 VERIFY: the lint command's exit code matches the documented meaning (`0` clean, `1` violations); the row set
