@@ -44,7 +44,6 @@ test("expanded wish and ordinary whole-word ulw arm generic mode with only the h
 });
 
 test("generic mode does not arm on invalid session ids", async () => {
-  const extensionRunner = await runner(repo, 0);
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
   const marks = [];
@@ -56,8 +55,11 @@ test("generic mode does not arm on invalid session ids", async () => {
         markArmed: (id) => marks.push(id),
       },
     };
-    const injected = await messages(extensionRunner, "ordinary ULW request with an invalid session id");
-    expect(directiveMessages(injected)).toEqual([]);
+    for (const invalidId of [0, false, ""]) {
+      const extensionRunner = await runner(repo, invalidId);
+      const injected = await messages(extensionRunner, "ordinary ULW request with an invalid session id");
+      expect(directiveMessages(injected)).toEqual([]);
+    }
     expect(marks).toEqual([]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
