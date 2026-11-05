@@ -84,12 +84,12 @@ export const CONDITIONAL_RECEIPTS = Object.freeze({ adversarial: "high-risk" });
 // A §C.1 last row / §B10: the same strings across the defect-class dictionary and the review axes.
 const CODE_CLASSES = ["S", "C", "D", "O", "T", "W", "SEC", "DOC", "CFG", "PANIC", "REGRESS"];
 const VQA_ITEM_IDS = [
-  "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12",
-  "B1", "B2", "B3", "B4", "B5", "B6", "B7",
+  "A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8", "A9", "A10", "A11", "A12", "A13",
+  "B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8",
   "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8",
   "D1", "D2", "D3", "D4",
-  "E1", "E2", "E3", "E4", "E5", "E6",
-  "F1", "F2", "F3", "F4", "F5", "F6", "F7",
+  "E1", "E2", "E3", "E4", "E5", "E6", "E7",
+  "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9",
   "G1", "G2", "G3", "G4", "G5", "G6", "G7",
   "H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H9", "H10", "H11",
   "I1", "I2", "I3", "I4", "I5",

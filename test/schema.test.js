@@ -454,7 +454,7 @@ test("class sets are per work type and stay identical to the dictionaries", () =
   expect(classValid("mixed", "S", { primary: "audit", secondary: "code" })).toBe(true);
   expect(classValid("mixed", "rule.one", { primary: "audit", secondary: "code" })).toBe(true);
   expect(classValid("mixed", "A1", { primary: "audit", secondary: "code" })).toBe(false);
-  expect(VQA_ITEM_IDS.length).toBe(69);
+  expect(VQA_ITEM_IDS.length).toBe(74);
 });
 
 test("kills the guard when the class set loses PANIC", () => {
