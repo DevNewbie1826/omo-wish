@@ -35,6 +35,11 @@ A corpus large enough to exceed `max_nodes_per_run` stays inside the same run: m
 run id `wish-<run>-collect`, the same `<ER>/collect.md` receipt. A second `wish-<run>-collect` run never
 happens; the reducer always sees files, never a transcript.
 
+Deliberate deviation from `mass-ulw`: that skill splits a graph across concurrent runs once it would exceed
+`task.dag.max_nodes_per_run` and gives the cross-run reducer its own run. This playbook keeps the whole corpus
+in the one `wish-<run>-collect` run instead — more harvest nodes, the same run id — so the reducer reads one
+set of handoff files and `<ER>/collect.md` stays the single collect receipt.
+
 ## What the rules feed
 
 - the COLLECT `explore` lane prompts (the `collect-explore` template, `../references/prompts.md` §5.4) carry the rule list as questions.

@@ -67,6 +67,13 @@ PLAN-REVIEW happens once per plan, before the build, and it is never re-reviewed
   per blocker. A host that offers neither role leaves the review with the session, which states so in the plan's
   review record.
 
+Deliberate deviation from `ulw-plan`: that skill's review policy makes the high-accuracy review
+PLAN-REVIEWER-ONLY and runs its rounds until they converge on approval, while this contract holds PLAN-REVIEW
+to one shot and never re-reviews the round: the one `category: architect` review always runs, `plan-reviewer`
+adds its single round when the plan gate is open, and no third round exists (`../SKILL.md`, the two plan
+branches). The written grounds: the native `plan-reviewer` is itself one-shot and refuses follow-up messages,
+and the fixes the round orders are checked by the final review, not by a re-review.
+
 The plan linter (`scripts/check-plan.mjs`) runs before PLAN-REVIEW and never replaces it: the linter checks
 grammar, and PLAN-REVIEW judges the contract.
 

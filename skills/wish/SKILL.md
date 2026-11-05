@@ -74,6 +74,10 @@ gate; hand editing `gates.md` is not detected.
 | 18 | `checkpoint` | `ulw-loop` `agentToolkit.checkpoint`; `omo-native-gate-reviewer` reads the evidence record | `checkpoint` event, `checkpoint_op: complete` |
 | 19 | `cleanup` | session: `memory` for the classes it caught | `cleanup` event with at least one teardown receipt |
 
+Stage 1 is a deliberate deviation from `mass-ulw`: that skill binds every run to a registered goal, and wish
+opens no goal at bootstrap — the plan file holds the notes until `goal` registers one goal per unit at stage 8,
+once `decide` has fixed the units and their criteria — so the `wish-<run>-collect` run starts pre-goal by design.
+
 `before` and `fix` are conditional: when one truly does not apply, its step stays in the todo with
 `skip: <reason>`, never silently dropped. While any unit runs, print the `PROGRESS:` line on every transition
 that changes a number and at least every 30 minutes; a repeat with no change is suppressed.
@@ -91,6 +95,10 @@ is added. `plan-reviewer` cannot be spawned because a skill's text says so: the 
 branch, so nothing here may depend on it. The plan's author is the planning role the run has, the reviewer is the
 role `plan_review` names, and a host that offers neither leaves the review with the session, which records that
 in the plan's review record.
+
+Deliberate deviation from `ulw-plan`: that skill's policy runs `plan-reviewer` rounds to convergence; wish
+stops at the two reviews this branch names and never re-reviews the round — `plan-reviewer` is one-shot and
+refuses follow-up messages, and the fixes it orders are checked by the final review, not by a re-review.
 
 ## COLLECT, DEFINE, PLAN: the order that makes the rest honest
 
