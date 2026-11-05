@@ -34,7 +34,7 @@ Read each skill below before the stage it names begins; the stage table says wha
 | `goal`, `checkpoint` | `ulw-loop` for goals, evidence and the checkpoint; `ulw-execute` for the Boulder format |
 | `plan` | `ulw-plan` for the checkbox grammar, then `remove-ai-slops`, `programming` and the work type's skill |
 | the commit node of `build` and `fix` | `git-master` |
-| `verify_lane`, `round` | `review-work` |
+| `verify_lane`, `round` | `review-work` — its review-worktree and reviewer-freshness rules only; the lane set and the round are wish's own, never its one-reviewer shape |
 | `design` work | `frontend` to build, `visual-qa` to verify |
 | `research` work | `ulw-research` |
 
@@ -55,7 +55,7 @@ gate; hand editing `gates.md` is not detected.
 | 0 | `intake` | ultrawork tier triage; `todo` carries the playbook steps | `intake` event (`wish.mjs init`, which creates the plan: never pre-create it) |
 | 1 | `collect` | one `mass-ulw` run `wish-<run>-collect`: harvest, extract, explore | `collect` event + `<ER>/collect.md` |
 | 2 | `define` | session, seeded by the collect report | `define` event + `<ER>/define.md` + the difference rows in `<ER>/gaps.tsv` |
-| 3 | `before` | session records one capture per defect row | `before` event + the gap receipt named by `ledger.md` §4.2, captured before the first edit |
+| 3 | `before` | session records one pre-edit capture per defect row and per row that edits existing UI | `before` event + the gap receipt named by `ledger.md` §4.2, captured before the first edit |
 | 4 | `plan` | session writes it in ulw-plan's checkbox grammar | `plan` event (the plan) |
 | 5 | `plan_lint` | `check-plan.mjs`, from the session or a `quick` node | `plan_lint` event, exit 0; `--register` only when `define` wrote a register |
 | 6 | `plan_review` | `category: architect` once, plus `plan-reviewer` only in the ulw-plan branch below | `plan_review-architect-<head7>.md`, `OKAY` or blockers each with a fix |
@@ -80,8 +80,8 @@ that changes a number and at least every 30 minutes; a repeat with no change is 
 
 ### The two plan branches
 
-The default branch is the one that always exists: the session writes the plan to fit ulw-plan — its checkbox
-grammar, `.omo/plans/<slug>.md` — and ONE `category: architect` review checks it. There is no approval question
+The default branch is the one that always exists: the session writes the plan at `.omo/plans/wish-<slug>.md` in
+ulw-plan's checkbox grammar — and ONE `category: architect` review checks it. There is no approval question
 to the requester, and the run continues straight to `decide` and `goal`.
 
 The other branch opens only when the requester's own message asked for the ulw-plan workflow in their words:
@@ -151,7 +151,7 @@ every L unit, and below L only for a `HIGH-RISK` plan row.
 
 | Type | Playbook | The lanes `status` requires |
 | --- | --- | --- |
-| `code` | `playbooks/code.md` (patch, feature, refactor) | `tests`, `qa`, `sweep`, `code-review`, plus `adversarial` |
+| `code` | `playbooks/code.md` (patch, feature, refactor) | `tests`, `qa`, `sweep`, `code-review`, plus `adversarial` (tier L or a high-risk plan row) |
 | `design` | `playbooks/design.md` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` |
 | `research` | `playbooks/research.md` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` |
 | `audit` | `playbooks/audit.md` | `lint`, `spot`, `register-schema` |

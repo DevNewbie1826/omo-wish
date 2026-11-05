@@ -10,7 +10,7 @@ Sources: D = the wish v2 design (§2.3, §4 row M2); A = its general-flow addend
 contract, §C.1 per-type contract rows, §C.6 switch rows, §F M2 delta); U = omo's `ulw-plan` skill (the checkbox
 grammar and the `## Final verification wave` section); v1 = skills/wish/references/plan.md at cbbfbf8 and
 skills/wish/SKILL.md:32-44 at cbbfbf8 on `main` (the `IS`/`COMPANION`/`INVARIANT`/`LIMIT` rows, the risk list,
-the pinned rules); o3 = branch `exp/o3`,
+the pinned rules); o3 =
 `scripts/check-plan.mjs` (the lint arm this file ports and narrows). The two design documents are build-time
 sources: they are named, never linked, because they do not ship with the skill.
 
@@ -36,8 +36,8 @@ Reading rules the linter applies to every line:
   is how a plan quotes an example row.
 - CRLF, a trailing newline and a UTF-8 BOM are accepted; they never change a verdict.
 - A bullet that starts with a declared marker but does not match that marker's grammar is a **complaint**,
-  never a silent skip (rule PL16). Marker words match case-insensitively, so a near miss such as `Device:` or
-  `limits:` is a complaint and not prose; prose that must open with one of these words belongs in a fenced
+  never a silent skip (rule PL16). Marker words match case-insensitively, so a near miss such as `Device:` is
+  a complaint and not prose; prose that must open with one of these words belongs in a fenced
   block or in indented text.
 
 ## 2. Front matter
@@ -331,7 +331,7 @@ wish:
 ## Risk list
 
 - guard: INV1 : a non-empty input loses a token -> n-test
-- no-test: the usage text is prose : QA-1
+- no-test: the usage text's empty-input claim is prose : QA-1
 
 ## Pinned rules
 

@@ -93,7 +93,7 @@ A type must produce these lane receipts before `status.next` may leave `verify_l
 
 | Type | Required lanes | Source |
 | --- | --- | --- |
-| `code` | `tests`, `qa`, `sweep`, `code-review`; `adversarial` when the plan flags a high-risk row | A §C.1, D §2.3/§2.5 |
+| `code` | `tests`, `qa`, `sweep`, `code-review`; `adversarial` for tier L or a high-risk plan row | A §C.1, D §2.3/§2.5 |
 | `design` | `draft-guard`, `capture`, `vqa-passA`, `vqa-passB`, `code-review`, `qa` | A §C.1, O `frontend:62`, O `visual-qa:232,286` |
 | `research` | `fact-verify`, `claim-gate`, `skeptic`, `execution-verify`, `delivery-gate` | A §C.1, O `ulw-research:415-437` |
 | `audit` | `lint`, `spot`, `register-schema` | A §C.1 |
@@ -755,7 +755,7 @@ The ledger, including a third-round REVISE that switches approach and a fourth-r
 {"event":"plan_lint","stage":"plan_lint","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:00:00Z","round":3,"verdict":"PASS"}
 {"event":"switch","stage":"switch","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:01:00Z","round":3,"kind":"premise","premise":"the classifier only needed one more branch","new_approach":"re-read the input contract and delete the classifier"}
 {"event":"round","stage":"round","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:20:00Z","round":4,"verdict":"APPROVED","head":"0123456789abcdef0123456789abcdef01234567"}
-{"event":"verdict","stage":"verdict","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:20:00Z","round":4,"verdict":"APPROVED","head":"0123456789abcdef0123456789abcdef01234567","artifact":"/evidence/w-u1-20261027-1600/receipts/verdict-ultrabrain-0123456.md"}
+{"event":"verdict","stage":"verdict","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:20:00Z","round":4,"verdict":"APPROVED","head":"0123456789abcdef0123456789abcdef01234567","artifact":"/evidence/w-u1-20261027-1600/receipts/final-r4-0123456.md"}
 {"event":"progress","stage":"progress","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:21:00Z","progress":{"units_done":1,"units_total":1,"gaps_fixed":1,"gaps_total":1,"prs_merged":0,"prs_open":1,"wave_k":1,"wave_n":1,"round":4,"switch":1,"waiting":"none"}}
 {"event":"merge","stage":"merge","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:30:00Z","head":"0123456789abcdef0123456789abcdef01234567","sha":"2222222222222222222222222222222222222222","merged_at":"2026-10-27T18:30:00Z","pr":51}
 {"event":"post_merge","stage":"post_merge","type":"code","unit":"u1","program_id":null,"plan":".omo/plans/wish-m0.md","session_id":"senpi:01a17e58","started_at":"2026-10-27T18:35:00Z","head":"0123456789abcdef0123456789abcdef01234567","tree":"89abcdef0123456789abcdef0123456789abcdef"}
