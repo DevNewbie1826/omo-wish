@@ -4,6 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { appendEvent, withLock } from "../skills/wish/scripts/lib/store.mjs";
 
 const cliPath = join(dirname(fileURLToPath(import.meta.url)), "../skills/wish/scripts/wish.mjs");
 const dirs = [];
@@ -44,6 +45,15 @@ function scene() {
     writeFileSync(file, JSON.stringify(event));
     return cli("ledger", "append", "--event", event.event, "--json", file);
   };
+  // Setup events go through the library call the `ledger append` verb wraps,
+  // with the same envelope that verb builds, so a fixture costs file writes
+  // instead of one process spawn per event. Assertion paths keep the spawned
+  // `append`.
+  const appendFast = (event) => {
+    const session = process.env.SENPI_SESSION_ID ?? process.env.WISH_SESSION_ID ?? "senpi:wish-cli";
+    const envelope = { type: "code", unit: "u1", program_id: null, plan, session_id: session, ...event, event: event.event };
+    withLock(root, () => appendEvent(root, envelope, { plan }));
+  };
   for (const event of [
     { event: "collect", sources: 1, elements: 1, report: join(root, "collect.md") },
     { event: "define", round: 0, ideal: 1, gaps: 0, report: join(root, "define.md") },
@@ -54,8 +64,7 @@ function scene() {
     { event: "goal", artifact: "goal:test" },
     { event: "build", task: "node-1", head },
   ]) {
-    const result = append(event);
-    if (result.code !== 0) throw new Error(result.err);
+    appendFast(event);
   }
   expect(cli("freeze", "--head", head).code).toBe(0);
   mkdirSync(join(root, "receipts"), { recursive: true });
@@ -65,20 +74,20 @@ function scene() {
     started_at: "2026-10-27T16:00:00Z", ended_at: "2026-10-27T16:01:00Z",
     status: "PASS", rows: [], artifacts: [], cleanup: [],
   }));
-  return { cli, append, plan, head, root, work, git };
+  return { cli, append, appendFast, plan, head, root, work, git };
 }
 
 function latestScene() {
   const state = scene();
-  expect(state.append({ event: "pr_open", pr: 11, head: state.head }).code).toBe(0);
-  expect(state.append({ event: "round", round: 1, verdict: "REVISE", head: state.head }).code).toBe(0);
+  state.appendFast({ event: "pr_open", pr: 11, head: state.head });
+  state.appendFast({ event: "round", round: 1, verdict: "REVISE", head: state.head });
   writeFileSync(join(state.work, "file"), "second commit\n");
   state.git("add", "file");
   state.git("commit", "-q", "-m", "second");
   const head = state.git("rev-parse", "HEAD");
   const tree = state.git("rev-parse", "HEAD^{tree}");
   expect(state.cli("freeze", "--head", head).code).toBe(0);
-  expect(state.append({ event: "pr_open", pr: 22, head }).code).toBe(0);
+  state.appendFast({ event: "pr_open", pr: 22, head });
   writeFileSync(join(state.root, "receipts", `verify_lane-code-review-${head.slice(0, 7)}.json`), JSON.stringify({
     kind: "lane", stage: "verify_lane", type: "code", unit: "u1", program_id: null,
     lane: "code-review", head, tree, scope: [state.plan],
