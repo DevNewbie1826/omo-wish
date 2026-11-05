@@ -5,7 +5,7 @@
 // exit code IS the contract (references/ledger.md §14) and an in-process call
 // could not prove it. Pure scene setup may instead call the same library the
 // verbs wrap (`appendEvent`, `addFindings`, `withLock` from lib/store.mjs),
-// because a round-three fixture otherwise costs ~45 process spawns and the
+// because a round-three fixture otherwise costs 45 CLI spawns per test and the
 // default per-test limit is 5 s. The fixtures under `test/fixtures/ledger/`
 // are the M0 contract's own machine-checked examples plus a plan template.
 
@@ -153,6 +153,7 @@ function scene({ tier = "M", type = "code", unit = "u1", runId = "w-run-20261027
   return {
     box, repo, root: box.root, plan: box.plan, runId, tier, type, unit,
     primary: labelFlag("--primary"), secondary: labelFlag("--secondary"),
+    program: labelFlag("--program"),
   };
 }
 
@@ -183,7 +184,7 @@ function appendFast(state, body) {
   const event = {
     type: state.type,
     unit: state.unit,
-    program_id: null,
+    program_id: state.program ?? null,
     plan: state.plan,
     session_id: session,
     ...labelled,
