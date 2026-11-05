@@ -21,8 +21,10 @@ blocker definition. Review quality is a floor, not a variable.
 
 Resolve every path relative to this file's directory. `/wish` arms ultrawork: never re-arm, reset or disarm it,
 and open no goal or notepad at bootstrap; the plan file holds the notes until `goal` registers one goal per unit
-through ulw-loop. Decisions are asked once, at `decide`, as one batch with a recommended default each; after that
-nothing is asked, and a decision that appears mid-run parks only its own lane while every other lane continues.
+through ulw-loop — the run's only goal set; a research unit's axes run as work inside the unit's goal
+(`playbooks/research.md` holds the rule). Decisions are asked once, at `decide`, as one batch with a recommended
+default each; after that nothing is asked, and a decision that appears mid-run parks only its own lane while
+every other lane continues.
 
 ## Skills to read before each stage
 
