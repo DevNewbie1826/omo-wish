@@ -242,8 +242,9 @@ REPORT: `<sha> <subject>` and the exact `git show --stat` output.
 ```
 
 Read `git log --oneline -20` and `git log -5 -- <paths>` first and match the observed convention — subject
-shape, scope names, language, body style. With no stronger local convention, use Conventional Commits
-(`<type>(<scope>): <imperative>`). Load the `git-master` skill for this node.
+shape, scope names, language, body style. With no stronger local convention, follow the loaded skill's
+commit-style rule; never default to a named style when the repository does not use one. Load the
+`git-master` skill for this node.
 
 ### 2.3 `fix-node` — one correction round, one component
 
