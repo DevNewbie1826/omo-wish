@@ -1,10 +1,13 @@
 // wish v2 - module M1: the state machine and CLI, exercised as a process.
 //
-// Every test drives the shipped entry point (`skills/wish/scripts/wish.mjs`)
+// Every assertion drives the shipped entry point (`skills/wish/scripts/wish.mjs`)
 // exactly as a session does - argv in, exit code and stdout out - because the
 // exit code IS the contract (references/ledger.md §14) and an in-process call
-// could not prove it. The fixtures under `test/fixtures/ledger/` are the M0
-// contract's own machine-checked examples plus a plan template.
+// could not prove it. Pure scene setup may instead call the same library the
+// verbs wrap (`appendEvent`, `addFindings`, `withLock` from lib/store.mjs),
+// because a round-three fixture otherwise costs 45 CLI spawns per test and the
+// default per-test limit is 5 s. The fixtures under `test/fixtures/ledger/`
+// are the M0 contract's own machine-checked examples plus a plan template.
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
@@ -37,6 +40,7 @@ import {
   validateReceipt,
   validateStatusJson,
 } from "../skills/wish/scripts/lib/schema.mjs";
+import { addFindings as addFindingsToTable, appendEvent, withLock } from "../skills/wish/scripts/lib/store.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const CLI = join(HERE, "..", "skills", "wish", "scripts", "wish.mjs");
@@ -149,6 +153,7 @@ function scene({ tier = "M", type = "code", unit = "u1", runId = "w-run-20261027
   return {
     box, repo, root: box.root, plan: box.plan, runId, tier, type, unit,
     primary: labelFlag("--primary"), secondary: labelFlag("--secondary"),
+    program: labelFlag("--program"),
   };
 }
 
@@ -165,6 +170,37 @@ function append(state, body) {
 function ledgerEvents(state) {
   const text = readFileSync(join(state.root, "ledger.jsonl"), "utf8");
   return text.split("\n").filter((line) => line.trim() !== "").map((line) => JSON.parse(line));
+}
+
+// Scene setup appends events through the library call the `ledger append` verb
+// wraps, with the same envelope that verb builds (context defaults first, the
+// body wins, the event name is forced), so a fixture costs file writes instead
+// of one process spawn per event. Assertion paths keep `append`, which spawns.
+function appendFast(state, body) {
+  const labelled = state.type === "mixed" && state.primary && state.secondary
+    ? { ...body, primary: body.primary ?? state.primary, secondary: body.secondary ?? state.secondary }
+    : body;
+  const session = process.env.SENPI_SESSION_ID ?? process.env.WISH_SESSION_ID ?? "senpi:wish-cli";
+  const event = {
+    type: state.type,
+    unit: state.unit,
+    program_id: state.program ?? null,
+    plan: state.plan,
+    session_id: session,
+    ...labelled,
+    event: labelled.event,
+  };
+  withLock(state.root, () => appendEvent(state.root, event, { plan: state.plan }));
+}
+
+// The same cut for setup findings rows: `findings add` the verb wraps the
+// store's addFindings over the same TSV text the spawned helper writes.
+function addFindingsFast(state, rows) {
+  const text = [FINDINGS_COLUMNS.join("\t"), ...rows.map((row) => FINDINGS_COLUMNS.map((column) => row[column]).join("\t"))].join("\n");
+  const options = state.type === "mixed" && state.primary && state.secondary
+    ? { type: state.type, primary: state.primary, secondary: state.secondary }
+    : { type: state.type };
+  withLock(state.root, () => addFindingsToTable(state.root, text, options));
 }
 
 function status(state, extra = []) {
@@ -270,9 +306,11 @@ function upToBuild(state) {
     { event: "build", task: "node-1", head: state.repo.head },
   ];
   for (const step of steps) {
-    const result = append(state, step);
-    if (result.code !== 0) throw new Error(step.event + ": " + result.err);
-    expect(result.code).toBe(0);
+    try {
+      appendFast(state, step);
+    } catch (error) {
+      throw new Error(step.event + ": " + (error?.message ?? error));
+    }
   }
 }
 
@@ -1143,17 +1181,17 @@ function revisitToRoundThree(state, classes) {
   ["tests", "qa", "sweep"].forEach((name) => lane(state, { lane: name }));
   reviewedFreeze(state);
   for (const round of [1, 2]) {
-    expect(append(state, { event: "round", round, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
-    expect(addFindings(state, [findingRow({
+    appendFast(state, { event: "round", round, verdict: "REVISE", head: state.repo.head });
+    addFindingsFast(state, [findingRow({
       id: `F${round}`, round: String(round), class: classes[round - 1], status: "fixed", fixed_head: OTHER,
-    })]).code).toBe(0);
+    })]);
   }
-  expect(append(state, { event: "round", round: 3, verdict: "REVISE", head: state.repo.head }).code).toBe(0);
+  appendFast(state, { event: "round", round: 3, verdict: "REVISE", head: state.repo.head });
   for (const event of [
     { event: "define", round: 3 },
     { event: "plan", round: 3, artifact: state.plan },
     { event: "plan_lint", round: 3, verdict: "PASS" },
-  ]) expect(append(state, event).code).toBe(0);
+  ]) appendFast(state, event);
   return state;
 }
 
