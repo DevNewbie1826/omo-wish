@@ -99,8 +99,8 @@ export function parseFrontMatter(lines) {
 }
 
 const MARKERS = [
-  ["task", /^- \[(?: |x|X)\][ \t]+([1-9]\d*)\. (\S.*)$/],
-  ["final", /^- \[(?: |x|X)\][ \t]+F([1-9]\d*)\. (\S.*)$/],
+  ["task", /^- \[(?: |x|X|~)\][ \t]+([1-9]\d*)\. (\S.*)$/],
+  ["final", /^- \[(?: |x|X|~)\][ \t]+F([1-9]\d*)\. (\S.*)$/],
   ["device", /^- ((?:IS-|G)\d+) DEVICE: (.*)$/],
   ["is", /^- (IS-\d+): (.*)$/],
   ["qa", /^- (QA-\d+): (.*)$/],

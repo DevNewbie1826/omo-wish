@@ -69,7 +69,7 @@ report-only lane in `references/prompts.md`, because judging a category needs a 
 
 ## 4. Design classes
 
-`design` runs carry the 69 `visual-qa` checklist item ids, the nine draft-guard rule ids, and `taste`
+`design` runs carry the 74 `visual-qa` checklist item ids, the nine draft-guard rule ids, and `taste`
 (`references/ledger.md` §5.1). Item ids are grouped as the checklist groups them, and the two review
 passes own different groups: Pass A owns G–J, Pass B owns A–F.
 
