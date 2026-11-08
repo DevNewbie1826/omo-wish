@@ -10,11 +10,11 @@ metadata:
 **Read and use the `mass-ulw` and `ulw-loop` skills before anything else.**
 
 One `/wish` is one authorized request, worked until its PR merges.
-Register the ulw-loop goal first. Then build every DAG under that goal.
+Register the ulw-loop goals first: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and replace the criteria `createGoals` seeds as placeholders before work starts. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
 
 ## The request
 
-1. Build a DAG over the whole context and history of the work, analyze it at maximum parallelism, and define from evidence the ideal state for the current problems and the main decision points.
+1. Build a DAG over the whole context and history of the work, analyze it at maximum parallelism, and define from evidence the ideal state for the current problems and the main decision points. Size the analysis by the three questions in Size check: small work is one explore node, and only big work gets a full analysis DAG. Independent leaves that don't depend on the definition (translating a reference, for example) may start in this first DAG beside the analysis.
 2. From that definition, create a new git worktree. Create one only when the work changes a repository.
 3. Set concrete goals and work toward them.
 4. Run all the defined work as DAGs for maximum efficiency. Building a DAG follows the DAG reference (see DAGs).
@@ -29,11 +29,19 @@ Build every DAG per `references/dag-construction.md`: top-down to atomic tasks, 
 `references/dag-construction-ko.md` is the owner's original. Where the two differ, the Korean original governs.
 Run each DAG with `mass-ulw` under the ulw-loop goal.
 Every part with parallelism is a DAG, and its last node is its review.
-Fixes after a review are a DAG too.
+Fixes after a review are a DAG too, sized by the same three questions. A 1-2 line fix needs no DAG: make it, confirm it and commit it.
+An integration node that only collects and checks its children's results is a check inside the parent, not a separate node (section 4.3 of the DAG reference). Make it a separate node only when integrating needs its own execution, such as merging edits or running the tests over the combined result.
+
+## Node prompts, run files and commits
+
+A scope line in a node prompt names the node: "this node writes only X". Never write it as a statement about the whole repository, such as "the repo is read-only"; the memory system can keep that as a standing agreement and stop later work.
+ulw-loop state and its evidence root live under `.omo/ulw-loop/<session-id>/` in the session's working directory, usually the main checkout, so that's expected. Put node handoffs and build files in the worktree's git-ignored `.omo/`.
+A commit node stages only the paths it names (`git add -- <path>...`, never `git add -A` or `git add .`) and sets the repository's identity for that one command: `git -c user.name=<name> -c user.email=<email> commit`, with no co-author trailer. Take the name and email from the request or brief, never change the global Git identity, and ask before the first commit when no identity is given.
 
 ## Confirmation devices
 
 Confirm directly, so another agent can reproduce it from the commands, exit codes, results and unverified items you leave; reuse existing tests and tools; add no ceremonial or duplicate checks; never claim what you didn't verify. The full standard is `references/verification-device.md`.
+This holds for every verification node in a DAG, not only the PR review: an evidence typo (a wrong count, an off line range) is a note, never a FAIL and never a loop.
 Code size has no line-count targets. Judge bloat by the `remove-ai-slops` skill. If one file gets hard to hold, split it into files inside the tool's own folder.
 
 ## Skills per work type

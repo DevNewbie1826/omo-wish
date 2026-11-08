@@ -75,8 +75,8 @@ request comes from the conversation.
 
 A short map. Every rule lives once in the skill, so follow the links for the real text.
 
-1. The skill opens by telling the model to read and use `mass-ulw` and `ulw-loop`, then register one goal for the
-   wish.
+1. The skill opens by telling the model to read and use `mass-ulw` and `ulw-loop`, then register one goal per phase
+   with its real success criteria.
 2. [The request](skills/wish/SKILL.md#the-request): analyze with a DAG, define the ideal state from evidence,
    create a worktree only when a repository changes, then implement, fix and verify every requirement.
 3. [DAGs](skills/wish/SKILL.md#dags): how each graph is built and run, ending in its review.
@@ -134,10 +134,17 @@ There's no CI in this repository, so quote both runs with their exit codes in th
 
 ## Mode behaviour
 
-`extensions/wish.js` has one `before_agent_start` hook. When the prompt contains the marker
-``Read and follow the `wish` skill``, which `/wish` always puts there, the hook injects omo's ultrawork directive
-as a hidden message, once per session. The host only arms ultrawork from raw typed input, never from an expanded
-template, so without this hook `/wish` wouldn't turn the mode on.
+`extensions/wish.js` has two hooks, and both must agree before the mode turns on:
+
+1. The `input` hook marks the session pending only when the raw input starts with `/wish` followed by whitespace or
+   the end of the input, and didn't come from another extension. Any other input clears the mark.
+2. The `before_agent_start` hook acts only for a pending session. When the expanded prompt contains the marker
+   ``Read and follow the `wish` skill``, which `/wish` always puts there, it injects omo's ultrawork directive as
+   a hidden message, once per session.
+
+So the marker alone doesn't arm: quoting it in a question, or typing it after `/wishful`, leaves the mode off. The
+host only arms ultrawork from raw typed input, never from an expanded template, so without these hooks `/wish`
+wouldn't turn the mode on.
 
 Two older hooks were dropped. One re-sent a hidden reminder with every `/wish` prompt that only repeated the
 skill's opening lines. The other existed only to put that reminder back after compaction. Since ulw-loop goals and
