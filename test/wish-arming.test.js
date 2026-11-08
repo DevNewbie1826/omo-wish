@@ -2,7 +2,7 @@ import { afterAll, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repo, expandPromptTemplate, resources, runner, messages, directiveMessages, fixtures, removeFixtures } from "./wish-harness.js";
+import { repo, expandPromptTemplate, resources, runner, input, submit, messages, directiveMessages, fixtures, removeFixtures } from "./wish-harness.js";
 
 afterAll(removeFixtures);
 
@@ -21,17 +21,16 @@ test("an expanded wish arms generic mode with only the host directive; an ordina
       },
     };
     const extensionRunner = await runner();
-    const text = expandPromptTemplate("/wish do it", templates);
-    const first = await messages(extensionRunner, text);
+    const first = await submit(extensionRunner, "/wish do it", templates);
     expect(directiveMessages(first)).toEqual([{
       customType: "omo-ultrawork:directive",
       content: "DIRECTIVE_SENTINEL",
       display: false,
     }]);
-    expect(directiveMessages(await messages(extensionRunner, text))).toEqual([]);
+    expect(directiveMessages(await submit(extensionRunner, "/wish do it", templates))).toEqual([]);
     for (const plain of ["ordinary ULW request", "ultrawork this"]) {
       armed.clear();
-      expect(await messages(extensionRunner, plain)).toEqual([]);
+      expect(await submit(extensionRunner, plain, templates)).toEqual([]);
       expect(await messages(extensionRunner, plain, { preview: true })).toEqual([]);
     }
     expect(marks).toEqual(["wish-test"]);
@@ -54,10 +53,9 @@ test("generic mode does not arm on invalid session ids", async () => {
         markArmed: (id) => marks.push(id),
       },
     };
-    const text = expandPromptTemplate("/wish invalid session", templates);
     for (const invalidId of [0, false, ""]) {
       const extensionRunner = await runner(repo, invalidId);
-      expect(directiveMessages(await messages(extensionRunner, text))).toEqual([]);
+      expect(directiveMessages(await submit(extensionRunner, "/wish invalid session", templates))).toEqual([]);
     }
     expect(marks).toEqual([]);
   } finally {
@@ -107,7 +105,7 @@ test("lookalike words do not activate generic mode", async () => {
     for (const raw of ["ulworks", "xulw", "ultrawork_ish", "/wishful hello", "/WISH hello"]) {
       const expanded = expandPromptTemplate(raw, templates);
       expect(expanded).toBe(raw);
-      expect(await messages(extensionRunner, expanded)).toEqual([]);
+      expect(await submit(extensionRunner, raw, templates)).toEqual([]);
     }
     expect(marks).toEqual([]);
   } finally {
@@ -116,7 +114,7 @@ test("lookalike words do not activate generic mode", async () => {
   }
 });
 
-test("real wish entry arms once; preview, unrelated input and pre-armed sessions do not", async () => {
+test("real wish entry arms once; unrelated input and pre-armed sessions do not", async () => {
   const { templates } = await resources();
   const text = expandPromptTemplate("/wish again", templates);
   const symbol = Symbol.for("omo.ultrawork.arming");
@@ -132,29 +130,100 @@ test("real wish entry arms once; preview, unrelated input and pre-armed sessions
       },
     };
     const first = await runner();
-    expect(directiveMessages(await messages(first, text, { preview: true }))).toEqual([]);
-    expect(await messages(first, "unrelated input")).toEqual([]);
+    expect(await submit(first, "unrelated input", templates)).toEqual([]);
     expect(marks).toEqual([]);
+    await input(first, "/wish again");
     armed.add("wish-test");
     expect(directiveMessages(await messages(first, text))).toEqual([]);
     expect(marks).toEqual([]);
     armed.delete("wish-test");
-    expect(directiveMessages(await messages(first, text))).toEqual([{
+    expect(directiveMessages(await submit(first, "/wish again", templates))).toEqual([{
       customType: "omo-ultrawork:directive",
       content: "DIRECTIVE_SENTINEL",
       display: false,
     }]);
     expect(marks).toEqual(["wish-test"]);
     for (const next of [first, await runner()]) {
-      expect(directiveMessages(await messages(next, text))).toEqual([]);
+      expect(directiveMessages(await submit(next, "/wish again", templates))).toEqual([]);
     }
     expect(marks).toEqual(["wish-test"]);
     expect(globalThis[symbol].directive).toBe("DIRECTIVE_SENTINEL");
     delete globalThis[symbol];
-    expect(directiveMessages(await messages(first, text))).toEqual([]);
+    expect(directiveMessages(await submit(first, "/wish again", templates))).toEqual([]);
     expect(Object.hasOwn(globalThis, symbol)).toBe(false);
     globalThis[symbol] = { directive: "DIRECTIVE_SENTINEL" };
-    expect(directiveMessages(await messages(first, text))).toEqual([]);
+    expect(directiveMessages(await submit(first, "/wish again", templates))).toEqual([]);
+    expect(marks).toEqual(["wish-test"]);
+  } finally {
+    if (prior) Object.defineProperty(globalThis, symbol, prior);
+    else delete globalThis[symbol];
+  }
+});
+
+test("preview stays silent and does not consume the recorded command", async () => {
+  const { templates } = await resources();
+  const text = expandPromptTemplate("/wish preview", templates);
+  const symbol = Symbol.for("omo.ultrawork.arming");
+  const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
+  const marks = [];
+  const armed = new Set();
+  try {
+    globalThis[symbol] = {
+      directive: "DIRECTIVE_SENTINEL",
+      arming: {
+        isArmed: (id) => armed.has(id),
+        markArmed: (id) => { marks.push(id); armed.add(id); },
+      },
+    };
+    const extensionRunner = await runner(repo, "wish-preview");
+    await input(extensionRunner, "/wish preview");
+    expect(directiveMessages(await messages(extensionRunner, text, { preview: true }))).toEqual([]);
+    expect(marks).toEqual([]);
+    expect(directiveMessages(await messages(extensionRunner, text))).toEqual([{
+      customType: "omo-ultrawork:directive",
+      content: "DIRECTIVE_SENTINEL",
+      display: false,
+    }]);
+    expect(marks).toEqual(["wish-preview"]);
+  } finally {
+    if (prior) Object.defineProperty(globalThis, symbol, prior);
+    else delete globalThis[symbol];
+  }
+});
+
+test("marker text without a typed /wish command never arms", async () => {
+  const { templates } = await resources();
+  const marker = "Read and follow the `wish` skill";
+  const symbol = Symbol.for("omo.ultrawork.arming");
+  const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
+  const marks = [];
+  const armed = new Set();
+  try {
+    globalThis[symbol] = {
+      directive: "DIRECTIVE_SENTINEL",
+      arming: {
+        isArmed: (id) => armed.has(id),
+        markArmed: (id) => { marks.push(id); armed.add(id); },
+      },
+    };
+    const extensionRunner = await runner();
+    const quoted = `What does "${marker}" mean?`;
+    const lookalike = `/wishful ${marker}`;
+    for (const raw of [quoted, lookalike]) {
+      expect(expandPromptTemplate(raw, templates)).toBe(raw);
+      expect(directiveMessages(await submit(extensionRunner, raw, templates))).toEqual([]);
+    }
+    await input(extensionRunner, "/wish do it");
+    expect(directiveMessages(await submit(extensionRunner, quoted, templates))).toEqual([]);
+    expect(await submit(extensionRunner, `/wish ${marker}`, templates, { source: "extension", trigger: "prompt" })).toEqual([]);
+    await input(extensionRunner, "/wish do it");
+    const expanded = expandPromptTemplate("/wish do it", templates);
+    expect(directiveMessages(await messages(extensionRunner, expanded, { trigger: "extension" }))).toEqual([]);
+    expect(directiveMessages(await messages(extensionRunner, expanded))).toEqual([{
+      customType: "omo-ultrawork:directive",
+      content: "DIRECTIVE_SENTINEL",
+      display: false,
+    }]);
     expect(marks).toEqual(["wish-test"]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
@@ -185,7 +254,7 @@ test("an installation path with spaces, quotes, #, and Unicode discovers skill a
         markArmed: (id) => marks.push(id),
       },
     };
-    const injected = await messages(await runner(dir), expandPromptTemplate("/wish moved", templates));
+    const injected = await submit(await runner(dir), "/wish moved", templates);
     expect(directiveMessages(injected)).toEqual([{
       customType: "omo-ultrawork:directive",
       content: "DIRECTIVE_SENTINEL",

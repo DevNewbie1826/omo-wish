@@ -57,6 +57,10 @@ async function main() {
 
   const messages = async (runner, text, options = {}) =>
     (await runner.emitBeforeAgentStart(text, undefined, "", {}, options))?.messages ?? [];
+  const submit = async (runner, raw, templates, options = {}) => {
+    await runner.emitInput(raw, undefined, options.source ?? "interactive", undefined, "wish-verification-input");
+    return messages(runner, expandPromptTemplate(raw, templates), options);
+  };
   const directiveMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-ultrawork:directive");
 
   try {
@@ -124,35 +128,37 @@ async function main() {
         markArmed: (id) => { marks.push(id); armed.add(id); },
       },
     };
-    for (const raw of ["unrelated input", "xulw", "ultrawork_ish", "/wishful hello", "/WISH hello"]) {
-      const inactive = await messages(runner, raw);
+    for (const raw of ["unrelated input", "xulw", "ultrawork_ish", "/wishful hello", "/WISH hello",
+      "What does \"Read and follow the `wish` skill\" mean?",
+      "/wishful Read and follow the `wish` skill"]) {
+      const inactive = await submit(runner, raw, prompts.prompts);
       check(`unrelated or lookalike input stays inactive: ${raw}`, () => {
         assert.equal(expandPromptTemplate(raw, prompts.prompts), raw);
         assert.deepEqual(directiveMessages(inactive), []);
         assert.deepEqual(marks, []);
       });
     }
-    const preview = await messages(runner, args, { preview: true });
+    const preview = await submit(runner, "/wish \"keep $ARGUMENTS $1 literal\" \"x <literal> y\"", prompts.prompts, { preview: true });
     check("preview does not consume activation", () => {
       assert.deepEqual(directiveMessages(preview), []);
       assert.deepEqual(marks, []);
     });
     // Taken while this session is still unarmed, so a keyword trigger that
     // arms generic mode here would show as a directive and a mark.
-    const ordinary = await messages(runner, "ordinary ulw request");
+    const ordinary = await submit(runner, "ordinary ulw request", prompts.prompts);
     check("an ordinary ulw prompt does not arm through this extension", () => {
       assert.deepEqual(directiveMessages(ordinary), []);
       assert.deepEqual(marks, []);
     });
     armed.add("wish-verification");
-    const prearmed = await messages(runner, args);
+    const prearmed = await submit(runner, '/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
     check("an explicitly armed session remains silent", () => {
       assert.deepEqual(directiveMessages(prearmed), []);
       assert.deepEqual(marks, []);
     });
     armed.delete("wish-verification");
-    const first = await messages(runner, args);
-    const repeat = await messages(runner, args);
+    const first = await submit(runner, '/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
+    const repeat = await submit(runner, '/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
     check("first real wish arms once with the exact supplied directive", () => {
       assert.deepEqual(directiveMessages(first), [{
         customType: "omo-ultrawork:directive",
@@ -165,19 +171,19 @@ async function main() {
     });
     await loader.reload();
     const fresh = createRunner(loader);
-    const afterReload = await messages(fresh, bare);
+    const afterReload = await submit(fresh, "/wish", prompts.prompts);
     check("fresh resource reload preserves already armed state", () => {
       assert.deepEqual(directiveMessages(afterReload), []);
       assert.deepEqual(marks, ["wish-verification"]);
     });
     delete globalThis[armingSymbol];
-    const withoutMode = await messages(fresh, bare);
+    const withoutMode = await submit(fresh, "/wish", prompts.prompts);
     check("absent mode state sends no message or mutation", () => {
       assert.equal(Object.hasOwn(globalThis, armingSymbol), false);
       assert.deepEqual(directiveMessages(withoutMode), []);
     });
     globalThis[armingSymbol] = { directive: "DIRECTIVE_SENTINEL" };
-    const unsupported = await messages(fresh, bare);
+    const unsupported = await submit(fresh, "/wish", prompts.prompts);
     check("unsupported interop sends no message or mutation", () => {
       assert.deepEqual(directiveMessages(unsupported), []);
       assert.deepEqual(marks, ["wish-verification"]);

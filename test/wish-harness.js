@@ -50,4 +50,14 @@ export async function messages(extensionRunner, prompt, options = {}) {
   return (await extensionRunner.emitBeforeAgentStart(prompt, undefined, "", {}, options))?.messages ?? [];
 }
 
+export async function input(extensionRunner, text, source = "interactive") {
+  return extensionRunner.emitInput(text, undefined, source, undefined, "wish-input");
+}
+
+export async function submit(extensionRunner, raw, templates, options = {}) {
+  const { source, ...turn } = options;
+  await input(extensionRunner, raw, source);
+  return messages(extensionRunner, expandPromptTemplate(raw, templates), turn);
+}
+
 export const directiveMessages = (list) => (list ?? []).filter((m) => m?.customType === "omo-ultrawork:directive");
