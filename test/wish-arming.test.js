@@ -2,11 +2,11 @@ import { afterAll, expect, test } from "bun:test";
 import { cpSync, existsSync, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { repo, expandPromptTemplate, resources, runner, messages, directiveMessages, stageSkillsMessage, fixtures, removeFixtures } from "./wish-harness.js";
+import { repo, expandPromptTemplate, resources, runner, messages, directiveMessages, fixtures, removeFixtures } from "./wish-harness.js";
 
 afterAll(removeFixtures);
 
-test("expanded wish and ordinary whole-word ulw arm generic mode with only the host directive", async () => {
+test("an expanded wish arms generic mode with only the host directive; an ordinary ULW request does not", async () => {
   const { templates } = await resources();
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
@@ -21,22 +21,20 @@ test("expanded wish and ordinary whole-word ulw arm generic mode with only the h
       },
     };
     const extensionRunner = await runner();
-    for (const text of ["ordinary ULW request", expandPromptTemplate("/wish do it", templates)]) {
+    const text = expandPromptTemplate("/wish do it", templates);
+    const first = await messages(extensionRunner, text);
+    expect(directiveMessages(first)).toEqual([{
+      customType: "omo-ultrawork:directive",
+      content: "DIRECTIVE_SENTINEL",
+      display: false,
+    }]);
+    expect(directiveMessages(await messages(extensionRunner, text))).toEqual([]);
+    for (const plain of ["ordinary ULW request", "ultrawork this"]) {
       armed.clear();
-      const first = await messages(extensionRunner, text);
-      expect(directiveMessages(first)).toEqual([{
-        customType: "omo-ultrawork:directive",
-        content: "DIRECTIVE_SENTINEL",
-        display: false,
-      }]);
-      expect(directiveMessages(await messages(extensionRunner, text))).toEqual([]);
-      if (text !== "ordinary ULW request") {
-        expect(first.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
-        expect((await messages(extensionRunner, text)).filter((m) => m?.customType === "omo-wish:stage-skills"))
-          .toEqual([stageSkillsMessage]);
-      }
+      expect(await messages(extensionRunner, plain)).toEqual([]);
+      expect(await messages(extensionRunner, plain, { preview: true })).toEqual([]);
     }
-    expect(marks).toEqual(["wish-test", "wish-test"]);
+    expect(marks).toEqual(["wish-test"]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
     else delete globalThis[symbol];
@@ -44,6 +42,7 @@ test("expanded wish and ordinary whole-word ulw arm generic mode with only the h
 });
 
 test("generic mode does not arm on invalid session ids", async () => {
+  const { templates } = await resources();
   const symbol = Symbol.for("omo.ultrawork.arming");
   const prior = Object.getOwnPropertyDescriptor(globalThis, symbol);
   const marks = [];
@@ -55,10 +54,10 @@ test("generic mode does not arm on invalid session ids", async () => {
         markArmed: (id) => marks.push(id),
       },
     };
+    const text = expandPromptTemplate("/wish invalid session", templates);
     for (const invalidId of [0, false, ""]) {
       const extensionRunner = await runner(repo, invalidId);
-      const injected = await messages(extensionRunner, "ordinary ULW request with an invalid session id");
-      expect(directiveMessages(injected)).toEqual([]);
+      expect(directiveMessages(await messages(extensionRunner, text))).toEqual([]);
     }
     expect(marks).toEqual([]);
   } finally {
@@ -133,40 +132,29 @@ test("real wish entry arms once; preview, unrelated input and pre-armed sessions
       },
     };
     const first = await runner();
-    const preview = await messages(first, text, { preview: true });
-    expect(directiveMessages(preview)).toEqual([]);
+    expect(directiveMessages(await messages(first, text, { preview: true }))).toEqual([]);
     expect(await messages(first, "unrelated input")).toEqual([]);
     expect(marks).toEqual([]);
     armed.add("wish-test");
-    const prearmed = await messages(first, text);
-    expect(directiveMessages(prearmed)).toEqual([]);
-    expect(prearmed.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
+    expect(directiveMessages(await messages(first, text))).toEqual([]);
     expect(marks).toEqual([]);
     armed.delete("wish-test");
-    const activation = await messages(first, text);
-    expect(directiveMessages(activation)).toEqual([{
+    expect(directiveMessages(await messages(first, text))).toEqual([{
       customType: "omo-ultrawork:directive",
       content: "DIRECTIVE_SENTINEL",
       display: false,
     }]);
-    expect(activation.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
     expect(marks).toEqual(["wish-test"]);
     for (const next of [first, await runner()]) {
-      const repeat = await messages(next, text);
-      expect(directiveMessages(repeat)).toEqual([]);
-      expect(repeat.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
+      expect(directiveMessages(await messages(next, text))).toEqual([]);
     }
     expect(marks).toEqual(["wish-test"]);
     expect(globalThis[symbol].directive).toBe("DIRECTIVE_SENTINEL");
     delete globalThis[symbol];
-    const withoutState = await messages(first, text);
-    expect(directiveMessages(withoutState)).toEqual([]);
-    expect(withoutState.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
+    expect(directiveMessages(await messages(first, text))).toEqual([]);
     expect(Object.hasOwn(globalThis, symbol)).toBe(false);
     globalThis[symbol] = { directive: "DIRECTIVE_SENTINEL" };
-    const unsupported = await messages(first, text);
-    expect(directiveMessages(unsupported)).toEqual([]);
-    expect(unsupported.filter((m) => m?.customType === "omo-wish:stage-skills")).toEqual([stageSkillsMessage]);
+    expect(directiveMessages(await messages(first, text))).toEqual([]);
     expect(marks).toEqual(["wish-test"]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
@@ -203,8 +191,6 @@ test("an installation path with spaces, quotes, #, and Unicode discovers skill a
       content: "DIRECTIVE_SENTINEL",
       display: false,
     }]);
-    expect(injected.filter((message) => message?.customType === "omo-wish:stage-skills"))
-      .toEqual([stageSkillsMessage]);
     expect(marks).toEqual(["wish-test"]);
   } finally {
     if (prior) Object.defineProperty(globalThis, symbol, prior);
