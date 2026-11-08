@@ -111,7 +111,7 @@ test/wish-verify.test.js                        tests for scripts/verify.mjs
 bun test
 ```
 
-Runs the four test files. They load the plugin through the real senpi loader and prove that `/wish` arms
+Runs the three test files and their shared harness. They load the plugin through the real senpi loader and prove that `/wish` arms
 ultrawork exactly once per session, that `scripts/verify.mjs` passes and fails where it should, and that shipped
 prose stays English outside the named exemptions. The loader tests need a local senpi install.
 

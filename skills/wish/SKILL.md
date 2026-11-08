@@ -40,17 +40,19 @@ Code size has no line-count targets. Judge bloat by the `remove-ai-slops` skill.
 
 | work type | read and use | for what |
 | --- | --- | --- |
-| coding (patch, feature, bugfix, refactor) | `mass-ulw`, `ulw-loop`, `programming`, `debugging`, `ast-grep`, `refactor`, `git-master`, `remove-ai-slops`, `review-work` | run collect, build and fix as mass-ulw DAGs under the ulw-loop goal; production code and tests under `programming`; `debugging` for crashes, wrong output or hangs, locked by a failing test; `ast-grep` for syntax-shaped search and codemods; `refactor` when the unit restructures; `git-master` on every commit node; `remove-ai-slops` to cut slop behind regression tests; `review-work` for the gate review |
+| coding (patch, feature, bugfix, refactor) | `mass-ulw`, `ulw-loop`, `programming`, `debugging`, `ast-grep`, `refactor`, `git-master`, `remove-ai-slops`, `review-work` | run collect, build and fix as mass-ulw DAGs under the ulw-loop goal; production code and tests under `programming`; `debugging` for crashes, wrong output or hangs, locked by a failing test; `ast-grep` for syntax-shaped search and codemods; `refactor` when the unit restructures; `git-master` on every commit node; `remove-ai-slops` to cut slop behind regression tests; `review-work` for its QA, review-worktree and reviewer-freshness guidance only |
 | research | `ulw-research`, `mass-ulw`, `ulw-loop`, `ulw-plan` | phases, source floor, fact ledger, claim graph and gates are `ulw-research`'s; `mass-ulw` runs them as a DAG; `ulw-loop` holds the goal and evidence root; `ulw-plan` writes the plan |
-| design / UI | `frontend`, `visual-qa`, `browser`, `programming`, `remove-ai-slops`, `mass-ulw`, `ulw-loop`, `git-master`, `review-work` | `frontend` builds; `visual-qa` verifies every one of its conditions in full detail and owns the checklist; `browser` drives the real page for QA; `programming` and `remove-ai-slops` guard the code; the rest carry the run, commits and gate |
+| design / UI | `frontend`, `visual-qa`, `browser`, `programming`, `remove-ai-slops`, `mass-ulw`, `ulw-loop`, `git-master`, `review-work` | `frontend` builds; `visual-qa` verifies every one of its conditions in full detail and owns the checklist; `browser` drives the real page for QA; `programming` and `remove-ai-slops` guard the code; `review-work` for its QA, review-worktree and reviewer-freshness guidance only; the rest carry the run, commits and gate |
 | audit | `remove-ai-slops`, `frontend`, `visual-qa`, `programming`, `mass-ulw`, `ulw-loop` | the rule corpus is those skills' own rule sets, cited by id; collection and judging run as a mass-ulw DAG under the ulw-loop goal |
 | planning | `ulw-plan`, `hyperplan`, `programming`, `remove-ai-slops`, plus the work type's own skill (`visual-qa` for design, `ulw-research` for research) | `ulw-plan` for a decision-complete plan; `hyperplan` when the plan needs adversarial cross-critique; `programming` and `remove-ai-slops` read first so the plan carries real test and slop constraints; the type skill fixes what done means |
-| review | `review-work`, `programming`, `remove-ai-slops`, `visual-qa`, `browser` | `review-work` for one gate reviewer and a fresh reviewer per re-review; `programming` and `remove-ai-slops` are the code-review axes; `visual-qa` is the verdict for UI; `browser` captures on-surface evidence |
+| review | `review-work`, `programming`, `remove-ai-slops`, `visual-qa`, `browser` | `review-work` for its QA, review-worktree and reviewer-freshness guidance only; `programming` and `remove-ai-slops` are the code-review axes; `visual-qa` is the verdict for UI; `browser` captures on-surface evidence |
 | cleanup | `remove-ai-slops`, `refactor`, `git-master` | remove dead code and slop behind regression tests, restructure what survives, tear down worktrees and branches under git rules |
 | collection / corpus extraction | `mass-ulw`, `ast-grep`, `programming`, `remove-ai-slops`, `visual-qa`, `frontend`, `ulw-research` | collect in one mass-ulw run; extract by syntax shape with `ast-grep`; harvest the distilled rule sets before any raw corpus |
 | multi-unit program | `mass-ulw`, `ulw-loop`, `ulw-plan`, `hyperplan` | one ulw-loop goal per unit, one mass-ulw build run per wave; `ulw-plan` for units that need a plan, `hyperplan` when a unit's plan is contested |
 | resume after death or compaction | `ulw-loop`, `mass-ulw` | `ulw-loop` status rebinds the evidence root; re-enter mass-ulw's journaled run keys, never restart them |
 | browser-facing surface work | `browser`, `visual-qa` | `browser` drives the signed-in or owned browser for actions, screenshots and traces; `visual-qa` judges the captured state. Not for a plain search or a static fetch |
+
+Reviewer dispatch follows Size check and Review and merge below, not `review-work`'s own gate reviewer.
 
 ## Size check
 
@@ -60,7 +62,7 @@ Answer three questions about the PR:
 2. Is it confirmed at once by CI or by eye?
 3. Is it set work with no design judgment? A new file following a pattern counts as set work.
 
-All yes means small work: CI or the quoted test runs, plus a self-review. No other-model review.
+All yes means small work: CI plus a self-review. No other-model review.
 Any no, or anything touching security, permissions, data loss, concurrency, schema, several repositories, hard recovery or a design fork, means big work: ultrabrain review.
 When unsure, go one level up.
 
