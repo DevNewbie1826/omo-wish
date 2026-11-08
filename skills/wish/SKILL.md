@@ -80,7 +80,7 @@ The end of the work opens a PR. Its body carries the evidence: commands, exit co
 Small work puts its self-review in the PR body.
 Big work goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
 Round 1 reviews the whole PR to the end and lists every problem at once.
-Fixes for the cited problems go back to the start of this method, and they run as a DAG whose last node is the next round.
+Fixes for the cited problems go back to the start of this method, sized as in DAGs: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
 From round 2 on, only the fixed parts are reviewed. There's no final full review.
 A blocker is one of two things, and only with proof (a reproduce command, or the exact code line and path):
 - A. A plan violation: a requirement not met, or a must-hold condition the plan lists broken.
