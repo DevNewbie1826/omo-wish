@@ -3,6 +3,6 @@ description: 소원을 빕니다
 ---
 $ARGUMENTS
 
-Use ultrawork. Read and follow the `wish` skill for this request. Its stages run as mass-ulw runs (collect, build, fix) under ulw-loop goals; read those skills first.
+Read and follow the `wish` skill for this request.
 
-Run its flow in order: collect everything first, define the end user and the ideal state before any plan, write one plan in the ulw-plan checkbox grammar with a confirmation device for the implementation and one for any fix, have it reviewed by one architect, ask the one decision batch, then build under one goal as one PR per independently verifiable unit with before/after inside each PR, and finish with the code review before the final review and the merge.
+The method: analyze the whole context with a DAG at maximum parallelism and define the ideal state from evidence, set concrete goals, run all work as DAGs each with a strict confirmation device, then open a PR reviewed until APPROVED and merge it only on MERGE GO.

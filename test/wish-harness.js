@@ -7,12 +7,10 @@ import { fileURLToPath } from "node:url";
 export const repo = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const senpi = process.env.SENPI_ROOT ?? join(homedir(), ".bun/install/global/node_modules/@code-yeongyu/senpi");
 export const { expandPromptTemplate } = await import(`${senpi}/dist/core/prompt-templates.js`);
-export const { convertToLlm } = await import(`${senpi}/dist/core/messages.js`);
 const { DefaultResourceLoader } = await import(`${senpi}/dist/core/resource-loader.js`);
 const { SettingsManager } = await import(`${senpi}/dist/core/settings-manager.js`);
 const { loadExtensions } = await import(`${senpi}/dist/core/extensions/loader.js`);
 const { ExtensionRunner } = await import(`${senpi}/dist/core/extensions/runner.js`);
-import { stageSkillsText } from "../extensions/wish.js";
 export const fixtures = [];
 
 // Bun binds a hook in a shared module to its first importer only, so each test file registers its own afterAll(removeFixtures).
@@ -52,10 +50,14 @@ export async function messages(extensionRunner, prompt, options = {}) {
   return (await extensionRunner.emitBeforeAgentStart(prompt, undefined, "", {}, options))?.messages ?? [];
 }
 
-export const directiveMessages = (list) => (list ?? []).filter((m) => m?.customType === "omo-ultrawork:directive");
-export const stageSkillsMessage = {
-  customType: "omo-wish:stage-skills",
-  content: stageSkillsText,
-  display: false,
-};
+export async function input(extensionRunner, text, source = "interactive") {
+  return extensionRunner.emitInput(text, undefined, source, undefined, "wish-input");
+}
 
+export async function submit(extensionRunner, raw, templates, options = {}) {
+  const { source, ...turn } = options;
+  await input(extensionRunner, raw, source);
+  return messages(extensionRunner, expandPromptTemplate(raw, templates), turn);
+}
+
+export const directiveMessages = (list) => (list ?? []).filter((m) => m?.customType === "omo-ultrawork:directive");

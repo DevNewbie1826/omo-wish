@@ -1,74 +1,18 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, readFileSync, realpathSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { pathToFileURL } from "node:url";
-import { dirname, join, relative, resolve, sep } from "node:path";
-
-export const HELP_TIMEOUT_MS = 20_000;
-// A public tool's help must carry a real synopsis line, not just any output.
-export const USAGE_LINE = /^\s*(usage|synopsis)\b/im;
-const SCRIPTS_DIR = "skills/wish/scripts";
-
-export function scriptsUnder(dir) {
-  const found = [];
-  const walk = (current) => {
-    for (const entry of readdirSync(current, { withFileTypes: true })) {
-      const path = join(current, entry.name);
-      if (entry.isDirectory()) walk(path);
-      else if (entry.name.endsWith(".mjs")) found.push(path);
-    }
-  };
-  walk(dir);
-  return found.sort();
-}
-
-export function shippedScripts(root) {
-  return scriptsUnder(join(root, SCRIPTS_DIR));
-}
-
-export function scriptsRootOf(skillFilePath) {
-  return join(dirname(skillFilePath), "scripts");
-}
-
-// A public tool is a script directly under scripts/; probes and lib are modules
-// the tools load, so a silent --help is correct there but not for a tool.
-export function isPublicTool(root, file) {
-  return relative(join(root, SCRIPTS_DIR), file).split(sep).length === 1;
-}
+import { join, resolve } from "node:path";
 
 export function manifestSkillFiles(root) {
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8")).pi;
   return (manifest?.skills ?? []).map((dir) => join(root, dir, "SKILL.md"));
 }
 
-function describeFailure(result) {
-  const tail = (text) => text.trim().split("\n").slice(-4).join(" | ").slice(0, 400);
-  if (result.error?.code === "ETIMEDOUT") return `timed out after ${HELP_TIMEOUT_MS} ms`;
-  if (result.error) return `could not run: ${result.error.message}`;
-  const output = [result.stdout, result.stderr].map(tail).filter(Boolean).join(" / ");
-  return output ? `exit ${result.status}: ${output}` : `exit ${result.status} with no output`;
-}
-
-export function smokeScript(root, file, run = spawnSync) {
-  // A script reached through a symlinked install can exit 0 without running;
-  // spawn the real path so the usage-line requirement below cannot be vacuous.
-  const result = run(process.execPath, [realpathSync(file), "--help"], {
-    cwd: root,
-    encoding: "utf8",
-    timeout: HELP_TIMEOUT_MS,
-    killSignal: "SIGKILL",
-    maxBuffer: 4 * 1024 * 1024,
-  });
-  const rel = relative(root, file).split(sep).join("/");
-  if (result.error || result.status !== 0) {
-    throw new Error(`${rel} --help failed: ${describeFailure(result)}`);
-  }
-  if (isPublicTool(root, file) && !USAGE_LINE.test(result.stdout ?? "")) {
-    const first = (result.stdout ?? "").split("\n").map((line) => line.trim()).filter(Boolean)[0] ?? "(no output)";
-    throw new Error(`${rel} --help printed no usage line; first line: ${first.slice(0, 160)}`);
-  }
-  return { file, rel, bytes: (result.stdout ?? "").length };
+// The skill only ships documents, so every references/<file> it names must
+// resolve beside SKILL.md; a typo here is a broken pointer for the reader.
+export function referencedFiles(skillFilePath) {
+  const text = readFileSync(skillFilePath, "utf8");
+  return [...new Set(text.match(/references\/[A-Za-z0-9._-]+/g) ?? [])].sort();
 }
 
 export const check = (name, assertion) => {
@@ -113,14 +57,11 @@ async function main() {
 
   const messages = async (runner, text, options = {}) =>
     (await runner.emitBeforeAgentStart(text, undefined, "", {}, options))?.messages ?? [];
-  const directiveMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-ultrawork:directive");
-  const { stageSkillsText } = await import(pathToFileURL(join(root, "extensions/wish.js")).href);
-  const stageSkillsMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-wish:stage-skills");
-  const stageSkillsMessage = {
-    customType: "omo-wish:stage-skills",
-    content: stageSkillsText,
-    display: false,
+  const submit = async (runner, raw, templates, options = {}) => {
+    await runner.emitInput(raw, undefined, options.source ?? "interactive", undefined, "wish-verification-input");
+    return messages(runner, expandPromptTemplate(raw, templates), options);
   };
+  const directiveMessages = (list) => (list ?? []).filter((message) => message?.customType === "omo-ultrawork:directive");
 
   try {
     const loader = new DefaultResourceLoader({
@@ -150,6 +91,14 @@ async function main() {
           `the loader found skill ${skill.name} at a missing file: ${skill.filePath}`);
       }
     });
+    check("every reference file the skill names exists beside it", () => {
+      const references = referencedFiles(skillPath);
+      assert.notEqual(references.length, 0, `${skillPath} names no references/ file`);
+      for (const reference of references) {
+        assert.equal(existsSync(join(root, "skills/wish", reference)), true,
+          `reference file is missing: ${reference}`);
+      }
+    });
 
     const bare = expandPromptTemplate("/wish", prompts.prompts);
     const args = expandPromptTemplate('/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
@@ -168,7 +117,6 @@ async function main() {
       const preview = await messages(runner, text, { preview: true });
       check("preview leaves expanded entry without injected messages", () => {
         assert.deepEqual(directiveMessages(preview), []);
-        assert.deepEqual(stageSkillsMessages(preview), []);
       });
     }
     const marks = [];
@@ -180,30 +128,37 @@ async function main() {
         markArmed: (id) => { marks.push(id); armed.add(id); },
       },
     };
-    for (const raw of ["unrelated input", "xulw", "ultrawork_ish", "/wishful hello", "/WISH hello"]) {
-      const inactive = await messages(runner, raw);
+    for (const raw of ["unrelated input", "xulw", "ultrawork_ish", "/wishful hello", "/WISH hello",
+      "What does \"Read and follow the `wish` skill\" mean?",
+      "/wishful Read and follow the `wish` skill"]) {
+      const inactive = await submit(runner, raw, prompts.prompts);
       check(`unrelated or lookalike input stays inactive: ${raw}`, () => {
         assert.equal(expandPromptTemplate(raw, prompts.prompts), raw);
         assert.deepEqual(directiveMessages(inactive), []);
         assert.deepEqual(marks, []);
       });
     }
-    const preview = await messages(runner, args, { preview: true });
+    const preview = await submit(runner, "/wish \"keep $ARGUMENTS $1 literal\" \"x <literal> y\"", prompts.prompts, { preview: true });
     check("preview does not consume activation", () => {
       assert.deepEqual(directiveMessages(preview), []);
-      assert.deepEqual(stageSkillsMessages(preview), []);
+      assert.deepEqual(marks, []);
+    });
+    // Taken while this session is still unarmed, so a keyword trigger that
+    // arms generic mode here would show as a directive and a mark.
+    const ordinary = await submit(runner, "ordinary ulw request", prompts.prompts);
+    check("an ordinary ulw prompt does not arm through this extension", () => {
+      assert.deepEqual(directiveMessages(ordinary), []);
       assert.deepEqual(marks, []);
     });
     armed.add("wish-verification");
-    const prearmed = await messages(runner, args);
+    const prearmed = await submit(runner, '/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
     check("an explicitly armed session remains silent", () => {
       assert.deepEqual(directiveMessages(prearmed), []);
-      assert.deepEqual(stageSkillsMessages(prearmed), [stageSkillsMessage]);
       assert.deepEqual(marks, []);
     });
     armed.delete("wish-verification");
-    const first = await messages(runner, args);
-    const repeat = await messages(runner, args);
+    const first = await submit(runner, '/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
+    const repeat = await submit(runner, '/wish "keep $ARGUMENTS $1 literal" "x <literal> y"', prompts.prompts);
     check("first real wish arms once with the exact supplied directive", () => {
       assert.deepEqual(directiveMessages(first), [{
         customType: "omo-ultrawork:directive",
@@ -212,54 +167,27 @@ async function main() {
       }]);
       assert.deepEqual(marks, ["wish-verification"]);
       assert.deepEqual(directiveMessages(repeat), []);
-      assert.deepEqual(stageSkillsMessages(first), [stageSkillsMessage]);
-      assert.deepEqual(stageSkillsMessages(repeat), [stageSkillsMessage]);
       assert.equal(globalThis[armingSymbol].directive, "DIRECTIVE_SENTINEL");
-    });
-    armed.delete("wish-verification");
-    const ordinary = await messages(runner, "ordinary ULW request");
-    check("ordinary whole-word ulw activates only generic mode", () => {
-      assert.deepEqual(directiveMessages(ordinary), [{
-        customType: "omo-ultrawork:directive",
-        content: "DIRECTIVE_SENTINEL",
-        display: false,
-      }]);
-      assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
     });
     await loader.reload();
     const fresh = createRunner(loader);
-    const afterReload = await messages(fresh, bare);
+    const afterReload = await submit(fresh, "/wish", prompts.prompts);
     check("fresh resource reload preserves already armed state", () => {
       assert.deepEqual(directiveMessages(afterReload), []);
-      assert.deepEqual(stageSkillsMessages(afterReload), [stageSkillsMessage]);
-      assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
+      assert.deepEqual(marks, ["wish-verification"]);
     });
     delete globalThis[armingSymbol];
-    const withoutMode = await messages(fresh, bare);
+    const withoutMode = await submit(fresh, "/wish", prompts.prompts);
     check("absent mode state sends no message or mutation", () => {
       assert.equal(Object.hasOwn(globalThis, armingSymbol), false);
       assert.deepEqual(directiveMessages(withoutMode), []);
-      assert.deepEqual(stageSkillsMessages(withoutMode), [stageSkillsMessage]);
     });
     globalThis[armingSymbol] = { directive: "DIRECTIVE_SENTINEL" };
-    const unsupported = await messages(fresh, bare);
+    const unsupported = await submit(fresh, "/wish", prompts.prompts);
     check("unsupported interop sends no message or mutation", () => {
       assert.deepEqual(directiveMessages(unsupported), []);
-      assert.deepEqual(stageSkillsMessages(unsupported), [stageSkillsMessage]);
-      assert.deepEqual(marks, ["wish-verification", "wish-verification"]);
+      assert.deepEqual(marks, ["wish-verification"]);
     });
-
-    const scripts = scriptsUnder(scriptsRootOf(skills.skills.find((skill) => skill.name === "wish").filePath));
-    check("the loader-placed skill ships the scripts this run smokes", () => {
-      assert.equal(resolve(scriptsRootOf(skills.skills.find((skill) => skill.name === "wish").filePath)),
-        join(root, SCRIPTS_DIR));
-      assert.notEqual(scripts.length, 0, `no shipped script found under ${join(root, SCRIPTS_DIR)}`);
-    });
-    for (const script of scripts) {
-      check(`--help exits 0: ${relative(root, script).split(sep).join("/")}`, () => {
-        smokeScript(root, script);
-      });
-    }
 
     console.log(`ALL PASS: ${root}`);
   } finally {
