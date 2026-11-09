@@ -14,7 +14,7 @@ Register the ulw-loop goals first: one goal per phase, each with its real succes
 
 ## The request
 
-1. Build a DAG over the whole context and history of the work, analyze it at maximum parallelism, and define from evidence the ideal state for the current problems and the main decision points. Size the analysis by the three questions in Size check: small work is one explore node, and only big work gets a full analysis DAG. Independent leaves that don't depend on the definition (translating a reference, for example) may start in this first DAG beside the analysis.
+1. Build a DAG over the whole context and history of the work, analyze it at maximum parallelism, and define from evidence the ideal state for the current problems and the main decision points. Fit the analysis to the work: a narrow change with no open decisions needs one explore node, and only work with open decisions gets a full analysis DAG. Independent leaves that don't depend on the definition (translating a reference, for example) may start in this first DAG beside the analysis.
 2. From that definition, create a new git worktree. Create one only when the work changes a repository.
 3. Set concrete goals and work toward them.
 4. Run all the defined work as DAGs for maximum efficiency. Building a DAG follows the DAG reference (see DAGs).
@@ -29,7 +29,7 @@ Build every DAG per `references/dag-construction.md`: top-down to atomic tasks, 
 `references/dag-construction-ko.md` is the owner's original. Where the two differ, the Korean original governs.
 Run each DAG with `mass-ulw` under the ulw-loop goal.
 Every part with parallelism is a DAG, and its last node is its review.
-Fixes after a review are a DAG too, sized by the same three questions. A 1-2 line fix needs no DAG: make it, confirm it and commit it.
+Fixes after a review are a DAG too. A 1-2 line fix needs no DAG: make it, confirm it and commit it.
 An integration node that only collects and checks its children's results is a check inside the parent, not a separate node (section 4.3 of the DAG reference). Make it a separate node only when integrating needs its own execution, such as merging edits or running the tests over the combined result.
 
 ## Node prompts, run files and commits
@@ -60,27 +60,14 @@ Code size has no line-count targets. Judge bloat by the `remove-ai-slops` skill.
 | resume after death or compaction | `ulw-loop`, `mass-ulw` | `ulw-loop` status rebinds the evidence root; re-enter mass-ulw's journaled run keys, never restart them |
 | browser-facing surface work | `browser`, `visual-qa` | `browser` drives the signed-in or owned browser for actions, screenshots and traces; `visual-qa` judges the captured state. Not for a plain search or a static fetch |
 
-Reviewer dispatch follows Size check and Review and merge below, not `review-work`'s own gate reviewer.
-
-## Size check
-
-Answer three questions about the PR:
-
-1. If it's wrong, is the impact small and recoverable with one revert?
-2. Is it confirmed at once by CI or by eye?
-3. Is it set work with no design judgment? A new file following a pattern counts as set work.
-
-All yes means small work: CI plus a self-review. No other-model review.
-Any no, or anything touching security, permissions, data loss, concurrency, schema, several repositories, hard recovery or a design fork, means big work: ultrabrain review.
-When unsure, go one level up.
+Reviewer dispatch follows Review and merge below, not `review-work`'s own gate reviewer.
 
 ## Review and merge
 
 The end of the work opens a PR. Its body carries the evidence: commands, exit codes, results and unverified items. Keep no receipts and no ledger.
-Small work puts its self-review in the PR body.
-Big work goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
+Every PR goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
 Round 1 reviews the whole PR to the end and lists every problem at once.
-Fixes for the cited problems go back to the start of this method, sized as in DAGs: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
+Fixes for the cited problems go back to the start of this method: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
 From round 2 on, only the fixed parts are reviewed. There's no final full review.
 A blocker is one of two things, and only with proof (a reproduce command, or the exact code line and path):
 - A. A plan violation: a requirement not met, or a must-hold condition the plan lists broken.
@@ -88,5 +75,5 @@ A blocker is one of two things, and only with proof (a reproduce command, or the
 Anything without proof is a note. There is no default-conditions list.
 A reviewer who doubts the evidence re-runs the command itself.
 Evidence typos are notes, never a loop. Evidence alone never causes a review loop.
-After APPROVED (or the small-work self-review), stop and wait for the lead's line `MERGE GO <PR> for head <40-hex> only.` Merge only that PR at that head. Never merge, release or deploy without it.
+After APPROVED, stop and wait for the lead's line `MERGE GO <PR> for head <40-hex> only.` Merge only that PR at that head. Never merge, release or deploy without it.
 Remove the worktree after the merge.
