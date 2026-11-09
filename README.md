@@ -82,9 +82,8 @@ A short map. Every rule lives once in the skill, so follow the links for the rea
 3. [DAGs](skills/wish/SKILL.md#dags): how each graph is built and run, ending in its review.
 4. [Confirmation devices](skills/wish/SKILL.md#confirmation-devices): what counts as proof.
 5. [Skills per work type](skills/wish/SKILL.md#skills-per-work-type): which skills to reach for.
-6. [Size check](skills/wish/SKILL.md#size-check): decides whether the PR needs an other-model review.
-7. [Review and merge](skills/wish/SKILL.md#review-and-merge): the PR, its review rounds, what blocks, and the
-   wait for MERGE GO.
+6. [Review and merge](skills/wish/SKILL.md#review-and-merge): the PR, its ultrabrain review rounds, what blocks,
+   and the wait for MERGE GO.
 
 ## Layout
 
