@@ -50,8 +50,8 @@ The environment the tests and the loader check were actually run in:
 | OmO plugin host (Senpi) | the version installed under `~/.bun/install/global/node_modules/@code-yeongyu/senpi` |
 | Bun | 1.4 or newer |
 
-That's the tested combination, not a minimum. The plugin assumes a host that supports the `pi.skills` manifest
-entry and the extension's `before_agent_start` event.
+That's the tested combination, not a minimum. The plugin assumes a host that supports the `pi.prompts`, `pi.skills` and
+`pi.extensions` manifest entries and the extension's `input` and `before_agent_start` events.
 
 ## Usage
 
@@ -80,9 +80,12 @@ A short map. Every rule lives once in the skill, so follow the links for the rea
 2. [The request](skills/wish/SKILL.md#the-request): analyze with a DAG, define the ideal state from evidence,
    create a worktree only when a repository changes, then implement, fix and verify every requirement.
 3. [DAGs](skills/wish/SKILL.md#dags): how each graph is built and run, ending in its review.
-4. [Confirmation devices](skills/wish/SKILL.md#confirmation-devices): what counts as proof.
-5. [Skills per work type](skills/wish/SKILL.md#skills-per-work-type): which skills to reach for.
-6. [Review and merge](skills/wish/SKILL.md#review-and-merge): the PR, its ultrabrain review rounds, what blocks,
+4. [Node prompts, run files and commits](skills/wish/SKILL.md#node-prompts-run-files-and-commits): how a node's
+   scope line is written, where run files go, and how a commit node stages and sets its identity.
+5. [Confirmation devices](skills/wish/SKILL.md#confirmation-devices): what counts as proof.
+6. [Skills per work type](skills/wish/SKILL.md#skills-per-work-type): which skills to read first for each work
+   type, and what each is for.
+7. [Review and merge](skills/wish/SKILL.md#review-and-merge): the PR, its ultrabrain review rounds, what blocks,
    and the wait for MERGE GO.
 
 ## Layout
@@ -127,7 +130,8 @@ There's no CI in this repository, so quote both runs with their exit codes in th
 ## Customizing
 
 - The menu text and the command template live in `prompts/wish.md`. Keep the sentence
-  ``Read and follow the `wish` skill`` intact: the extension arms on it.
+  ``Read and follow the `wish` skill`` intact: the extension arms on it. `scripts/verify.mjs` also pins the menu text, so change its
+  expected value together with the text.
 - The work rules live in `skills/wish/SKILL.md`, and the two standards it relies on live in
   `skills/wish/references/`. When this README and the skill disagree, the skill is right.
 
