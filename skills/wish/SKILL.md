@@ -10,7 +10,7 @@ metadata:
 **Read and use the `mass-ulw` and `ulw-loop` skills before anything else.**
 
 One `/wish` is one authorized request, worked until its PR merges.
-Register the ulw-loop goals first: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and replace the criteria `createGoals` seeds as placeholders before work starts. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
+Register the ulw-loop goals first: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and, before work starts, replace the placeholder criteria that `createGoals` seeds. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
 
 ## The request
 
@@ -25,9 +25,9 @@ Register the ulw-loop goals first: one goal per phase, each with its real succes
 
 ## DAGs
 
-Build every DAG per `references/dag-construction.md`: top-down to atomic tasks, bottom-up convergence through the direct parent, no skipped layer, no flat convergence, maximum parallelism.
+Build every DAG per `references/dag-construction.md`: top-down to atomic tasks, bottom-up convergence through the direct parent, no skipped level, no flat convergence, maximum parallelism.
 `references/dag-construction-ko.md` is the owner's original. Where the two differ, the Korean original governs.
-Run each DAG with `mass-ulw` under the ulw-loop goal.
+Run each DAG with `mass-ulw` under its phase's ulw-loop goal.
 Every part with parallelism is a DAG, and its last node is its review.
 Fixes after a review are a DAG too. A 1-2 line fix needs no DAG: make it, confirm it and commit it.
 An integration node that only collects and checks its children's results is a check inside the parent, not a separate node (section 4.3 of the DAG reference). Make it a separate node only when integrating needs its own execution, such as merging edits or running the tests over the combined result.
@@ -35,16 +35,18 @@ An integration node that only collects and checks its children's results is a ch
 ## Node prompts, run files and commits
 
 A scope line in a node prompt names the node: "this node writes only X". Never write it as a statement about the whole repository, such as "the repo is read-only"; the memory system can keep that as a standing agreement and stop later work.
-ulw-loop state and its evidence root live under `.omo/ulw-loop/<session-id>/` in the session's working directory, usually the main checkout, so that's expected. Put node handoffs and build files in the worktree's git-ignored `.omo/`.
+ulw-loop state and its evidence root live under `.omo/ulw-loop/<session-id>/` in the session's working directory, which is usually the main checkout rather than the worktree; that's expected. Put node handoffs and build files in the worktree's git-ignored `.omo/`.
 A commit node stages only the paths it names (`git add -- <path>...`, never `git add -A` or `git add .`) and sets the repository's identity for that one command: `git -c user.name=<name> -c user.email=<email> commit`, with no co-author trailer. Take the name and email from the request or brief, never change the global Git identity, and ask before the first commit when no identity is given.
 
 ## Confirmation devices
 
-Confirm directly, so another agent can reproduce it from the commands, exit codes, results and unverified items you leave; reuse existing tests and tools; add no ceremonial or duplicate checks; never claim what you didn't verify. The full standard is `references/verification-device.md`.
-This holds for every verification node in a DAG, not only the PR review: an evidence typo (a wrong count, an off line range) is a note, never a FAIL and never a loop.
+Confirm directly, and leave the commands, exit codes, results and unverified items so another agent can reproduce the check; reuse existing tests and tools; add no ceremonial or duplicate checks; never claim what you didn't verify. The full standard is `references/verification-device.md`.
+In every verification node of a DAG, not only in the PR review, an evidence typo (a wrong count, an off line range) is a note, never a FAIL and never a loop.
 Code size has no line-count targets. Judge bloat by the `remove-ai-slops` skill. If one file gets hard to hold, split it into files inside the tool's own folder.
 
 ## Skills per work type
+
+Once the work type is known, first read every skill in that work type's row. Read all of them before any other work on the request.
 
 | work type | read and use | for what |
 | --- | --- | --- |
@@ -69,9 +71,10 @@ Every PR goes to ultrabrain, which reviews endlessly until APPROVED. There's no 
 Round 1 reviews the whole PR to the end and lists every problem at once.
 Fixes for the cited problems go back to the start of this method: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
 From round 2 on, only the fixed parts are reviewed. There's no final full review.
-A blocker is one of two things, and only with proof (a reproduce command, or the exact code line and path):
-- A. A plan violation: a requirement not met, or a must-hold condition the plan lists broken.
+A blocker is one of two things, and only with proof (a command that reproduces it, or the exact code line and path):
+- A. A plan violation: an unmet requirement, or a broken must-hold condition that the plan lists.
 - B. A proven real defect of any kind: security hole, data loss, secret leak, crash, wrong result.
+
 Anything without proof is a note. There is no default-conditions list.
 A reviewer who doubts the evidence re-runs the command itself.
 Evidence typos are notes, never a loop. Evidence alone never causes a review loop.
