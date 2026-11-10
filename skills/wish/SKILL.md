@@ -35,7 +35,7 @@ An integration node that only collects and checks its children's results is a ch
 ## Node prompts, run files and commits
 
 A scope line in a node prompt names the node: "this node writes only X". Never write it as a statement about the whole repository, such as "the repo is read-only"; the memory system can keep that as a standing agreement and stop later work.
-ulw-loop state and its evidence root live under `.omo/ulw-loop/<session-id>/` in the session's working directory, which is usually the main checkout rather than the worktree; that's expected. Put node handoffs and other run files in the worktree's git-ignored `.omo/`.
+ulw-loop state and its evidence root live under `.omo/ulw-loop/<session-id>/` in the session's working directory, which is usually the main checkout rather than the worktree; that's expected. Put node handoffs and build files in the worktree's git-ignored `.omo/`.
 A commit node stages only the paths it names (`git add -- <path>...`, never `git add -A` or `git add .`) and sets the repository's identity for that one command: `git -c user.name=<name> -c user.email=<email> commit`, with no co-author trailer. Take the name and email from the request or brief, never change the global Git identity, and ask before the first commit when no identity is given.
 
 ## Confirmation devices
@@ -66,7 +66,7 @@ Reviewer dispatch follows Review and merge below, not `review-work`'s own gate r
 
 ## Review and merge
 
-The end of the work opens a PR. Its body carries the evidence: commands, exit codes, results and unverified items. Keep no separate receipts or ledger for it.
+The end of the work opens a PR. Its body carries the evidence: commands, exit codes, results and unverified items. Keep no receipts and no ledger.
 Every PR goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
 Round 1 reviews the whole PR to the end and lists every problem at once.
 Fixes for the cited problems go back to the start of this method: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
