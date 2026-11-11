@@ -10,7 +10,7 @@ metadata:
 **Read and use the `mass-ulw` and `ulw-loop` skills before anything else.**
 
 One `/wish` is one authorized request, worked until its PR merges or, for work that changes no repository, until its result report is APPROVED (see Review and merge).
-After those two skills, read the skills of every work-type row that applies to the request (see Skills per work type). Only then register the ulw-loop goals: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and, before work starts, replace the placeholder criteria that `createGoals` seeds. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
+After those two skills, read the skills of every work-type row that applies to the request (see Skills per work type). Only then register the ulw-loop goals: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and, before work starts, replace the placeholder criteria that `createGoals` seeds. In each goal's objective, name the skills of the work-type rows that apply and write "after a compaction or a resume, re-read the wish skill and those skills", so the rule survives a compaction. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
 
 ## The request
 
@@ -46,7 +46,7 @@ Code size has no line-count targets. Judge bloat by the `remove-ai-slops` skill.
 
 ## Skills per work type
 
-Once the request's work types are known, first read every skill in every row that applies. A request can match several rows: a UI bugfix matches the coding, design / UI and browser-facing surface work rows. Read all of those skills before registering the goals or any other work on the request. After a compaction or a resume, read the skills of those rows again.
+Once the request's work types are known, first read every skill in every row that applies. A request can match several rows: a UI bugfix matches the coding, design / UI and browser-facing surface work rows. Read all of those skills before registering the goals or any other work on the request. After a compaction or a resume, read this skill and the skills of those rows again; the goal objectives carry this rule (see the opening).
 Where a skill in a row differs from this skill, this skill governs. For example, `ulw-loop`'s worktree per goal and per-goal landing give way to this skill's one worktree for the work and one PR.
 
 | work type | read and use | for what |
@@ -67,8 +67,8 @@ Reviewer dispatch follows Review and merge below, not `review-work`'s own gate r
 
 ## Review and merge
 
-The end of the work opens a PR. Its body carries the evidence: commands, exit codes, results and unverified items. Keep no receipts and no ledger.
-Work that changes no repository ends with a result report file instead of a PR. The report carries the same evidence and gets the same ultrabrain review until APPROVED; below, "the PR" also means that report, except that a report has no merge.
+The end of the work opens a PR. Its body carries the evidence: commands, exit codes, results and unverified items. Keep no receipts and no ledger of your own; a row skill's own records (ulw-loop state, ulw-research fact ledger) stay with that skill.
+Work that changes no repository ends with a result report file instead of a PR. Write it where the request says, else under the session's git-ignored `.omo/`, and give the lead its path; it holds the result or names the files that do. The report carries the same evidence and gets the same ultrabrain review until APPROVED; below, "the PR" also means that report, except that a report has no merge.
 In this section, the plan is the definition from step 1 of The request plus the goals from step 3, written in the PR body.
 Every PR goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
 Round 1 reviews the whole PR to the end and lists every problem at once.
