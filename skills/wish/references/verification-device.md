@@ -1,8 +1,8 @@
 # 엄격하게 확인하는 장치
 
-> 함께 지키는 코드 크기 기준(기루형, Discord 1569075292650086612, 합의 9de1dbd1de의 뜻): "이건 ai-slop-remove 의 기준을 맞추면 됨. 근데 한파일로 만들기 힘들다면 폴더로 묶어서 파일을 나누면 됨." 줄 수 목표는 쓰지 않는다. 군살은 remove-ai-slops 스킬 기준으로 걸러내고, 한 파일이 버거우면 그 도구 폴더 안에서 파일을 나눈다.
+> 함께 지키는 코드 크기 기준(기루형): "이건 ai-slop-remove 의 기준을 맞추면 됨. 근데 한파일로 만들기 힘들다면 폴더로 묶어서 파일을 나누면 됨." 줄 수 목표는 쓰지 않는다. 군살은 remove-ai-slops 스킬 기준으로 걸러내고, 한 파일이 버거우면 그 도구 폴더 안에서 파일을 나눈다.
 
-(기루형 원문, Discord msg 1569074880111181826, 2026-11-09. 합의 d4b8bbfeeb "Every implementation must include a strict device that verifies it"의 뜻은 이 문서다.)
+(기루형 원문, 2026-11-09. "Every implementation must include a strict device that verifies it"의 뜻은 이 문서다.)
 
 구현·수정 결과가 요구사항을 충족하는지 확인하고, **다른 에이전트도 동일한 조건과 방법으로 독립적으로 재검증할 수 있도록 검증 수단과 결과를 남긴다.**
 
