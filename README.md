@@ -3,8 +3,9 @@
 `/wish`: make a wish.
 
 An [OmO](https://github.com/code-yeongyu/oh-my-openagent) plugin. One slash command loads the `wish` skill, which
-works a single authorized request through to a reviewed, merged PR. The method itself lives in
-[`skills/wish/SKILL.md`](skills/wish/SKILL.md). This README covers installing, using and changing the plugin.
+works a single authorized request through to a reviewed, merged PR (or, for work that changes no repository, a
+reviewed result report). The method itself lives in [`skills/wish/SKILL.md`](skills/wish/SKILL.md). This README
+covers installing, using and changing the plugin.
 
 ## Install
 
@@ -75,8 +76,8 @@ request comes from the conversation.
 
 A short map. Every rule lives once in the skill, so follow the links for the real text.
 
-1. The skill opens by telling the model to read and use `mass-ulw` and `ulw-loop`, then register one goal per phase
-   with its real success criteria.
+1. The skill opens by telling the model to read and use `mass-ulw` and `ulw-loop`, then read the skills of every
+   work-type row that applies, and only then register one goal per phase with its real success criteria.
 2. [The request](skills/wish/SKILL.md#the-request): analyze with a DAG, define the ideal state from evidence,
    create a worktree only when a repository changes, then implement, fix and verify every requirement.
 3. [DAGs](skills/wish/SKILL.md#dags): how each graph is built and run, ending in its review.
@@ -85,8 +86,8 @@ A short map. Every rule lives once in the skill, so follow the links for the rea
 5. [Confirmation devices](skills/wish/SKILL.md#confirmation-devices): what counts as proof.
 6. [Skills per work type](skills/wish/SKILL.md#skills-per-work-type): which skills to read first for each work
    type, and what each is for.
-7. [Review and merge](skills/wish/SKILL.md#review-and-merge): the PR, its ultrabrain review rounds, what blocks,
-   and the wait for MERGE GO.
+7. [Review and merge](skills/wish/SKILL.md#review-and-merge): the PR (or, for work that changes no repository, a
+   result report), its ultrabrain review rounds, what blocks, and the wait for MERGE GO.
 
 ## Layout
 
