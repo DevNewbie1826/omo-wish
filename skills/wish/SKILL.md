@@ -29,7 +29,7 @@ Build every DAG per `references/dag-construction.md`: top-down to atomic tasks, 
 `references/dag-construction-ko.md` is the owner's original. Where the two differ, the Korean original governs.
 Run each DAG with `mass-ulw` under its phase's ulw-loop goal.
 Every part with parallelism is a DAG, and its last node is its review.
-Fixes after a review are a DAG too. A 1-2 line fix needs no DAG: make it, confirm it and commit it.
+Fixes after a review are a DAG too. A 1-2 line fix needs no DAG: make it and confirm it; commit it only when the work changes a repository.
 An integration node that only collects and checks its children's results is a check inside the parent, not a separate node (section 4.3 of the DAG reference). Make it a separate node only when integrating needs its own execution, such as merging edits or running the tests over the combined result.
 
 ## Node prompts, run files and commits
@@ -72,7 +72,7 @@ Work that changes no repository ends with a result report file instead of a PR. 
 In this section, the plan is the definition from step 1 of The request plus the goals from step 3, written in the PR body.
 Every PR goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
 Round 1 reviews the whole PR to the end and lists every problem at once.
-Fixes for the cited problems go back to the start of this method: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
+Fixes for the cited problems go back to the start of this method: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made and confirmed directly before the next round, with a commit required only when the work changes a repository.
 From round 2 on, only the fixed parts are reviewed. There's no final full review.
 A blocker is one of two things, and only with proof (a command that reproduces it, or the exact code line and path):
 - A. A plan violation: an unmet requirement, or a broken must-hold condition that the plan lists.
