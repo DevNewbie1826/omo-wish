@@ -1,7 +1,7 @@
 {
   "name": "omo-wish",
   "version": "0.3.0",
-  "description": "/wish slash command — 소원을 빕니다. Short wish skill: DAG analysis to an ideal state, goals, DAG work with confirmation devices, and one PR reviewed to APPROVED.",
+  "description": "/wish slash command — 소원을 빕니다. Short wish skill: DAG analysis to an ideal state, goals, DAG work with confirmation devices, and one PR (or, for work that changes no repository, one result report) reviewed to APPROVED.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/DevNewbie1826/omo-wish.git"

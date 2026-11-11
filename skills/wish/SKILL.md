@@ -1,8 +1,8 @@
 ---
 name: wish
-description: Work one authorized request to a merged PR by defining the ideal state from evidence, running every part as a DAG, and proving each requirement with strict confirmation devices.
+description: Work one authorized request to a merged PR, or to an APPROVED result report when no repository changes, by defining the ideal state from evidence, running every part as a DAG, and proving each requirement with strict confirmation devices.
 metadata:
-  short-description: Request to merged PR, as DAGs with strict confirmation devices
+  short-description: Request to merged PR or approved report, as DAGs with strict confirmation devices
 ---
 
 # wish
@@ -10,7 +10,7 @@ metadata:
 **Read and use the `mass-ulw` and `ulw-loop` skills before anything else.**
 
 One `/wish` is one authorized request, worked until its PR merges or, for work that changes no repository, until its result report is APPROVED (see Review and merge).
-Next, read the skills of every work-type row that applies to the request (see Skills per work type). Only then register the ulw-loop goals: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and, before work starts, replace the placeholder criteria that `createGoals` seeds. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
+After those two skills, read the skills of every work-type row that applies to the request (see Skills per work type). Only then register the ulw-loop goals: one goal per phase, each with its real success criteria. Write each phase goal with `addGoal({ title, objective, successCriteria })`, and, before work starts, replace the placeholder criteria that `createGoals` seeds. Never run under one goal with placeholder criteria. Then build every DAG under those goals.
 
 ## The request
 
@@ -40,14 +40,14 @@ A commit node stages only the paths it names (`git add -- <path>...`, never `git
 
 ## Confirmation devices
 
-Confirm directly, and leave the commands, exit codes, results and unverified items so another agent can reproduce the check; reuse existing tests and tools; use a method that fits what changed (code: run or test it; UI: check the screen and behaviour; docs: compare the content and the diff); add no ceremonial or duplicate checks; never claim what you didn't verify. The full standard is `references/verification-device.md`.
+Confirm directly, and leave the commands, exit codes, results and unverified items so another agent can reproduce the check; reuse existing tests and tools; use a method that fits what changed (run or test code, check a UI's screen and behaviour, check a document's content and diff); add no ceremonial or duplicate checks; never claim what you didn't verify. The full standard is `references/verification-device.md`.
 In every verification node of a DAG, not only in the PR review, an evidence typo (a wrong count, an off line range) is a note, never a FAIL and never a loop.
 Code size has no line-count targets. Judge bloat by the `remove-ai-slops` skill. If one file gets hard to hold, split it into several files inside the folder it already belongs to (its own package or module).
 
 ## Skills per work type
 
-Once the work type is known, first read every skill in every row that applies. A request can match several rows: a UI bugfix is coding, design / UI and browser-facing surface work. Read all of them before registering the goals or any other work on the request. After a compaction or a resume, read the skills of those rows again.
-Where a skill in a row says otherwise, this skill governs. For example, `ulw-loop`'s worktree per goal and per-goal landing give way to this skill's one worktree and one PR.
+Once the request's work types are known, first read every skill in every row that applies. A request can match several rows: a UI bugfix matches the coding, design / UI and browser-facing surface work rows. Read all of those skills before registering the goals or any other work on the request. After a compaction or a resume, read the skills of those rows again.
+Where a skill in a row differs from this skill, this skill governs. For example, `ulw-loop`'s worktree per goal and per-goal landing give way to this skill's one worktree for the work and one PR.
 
 | work type | read and use | for what |
 | --- | --- | --- |
@@ -68,8 +68,8 @@ Reviewer dispatch follows Review and merge below, not `review-work`'s own gate r
 ## Review and merge
 
 The end of the work opens a PR. Its body carries the evidence: commands, exit codes, results and unverified items. Keep no receipts and no ledger.
-Work that changes no repository ends with a result report file instead of a PR. The report carries the same evidence and gets the same review until APPROVED; below, "the PR" also means that report, except that a report has no merge.
-The plan is the definition from step 1 of The request plus the goals from step 3, written in the PR body.
+Work that changes no repository ends with a result report file instead of a PR. The report carries the same evidence and gets the same ultrabrain review until APPROVED; below, "the PR" also means that report, except that a report has no merge.
+In this section, the plan is the definition from step 1 of The request plus the goals from step 3, written in the PR body.
 Every PR goes to ultrabrain, which reviews endlessly until APPROVED. There's no round cap, and APPROVED is the only end.
 Round 1 reviews the whole PR to the end and lists every problem at once.
 Fixes for the cited problems go back to the start of this method: they run as a DAG whose last node is the next round, or, for a 1-2 line fix, are made, confirmed and committed directly before the next round.
@@ -81,5 +81,5 @@ A blocker is one of two things, and only with proof (a command that reproduces i
 Anything without proof is a note. There is no default-conditions list.
 A reviewer who doubts the evidence re-runs the command itself.
 Evidence typos are notes, never a loop. Evidence alone never causes a review loop.
-After APPROVED, stop and wait for the line from the lead (the user, or the agent that launched this /wish): `MERGE GO <PR> for head <40-hex> only.` Merge only that PR at that head. Never merge, release or deploy without it.
-Remove the worktree after the merge. A result report ends at APPROVED.
+After APPROVED, stop and wait for the line from the lead (the user, or the agent that launched this `/wish`): `MERGE GO <PR> for head <40-hex> only.` Merge only that PR at that head. Never merge, release or deploy without it.
+Remove the worktree after the merge. Work that ends with a result report is done at APPROVED; there's no merge to wait for.

@@ -3,8 +3,9 @@
 `/wish`: make a wish.
 
 An [OmO](https://github.com/code-yeongyu/oh-my-openagent) plugin. One slash command loads the `wish` skill, which
-works a single authorized request through to a reviewed, merged PR. The method itself lives in
-[`skills/wish/SKILL.md`](skills/wish/SKILL.md). This README covers installing, using and changing the plugin.
+works a single authorized request through to a reviewed, merged PR (or, for work that changes no repository, a
+reviewed result report). The method itself lives in [`skills/wish/SKILL.md`](skills/wish/SKILL.md). This README
+covers installing, using and changing the plugin.
 
 ## Install
 
