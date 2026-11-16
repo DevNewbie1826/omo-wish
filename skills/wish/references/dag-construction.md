@@ -1,3 +1,5 @@
+> Read this when you build, change or check any DAG: decomposition, dependencies, convergence and the invariants.
+
 # Top-Level Rules for Hierarchical DAG Design and Progressive Convergence
 
 ## 0. Top-Level Design Principle
