@@ -1,32 +1,26 @@
-# 엄격하게 확인하는 장치
+# Confirmation devices
 
-> 함께 지키는 코드 크기 기준(기루형): "이건 ai-slop-remove 의 기준을 맞추면 됨. 근데 한파일로 만들기 힘들다면 폴더로 묶어서 파일을 나누면 됨."
+Every implementation and fix includes a device that confirms the requirement is met, and leaves the method and the result so another agent can repeat the check under the same conditions.
 
-(기루형 원문, 2026-11-09. "Every implementation must include a strict device that verifies it"의 뜻은 이 문서다.)
+## What to leave
 
-구현·수정 결과가 요구사항을 충족하는지 확인하고, **다른 에이전트도 동일한 조건과 방법으로 독립적으로 재검증할 수 있도록 검증 수단과 결과를 남긴다.**
+Use whichever fit the change:
 
-## 검증 방법과 기록
+- commands run and their exit codes
+- how tests were run, and what passed and failed
+- input conditions, and expected against actual input and output
+- the before/after diff mapped to each requirement
+- before/after screenshots for visual changes
+- steps that reproduce the real behaviour, and what was observed
+- items not verified, and why
 
-변경의 성격에 따라 다음과 같은 방법을 활용한다.
+## Rules
 
-- 실행한 명령과 종료 코드
-- 테스트 실행 방법과 통과·실패 결과
-- 입력 조건, 기대 입출력과 실제 입출력의 비교
-- 변경 전후 diff와 요구사항의 대응 관계
-- 화면·이미지 캡처를 통한 변경 전후 시각적 비교
-- 실제 동작의 재현 절차와 관찰 결과
-- 검증하지 못한 항목과 그 이유
+1. **Direct:** check the requirement itself, not a stand-in for it.
+2. **Reproducible:** leave the conditions, steps and results another agent needs to repeat the check.
+3. **Minimal:** reuse existing tests, commands and tools; build a new check only when they are not enough.
+4. **Fitting:** run or test code, check a UI's screen and behaviour, compare a document's content and diff.
+5. **Effective:** no ceremonial checks that cannot catch a real error, no duplicate checks, no checks for their own sake.
+6. **Accurate:** when a check fails, fix and check again; never claim what you did not verify.
 
-## 검증 원칙
-
-1. **직접성:** 실제 요구사항 충족 여부를 확인할 수 있는 방법을 선택한다.
-2. **재현성:** 다른 에이전트가 동일한 검증을 반복할 수 있도록 필요한 조건·절차·결과를 남긴다.
-3. **최소성:** 기존 테스트·명령·도구를 우선 활용한다. 충분하다면 새로운 검증 코드나 도구를 만들지 않는다.
-4. **적합성:** 코드에는 실행·테스트, UI에는 화면·동작 확인, 문서에는 내용·diff 대조 등 변경 대상에 맞는 방법을 사용한다.
-5. **실효성:** 실제 오류를 발견할 수 없는 형식적 검사, 중복 검증, 검증을 위한 검증을 만들지 않는다.
-6. **정확성:** 검증 실패 시 수정 후 재검증하고, 확인하지 못한 사항은 성공으로 주장하지 않는다.
-
-**검증 장치를 남긴다는 것은 매번 새로운 테스트 파일이나 검증 시스템을 만든다는 뜻이 아니다.** 기존 수단을 포함하여 재검증 가능한 방법과 실제 확인 결과를 남기는 것으로 충분하다.
-
-**검증은 엄격하되 간결하게 수행한다. 필요한 정확성을 확보했다면 불필요한 검증 절차를 추가하지 않는다.**
+A device is not a new test file or a new verification system each time. A repeatable method and its real result are enough. Verify strictly and briefly: once the needed accuracy is reached, add no further steps.
