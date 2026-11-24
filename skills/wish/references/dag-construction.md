@@ -28,7 +28,6 @@ Keep these separate; never let one stand in for another.
 
 A DAG that fails any item is invalid.
 
-- Classification, execution dependencies and convergence are defined separately, and none stands in for another.
 - Every composite task is decomposed until further splitting has no real benefit, and every leaf is atomic.
 - Every task except the goal has exactly one direct parent; the subtasks of each parent cover its responsibility with no omission or duplication.
 - Every level has a purpose from step 5.
