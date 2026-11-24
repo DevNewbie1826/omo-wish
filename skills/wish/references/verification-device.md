@@ -8,7 +8,7 @@ Use whichever fit the change:
 
 - commands run and their exit codes
 - how tests were run, and what passed and failed
-- input conditions, with expected and actual output
+- input conditions, and expected against actual input and output
 - the before/after diff mapped to each requirement
 - before/after screenshots for visual changes
 - steps that reproduce the real behaviour, and what was observed
