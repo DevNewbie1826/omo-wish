@@ -76,12 +76,12 @@ request comes from the conversation.
 
 A short map. Every rule lives once in the skill, so follow the links for the real text.
 
-1. The skill opens by telling the model to read and use `mass-ulw` and `ulw-loop`, then read the skills of every
-   work-type row that applies, and only then register one goal per phase with its real success criteria.
-2. [The request](skills/wish/SKILL.md#the-request): analyze with a DAG, define the ideal state from evidence,
-   create a worktree only when a repository changes, then implement, fix and verify every requirement.
+1. [Start](skills/wish/SKILL.md#start): read `mass-ulw`, `ulw-loop` and the skills of every work-type row that
+   applies, then register one goal per phase with its real success criteria.
+2. [Workflow](skills/wish/SKILL.md#workflow): analyze with a DAG, define the ideal state from evidence, create a
+   worktree only when a repository changes, then implement, fix and verify every requirement.
 3. [DAGs](skills/wish/SKILL.md#dags): how each graph is built and run, ending in its review.
-4. [Node prompts, run files and commits](skills/wish/SKILL.md#node-prompts-run-files-and-commits): how a node's
+4. [Nodes, run files and commits](skills/wish/SKILL.md#nodes-run-files-and-commits): how a node's
    scope line is written, where run files go, and how a commit node stages and sets its identity.
 5. [Confirmation devices](skills/wish/SKILL.md#confirmation-devices): what counts as proof.
 6. [Skills per work type](skills/wish/SKILL.md#skills-per-work-type): which skills to read first for each work
@@ -99,8 +99,7 @@ package.json                                    plugin manifest
 prompts/wish.md                                 the /wish command template
 scripts/verify.mjs                              loader check for any install root
 skills/wish/SKILL.md                            the method
-skills/wish/references/dag-construction.md      how to build a DAG (English)
-skills/wish/references/dag-construction-ko.md   the Korean original of the above
+skills/wish/references/dag-construction.md      how to build a DAG
 skills/wish/references/verification-device.md   the verification standard
 test/v3-language.test.js                        keeps shipped prose English
 test/wish-arming.test.js                        arming through the real loader

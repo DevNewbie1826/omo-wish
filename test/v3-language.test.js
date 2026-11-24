@@ -12,17 +12,13 @@ const GATED = [
 ];
 
 const MENU_LABEL = "prompts/wish.md";
-const EXEMPT_FILES = [
-  "skills/wish/references/dag-construction-ko.md",
-  "skills/wish/references/verification-device.md",
-];
 
 const SENTINELS = [
   "skills/wish/SKILL.md",
   "README.md",
   MENU_LABEL,
   "skills/wish/references/dag-construction.md",
-  ...EXEMPT_FILES,
+  "skills/wish/references/verification-device.md",
 ];
 
 const HANGUL = /[\uAC00-\uD7A3]/;
@@ -69,9 +65,9 @@ describe("language and scratch gate", () => {
     expect(FILES.length).toBeGreaterThanOrEqual(SENTINELS.length);
   });
 
-  test("no Hangul ships outside the three named exemptions", () => {
+  test("no Hangul ships outside the menu label", () => {
     const offenders = FILES
-      .filter((file) => file !== MENU_LABEL && !EXEMPT_FILES.includes(file))
+      .filter((file) => file !== MENU_LABEL)
       .flatMap((file) => numberedLines(file, (line) => HANGUL.test(line))
         .map(({ number }) => `${file}:${number}`));
     expect(offenders).toEqual([]);
